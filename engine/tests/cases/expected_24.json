@@ -1,0 +1,1397 @@
+{
+ "note": "24건 기대값. hand_calc는 Claude가 계산한 초안 — 복준용(검증) 수기 재계산 후 'verified_by' 채우기",
+ "cases": [
+  {
+   "id": "V-01",
+   "rule": "SOLAS-V-22.1.1",
+   "category": "정상",
+   "description": "선체만, 만재 등흘수 T=6",
+   "model": {
+    "ship": {
+     "loa": 100,
+     "x_ap": 0,
+     "x_fp": 95,
+     "z_base": 0,
+     "eye_height": 1.8,
+     "keel_laid": "2026-03-01"
+    },
+    "conditions": [
+     {
+      "name": "만재",
+      "t_aft": 6,
+      "t_fwd": 6
+     }
+    ],
+    "objects": [
+     {
+      "handle": "H1",
+      "role": "hull",
+      "points": [
+       [
+        0,
+        0
+       ],
+       [
+        0,
+        14
+       ],
+       [
+        100,
+        14
+       ],
+       [
+        100,
+        0
+       ]
+      ]
+     },
+     {
+      "handle": "E1",
+      "role": "eye",
+      "points": [
+       [
+        10,
+        20.2
+       ]
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "status": "pass",
+    "actual": 90.0,
+    "limit": 200
+   },
+   "hand_calc": "눈 z=20.2+1.8=22. 선수 끝 꼭짓점 (100,14): t=(6-22)/(14-22)=2 → x_hit=10+90×2=190 → D=190-100=90 ≤ min(2×100,500)=200",
+   "verified_by": null
+  },
+  {
+   "id": "V-02",
+   "rule": "SOLAS-V-22.1.1",
+   "category": "정상",
+   "description": "선교 앞 낮은 장애물 (60,16) — 선수가 더 결정적",
+   "model": {
+    "ship": {
+     "loa": 100,
+     "x_ap": 0,
+     "x_fp": 95,
+     "z_base": 0,
+     "eye_height": 1.8,
+     "keel_laid": "2026-03-01"
+    },
+    "conditions": [
+     {
+      "name": "만재",
+      "t_aft": 6,
+      "t_fwd": 6
+     }
+    ],
+    "objects": [
+     {
+      "handle": "H1",
+      "role": "hull",
+      "points": [
+       [
+        0,
+        0
+       ],
+       [
+        0,
+        14
+       ],
+       [
+        100,
+        14
+       ],
+       [
+        100,
+        0
+       ]
+      ]
+     },
+     {
+      "handle": "E1",
+      "role": "eye",
+      "points": [
+       [
+        10,
+        20.2
+       ]
+      ]
+     },
+     {
+      "handle": "O1",
+      "role": "obstruction",
+      "points": [
+       [
+        56,
+        12
+       ],
+       [
+        56,
+        16
+       ],
+       [
+        60,
+        16
+       ],
+       [
+        60,
+        12
+       ]
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "status": "pass",
+    "actual": 90.0,
+    "limit": 200
+   },
+   "hand_calc": "장애물: t=(6-22)/(16-22)=2.667 → x_hit=10+50×2.667=143.3 → D=43.3. 선수 D=90이 더 크므로 D=90",
+   "verified_by": null
+  },
+  {
+   "id": "V-03",
+   "rule": "SOLAS-V-22.1.1",
+   "category": "정상",
+   "description": "만재+밸러스트(선미트림 5.0/3.0) — 최악은 밸러스트",
+   "model": {
+    "ship": {
+     "loa": 100,
+     "x_ap": 0,
+     "x_fp": 95,
+     "z_base": 0,
+     "eye_height": 1.8,
+     "keel_laid": "2026-03-01"
+    },
+    "conditions": [
+     {
+      "name": "만재",
+      "t_aft": 6,
+      "t_fwd": 6
+     },
+     {
+      "name": "밸러스트",
+      "t_aft": 5,
+      "t_fwd": 3
+     }
+    ],
+    "objects": [
+     {
+      "handle": "H1",
+      "role": "hull",
+      "points": [
+       [
+        0,
+        0
+       ],
+       [
+        0,
+        14
+       ],
+       [
+        100,
+        14
+       ],
+       [
+        100,
+        0
+       ]
+      ]
+     },
+     {
+      "handle": "E1",
+      "role": "eye",
+      "points": [
+       [
+        10,
+        20.2
+       ]
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "status": "pass",
+    "actual": 163.707,
+    "limit": 200,
+    "condition": "밸러스트"
+   },
+   "hand_calc": "밸러스트 수면 z=5-0.0210526x. 선수 (100,14): t=(5-0.2105-22)/(-8+0.0210526×90)=-17.2105/-6.1053=2.8190 → x_hit=263.707 → D=163.707",
+   "verified_by": null
+  },
+  {
+   "id": "V-04",
+   "rule": "SOLAS-V-22.1.1",
+   "category": "경계",
+   "description": "D가 허용값과 정확히 같음(경계 포함 → 통과)",
+   "model": {
+    "ship": {
+     "loa": 100,
+     "x_ap": 0,
+     "x_fp": 95,
+     "z_base": 0,
+     "eye_height": 1.8,
+     "keel_laid": "2026-03-01"
+    },
+    "conditions": [
+     {
+      "name": "만재",
+      "t_aft": 6,
+      "t_fwd": 6
+     }
+    ],
+    "objects": [
+     {
+      "handle": "H1",
+      "role": "hull",
+      "points": [
+       [
+        0,
+        0
+       ],
+       [
+        0,
+        14
+       ],
+       [
+        100,
+        14
+       ],
+       [
+        100,
+        0
+       ]
+      ]
+     },
+     {
+      "handle": "E1",
+      "role": "eye",
+      "points": [
+       [
+        10,
+        20.2
+       ]
+      ]
+     },
+     {
+      "handle": "O1",
+      "role": "obstruction",
+      "points": [
+       [
+        64,
+        12
+       ],
+       [
+        64,
+        18.8
+       ],
+       [
+        68,
+        18.8
+       ],
+       [
+        68,
+        12
+       ]
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "status": "pass",
+    "actual": 200.0,
+    "limit": 200
+   },
+   "hand_calc": "(68,18.8): t=(6-22)/(18.8-22)=5 → x_hit=10+58×5=300 → D=200 = 200 → 통과(이하)",
+   "verified_by": null
+  },
+  {
+   "id": "V-05",
+   "rule": "SOLAS-V-22.1.1",
+   "category": "경계",
+   "description": "LOA=55.0 m — 적용 하한 경계(55 m 이상 적용)",
+   "model": {
+    "ship": {
+     "loa": 55,
+     "x_ap": 0,
+     "x_fp": 52,
+     "z_base": 0,
+     "eye_height": 1.8,
+     "keel_laid": "2026-03-01"
+    },
+    "conditions": [
+     {
+      "name": "만재",
+      "t_aft": 3,
+      "t_fwd": 3
+     }
+    ],
+    "objects": [
+     {
+      "handle": "H1",
+      "role": "hull",
+      "points": [
+       [
+        0,
+        0
+       ],
+       [
+        0,
+        8
+       ],
+       [
+        55,
+        8
+       ],
+       [
+        55,
+        0
+       ]
+      ]
+     },
+     {
+      "handle": "E1",
+      "role": "eye",
+      "points": [
+       [
+        5,
+        10.2
+       ]
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "status": "pass",
+    "actual": 62.5,
+    "limit": 110
+   },
+   "hand_calc": "적용(55≥55). 눈 z=12. (55,8): t=(3-12)/(8-12)=2.25 → x_hit=5+50×2.25=117.5 → D=62.5 ≤ min(110,500)=110",
+   "verified_by": null
+  },
+  {
+   "id": "V-06",
+   "rule": "SOLAS-V-22.1.1",
+   "category": "경계",
+   "description": "LOA=54.99 m — 적용 제외",
+   "model": {
+    "ship": {
+     "loa": 54.99,
+     "x_ap": 0,
+     "x_fp": 52,
+     "z_base": 0,
+     "eye_height": 1.8,
+     "keel_laid": "2026-03-01"
+    },
+    "conditions": [
+     {
+      "name": "만재",
+      "t_aft": 3,
+      "t_fwd": 3
+     }
+    ],
+    "objects": [
+     {
+      "handle": "H1",
+      "role": "hull",
+      "points": [
+       [
+        0,
+        0
+       ],
+       [
+        0,
+        8
+       ],
+       [
+        54.99,
+        8
+       ],
+       [
+        54.99,
+        0
+       ]
+      ]
+     },
+     {
+      "handle": "E1",
+      "role": "eye",
+      "points": [
+       [
+        5,
+        10.2
+       ]
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "status": "skip"
+   },
+   "hand_calc": "54.99 < 55 → V/22.1 적용 대상 아님",
+   "verified_by": null
+  },
+  {
+   "id": "V-07",
+   "rule": "SOLAS-V-22.1.1",
+   "category": "위반",
+   "description": "갑판 화물 상단 (68,20)",
+   "model": {
+    "ship": {
+     "loa": 100,
+     "x_ap": 0,
+     "x_fp": 95,
+     "z_base": 0,
+     "eye_height": 1.8,
+     "keel_laid": "2026-03-01"
+    },
+    "conditions": [
+     {
+      "name": "만재",
+      "t_aft": 6,
+      "t_fwd": 6
+     }
+    ],
+    "objects": [
+     {
+      "handle": "H1",
+      "role": "hull",
+      "points": [
+       [
+        0,
+        0
+       ],
+       [
+        0,
+        14
+       ],
+       [
+        100,
+        14
+       ],
+       [
+        100,
+        0
+       ]
+      ]
+     },
+     {
+      "handle": "E1",
+      "role": "eye",
+      "points": [
+       [
+        10,
+        20.2
+       ]
+      ]
+     },
+     {
+      "handle": "O1",
+      "role": "obstruction",
+      "points": [
+       [
+        64,
+        12
+       ],
+       [
+        64,
+        20
+       ],
+       [
+        68,
+        20
+       ],
+       [
+        68,
+        12
+       ]
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "status": "fail",
+    "actual": 374.0,
+    "limit": 200,
+    "targets": [
+     "O1"
+    ]
+   },
+   "hand_calc": "t=(6-22)/(20-22)=8 → x_hit=10+58×8=474 → D=374 > 200",
+   "verified_by": null
+  },
+  {
+   "id": "V-08",
+   "rule": "SOLAS-V-22.1.1",
+   "category": "위반",
+   "description": "장애물이 눈높이보다 높음 (68,22.5)",
+   "model": {
+    "ship": {
+     "loa": 100,
+     "x_ap": 0,
+     "x_fp": 95,
+     "z_base": 0,
+     "eye_height": 1.8,
+     "keel_laid": "2026-03-01"
+    },
+    "conditions": [
+     {
+      "name": "만재",
+      "t_aft": 6,
+      "t_fwd": 6
+     }
+    ],
+    "objects": [
+     {
+      "handle": "H1",
+      "role": "hull",
+      "points": [
+       [
+        0,
+        0
+       ],
+       [
+        0,
+        14
+       ],
+       [
+        100,
+        14
+       ],
+       [
+        100,
+        0
+       ]
+      ]
+     },
+     {
+      "handle": "E1",
+      "role": "eye",
+      "points": [
+       [
+        10,
+        20.2
+       ]
+      ]
+     },
+     {
+      "handle": "O1",
+      "role": "obstruction",
+      "points": [
+       [
+        64,
+        12
+       ],
+       [
+        64,
+        22.5
+       ],
+       [
+        68,
+        22.5
+       ],
+       [
+        68,
+        12
+       ]
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "status": "fail",
+    "actual": null,
+    "limit": 200,
+    "targets": [
+     "O1"
+    ]
+   },
+   "hand_calc": "장애물 z=22.5 ≥ 눈 z=22 → 시선이 수면에 닿지 않음 → 위반",
+   "verified_by": null
+  },
+  {
+   "id": "V-09",
+   "rule": "SOLAS-V-22.1.1",
+   "category": "위반",
+   "description": "만재는 통과, 밸러스트(선미트림)에서만 위반",
+   "model": {
+    "ship": {
+     "loa": 100,
+     "x_ap": 0,
+     "x_fp": 95,
+     "z_base": 0,
+     "eye_height": 1.8,
+     "keel_laid": "2026-03-01"
+    },
+    "conditions": [
+     {
+      "name": "만재",
+      "t_aft": 6,
+      "t_fwd": 6
+     },
+     {
+      "name": "밸러스트",
+      "t_aft": 5,
+      "t_fwd": 3
+     }
+    ],
+    "objects": [
+     {
+      "handle": "H1",
+      "role": "hull",
+      "points": [
+       [
+        0,
+        0
+       ],
+       [
+        0,
+        14
+       ],
+       [
+        100,
+        14
+       ],
+       [
+        100,
+        0
+       ]
+      ]
+     },
+     {
+      "handle": "E1",
+      "role": "eye",
+      "points": [
+       [
+        10,
+        20.2
+       ]
+      ]
+     },
+     {
+      "handle": "O1",
+      "role": "obstruction",
+      "points": [
+       [
+        64,
+        12
+       ],
+       [
+        64,
+        18
+       ],
+       [
+        68,
+        18
+       ],
+       [
+        68,
+        12
+       ]
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "status": "fail",
+    "actual": 269.205,
+    "limit": 200,
+    "condition": "밸러스트",
+    "targets": [
+     "O1"
+    ]
+   },
+   "hand_calc": "만재: t=16/4=4 → D=142(통과). 밸러스트: t=-17.2105/(-4+0.0210526×58)=6.1932 → x_hit=369.205 → D=269.205 > 200",
+   "verified_by": null
+  },
+  {
+   "id": "V-10",
+   "rule": "SOLAS-V-22.1.1",
+   "category": "누락",
+   "description": "조종위치(GA_EYE) 없음",
+   "model": {
+    "ship": {
+     "loa": 100,
+     "x_ap": 0,
+     "x_fp": 95,
+     "z_base": 0,
+     "eye_height": 1.8,
+     "keel_laid": "2026-03-01"
+    },
+    "conditions": [
+     {
+      "name": "만재",
+      "t_aft": 6,
+      "t_fwd": 6
+     }
+    ],
+    "objects": [
+     {
+      "handle": "H1",
+      "role": "hull",
+      "points": [
+       [
+        0,
+        0
+       ],
+       [
+        0,
+        14
+       ],
+       [
+        100,
+        14
+       ],
+       [
+        100,
+        0
+       ]
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "status": "na"
+   },
+   "hand_calc": "눈 위치가 없으면 계산 불가 → 입력 누락",
+   "verified_by": null
+  },
+  {
+   "id": "V-11",
+   "rule": "SOLAS-V-22.1.1",
+   "category": "누락",
+   "description": "흘수 조건 없음",
+   "model": {
+    "ship": {
+     "loa": 100,
+     "x_ap": 0,
+     "x_fp": 95,
+     "z_base": 0,
+     "eye_height": 1.8,
+     "keel_laid": "2026-03-01"
+    },
+    "conditions": [],
+    "objects": [
+     {
+      "handle": "H1",
+      "role": "hull",
+      "points": [
+       [
+        0,
+        0
+       ],
+       [
+        0,
+        14
+       ],
+       [
+        100,
+        14
+       ],
+       [
+        100,
+        0
+       ]
+      ]
+     },
+     {
+      "handle": "E1",
+      "role": "eye",
+      "points": [
+       [
+        10,
+        20.2
+       ]
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "status": "na"
+   },
+   "hand_calc": "수면 위치를 정할 수 없음 → 입력 누락",
+   "verified_by": null
+  },
+  {
+   "id": "V-12",
+   "rule": "SOLAS-V-22.1.1",
+   "category": "누락",
+   "description": "조종위치 점이 2개 (모호)",
+   "model": {
+    "ship": {
+     "loa": 100,
+     "x_ap": 0,
+     "x_fp": 95,
+     "z_base": 0,
+     "eye_height": 1.8,
+     "keel_laid": "2026-03-01"
+    },
+    "conditions": [
+     {
+      "name": "만재",
+      "t_aft": 6,
+      "t_fwd": 6
+     }
+    ],
+    "objects": [
+     {
+      "handle": "H1",
+      "role": "hull",
+      "points": [
+       [
+        0,
+        0
+       ],
+       [
+        0,
+        14
+       ],
+       [
+        100,
+        14
+       ],
+       [
+        100,
+        0
+       ]
+      ]
+     },
+     {
+      "handle": "E1",
+      "role": "eye",
+      "points": [
+       [
+        10,
+        20.2
+       ]
+      ]
+     },
+     {
+      "handle": "E2",
+      "role": "eye",
+      "points": [
+       [
+        12,
+        20.2
+       ]
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "status": "review"
+   },
+   "hand_calc": "어느 점이 조종위치인지 엔진이 고르지 않음 → 사람 확인",
+   "verified_by": null
+  },
+  {
+   "id": "B-01",
+   "rule": "SOLAS-II1-12",
+   "category": "정상",
+   "description": "FP에서 8.0 m (L=120, 구상선수 없음)",
+   "model": {
+    "ship": {
+     "l_ll": 120,
+     "x_fp": 120
+    },
+    "conditions": [],
+    "objects": [
+     {
+      "handle": "B1",
+      "role": "collision_bhd",
+      "points": [
+       [
+        112,
+        0
+       ],
+       [
+        112,
+        15
+       ]
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "status": "pass",
+    "actual": 8.0,
+    "limit": [
+     6.0,
+     9.6
+    ]
+   },
+   "hand_calc": "하한 min(0.05×120,10)=6, 상한 max(0.08×120, 0.05×120+3)=max(9.6,9)=9.6. d=120-112=8",
+   "verified_by": null
+  },
+  {
+   "id": "B-02",
+   "rule": "SOLAS-II1-12",
+   "category": "정상",
+   "description": "구상선수 4 m 돌출, 격벽 x=113",
+   "model": {
+    "ship": {
+     "l_ll": 120,
+     "x_fp": 120
+    },
+    "conditions": [],
+    "objects": [
+     {
+      "handle": "B1",
+      "role": "collision_bhd",
+      "points": [
+       [
+        113,
+        0
+       ],
+       [
+        113,
+        15
+       ]
+      ]
+     },
+     {
+      "handle": "U1",
+      "role": "bulb",
+      "points": [
+       [
+        120,
+        2
+       ],
+       [
+        124,
+        3.5
+       ],
+       [
+        120,
+        5
+       ]
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "status": "pass",
+    "actual": 8.8,
+    "limit": [
+     6.0,
+     9.6
+    ]
+   },
+   "hand_calc": "기준점 후보: 중점 2.0, 0.015L=1.8, 3.0 → 최소 1.8 → x_ref=121.8. d=121.8-113=8.8",
+   "verified_by": null
+  },
+  {
+   "id": "B-03",
+   "rule": "SOLAS-II1-12",
+   "category": "정상",
+   "description": "계단형 격벽 x=112~113 (12.4)",
+   "model": {
+    "ship": {
+     "l_ll": 120,
+     "x_fp": 120
+    },
+    "conditions": [],
+    "objects": [
+     {
+      "handle": "B1",
+      "role": "collision_bhd",
+      "points": [
+       [
+        113,
+        0
+       ],
+       [
+        113,
+        8
+       ],
+       [
+        112,
+        8
+       ],
+       [
+        112,
+        15
+       ]
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "status": "pass",
+    "actual": [
+     7.0,
+     8.0
+    ],
+    "limit": [
+     6.0,
+     9.6
+    ]
+   },
+   "hand_calc": "모든 꼭짓점이 범위 안이어야 함: d=120-113=7 ~ 120-112=8 → 6≤7, 8≤9.6",
+   "verified_by": null
+  },
+  {
+   "id": "B-04",
+   "rule": "SOLAS-II1-12",
+   "category": "경계",
+   "description": "하한과 정확히 같음 d=6.0",
+   "model": {
+    "ship": {
+     "l_ll": 120,
+     "x_fp": 120
+    },
+    "conditions": [],
+    "objects": [
+     {
+      "handle": "B1",
+      "role": "collision_bhd",
+      "points": [
+       [
+        114,
+        0
+       ],
+       [
+        114,
+        15
+       ]
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "status": "pass",
+    "actual": 6.0,
+    "limit": [
+     6.0,
+     9.6
+    ]
+   },
+   "hand_calc": "d=120-114=6.0 = 하한 → 통과(이상)",
+   "verified_by": null
+  },
+  {
+   "id": "B-05",
+   "rule": "SOLAS-II1-12",
+   "category": "경계",
+   "description": "상한과 정확히 같음 d=9.6",
+   "model": {
+    "ship": {
+     "l_ll": 120,
+     "x_fp": 120
+    },
+    "conditions": [],
+    "objects": [
+     {
+      "handle": "B1",
+      "role": "collision_bhd",
+      "points": [
+       [
+        110.4,
+        0
+       ],
+       [
+        110.4,
+        15
+       ]
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "status": "pass",
+    "actual": 9.6,
+    "limit": [
+     6.0,
+     9.6
+    ]
+   },
+   "hand_calc": "d=120-110.4=9.6 = 상한 → 통과(이하). 부동소수점 9.5999… 보정 확인",
+   "verified_by": null
+  },
+  {
+   "id": "B-06",
+   "rule": "SOLAS-II1-12",
+   "category": "경계",
+   "description": "L=60 — 상한이 0.05L+3 쪽으로 바뀌는 구간, d=6.0",
+   "model": {
+    "ship": {
+     "l_ll": 60,
+     "x_fp": 60
+    },
+    "conditions": [],
+    "objects": [
+     {
+      "handle": "B1",
+      "role": "collision_bhd",
+      "points": [
+       [
+        54,
+        0
+       ],
+       [
+        54,
+        15
+       ]
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "status": "pass",
+    "actual": 6.0,
+    "limit": [
+     3.0,
+     6.0
+    ]
+   },
+   "hand_calc": "하한 min(3,10)=3, 상한 max(4.8, 6.0)=6.0. d=60-54=6 = 상한 → 통과",
+   "verified_by": null
+  },
+  {
+   "id": "B-07",
+   "rule": "SOLAS-II1-12",
+   "category": "위반",
+   "description": "하한 미달 d=5.99",
+   "model": {
+    "ship": {
+     "l_ll": 120,
+     "x_fp": 120
+    },
+    "conditions": [],
+    "objects": [
+     {
+      "handle": "B1",
+      "role": "collision_bhd",
+      "points": [
+       [
+        114.01,
+        0
+       ],
+       [
+        114.01,
+        15
+       ]
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "status": "fail",
+    "actual": 5.99,
+    "limit": [
+     6.0,
+     9.6
+    ],
+    "targets": [
+     "B1"
+    ]
+   },
+   "hand_calc": "d=120-114.01=5.99 < 6",
+   "verified_by": null
+  },
+  {
+   "id": "B-08",
+   "rule": "SOLAS-II1-12",
+   "category": "위반",
+   "description": "상한 초과 d=9.61",
+   "model": {
+    "ship": {
+     "l_ll": 120,
+     "x_fp": 120
+    },
+    "conditions": [],
+    "objects": [
+     {
+      "handle": "B1",
+      "role": "collision_bhd",
+      "points": [
+       [
+        110.39,
+        0
+       ],
+       [
+        110.39,
+        15
+       ]
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "status": "fail",
+    "actual": 9.61,
+    "limit": [
+     6.0,
+     9.6
+    ],
+    "targets": [
+     "B1"
+    ]
+   },
+   "hand_calc": "d=9.61 > 9.6 (주관청 허용 예외는 사람 확인)",
+   "verified_by": null
+  },
+  {
+   "id": "B-09",
+   "rule": "SOLAS-II1-12",
+   "category": "위반",
+   "description": "FP 기준이면 통과지만 구상선수 기준점이면 상한 초과",
+   "model": {
+    "ship": {
+     "l_ll": 120,
+     "x_fp": 120
+    },
+    "conditions": [],
+    "objects": [
+     {
+      "handle": "B1",
+      "role": "collision_bhd",
+      "points": [
+       [
+        112,
+        0
+       ],
+       [
+        112,
+        15
+       ]
+      ]
+     },
+     {
+      "handle": "U1",
+      "role": "bulb",
+      "points": [
+       [
+        120,
+        2
+       ],
+       [
+        124,
+        3.5
+       ],
+       [
+        120,
+        5
+       ]
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "status": "fail",
+    "actual": 9.8,
+    "limit": [
+     6.0,
+     9.6
+    ],
+    "targets": [
+     "B1"
+    ]
+   },
+   "hand_calc": "FP 기준 d=8.0(통과)이지만 12.3 기준점 x_ref=121.8 → d=9.8 > 9.6",
+   "verified_by": null
+  },
+  {
+   "id": "B-10",
+   "rule": "SOLAS-II1-12",
+   "category": "누락",
+   "description": "L(만재흘수선 길이) 없음",
+   "model": {
+    "ship": {
+     "x_fp": 120
+    },
+    "conditions": [],
+    "objects": [
+     {
+      "handle": "B1",
+      "role": "collision_bhd",
+      "points": [
+       [
+        112,
+        0
+       ],
+       [
+        112,
+        15
+       ]
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "status": "na"
+   },
+   "hand_calc": "하한·상한 계산 불가",
+   "verified_by": null
+  },
+  {
+   "id": "B-11",
+   "rule": "SOLAS-II1-12",
+   "category": "누락",
+   "description": "충돌격벽 객체 없음",
+   "model": {
+    "ship": {
+     "l_ll": 120,
+     "x_fp": 120
+    },
+    "conditions": [],
+    "objects": []
+   },
+   "expected": {
+    "status": "na"
+   },
+   "hand_calc": "판정 대상 없음",
+   "verified_by": null
+  },
+  {
+   "id": "B-12",
+   "rule": "SOLAS-II1-12",
+   "category": "누락",
+   "description": "충돌격벽 객체가 2개 (모호)",
+   "model": {
+    "ship": {
+     "l_ll": 120,
+     "x_fp": 120
+    },
+    "conditions": [],
+    "objects": [
+     {
+      "handle": "B1",
+      "role": "collision_bhd",
+      "points": [
+       [
+        112,
+        0
+       ],
+       [
+        112,
+        15
+       ]
+      ]
+     },
+     {
+      "handle": "B2",
+      "role": "collision_bhd",
+      "points": [
+       [
+        100,
+        0
+       ],
+       [
+        100,
+        15
+       ]
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "status": "review"
+   },
+   "hand_calc": "어느 것이 충돌격벽인지 엔진이 고르지 않음 → 사람 확인",
+   "verified_by": null
+  }
+ ]
+}
