@@ -697,5 +697,25 @@ class DxfAdapter(unittest.TestCase):
         self.assertEqual(rep["results"][0]["status"], "fail")      # 'GA_OBST ' 컨테이너는 읽힘 → 위반
 
 
+class CliEncoding(unittest.TestCase):
+    """CLI가 cp949 stdout(한국어 Windows 기본 콘솔·파이프·리다이렉트)에서 '—'·'→'·'⚠' 때문에 죽던 문제."""
+
+    def test_check_survives_cp949_stdout(self):
+        import os
+        import subprocess
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "model.json"
+            p.write_text(json.dumps(raw()), encoding="utf-8")
+            env = dict(os.environ, PYTHONIOENCODING="cp949", PYTHONPATH=str(HERE.parent))
+            env.pop("PYTHONUTF8", None)
+            r = subprocess.run([sys.executable, "-m", "garc", "check", str(p)],
+                               capture_output=True, env=env, cwd=td)
+        err = r.stderr.decode("cp949", errors="replace")
+        self.assertNotIn("UnicodeEncodeError", err)
+        self.assertNotIn("Traceback", err)
+        self.assertEqual(r.returncode, 0, err)                     # raw()는 pass → exit 0
+        self.assertIn("전체", r.stdout.decode("cp949", errors="replace"))
+
+
 if __name__ == "__main__":
     unittest.main()

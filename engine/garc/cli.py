@@ -44,6 +44,12 @@ def _print_report(rep: dict[str, Any]) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # cp949 콘솔·파이프에서 '—'·'→'·'⚠' 같은 문자로 죽지 않게 — 인코딩은 그대로 두고 못 쓰는 문자만 '?'로.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
     ap = argparse.ArgumentParser(prog="garc")
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("serve"); s.add_argument("--port", type=int, default=8765)
