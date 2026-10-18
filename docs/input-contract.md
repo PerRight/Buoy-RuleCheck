@@ -123,12 +123,14 @@
 요청 `{"a": raw, "b": raw, "labels": ["v1", "v2"]}` → 응답 주요 필드:
 | 필드 | 뜻 |
 |---|---|
-| `changes[]` | 변경 항목: `number`(① …, 선미→선수, 형상 없는 선박 정보·흘수 조건은 끝), `kind`(added/removed/modified/ship/conditions), `element_id`, `desc_ko`(예: "충돌격벽 위치 x 122.50 m → x 124.50 m (기준점에서 11.00 m → 9.00 m)"), `before_ko`/`after_ko`, `resolved[]`/`introduced[]`(이 변경으로 해결·발생한 위반), `related_rules`, `center`/`bbox`(m) |
-| `indirect[]` | 바뀌지 않은 객체인데 판정이 바뀐 것(예: 선교를 높여 앞 컨테이너 위반이 해결) — 특정 변경에 붙이지 않고 따로 |
+| `changes[]` | 변경 항목: `number`(① …, 선미→선수, 형상 없는 선박 정보·흘수 조건은 끝), `kind`(added/removed/modified/ship/conditions), `element_id`, `desc_ko`(예: "충돌격벽 위치 x 122.50 m → x 124.50 m (기준점에서 11.00 m → 9.00 m)"), `before_ko`/`after_ko`, `resolved[]`/`introduced[]`(이 변경으로 해결·발생한 위반 — '해결'은 이후가 **충족이거나 객체가 삭제**된 경우만), `needs_check[]`(이 변경으로 판정 못 함·입력 누락·적용 제외로 바뀐 것 — 해결로 세지 않고 '확인 필요'), `related_rules`, `center`/`bbox`(m) |
+| `indirect[]` | 바뀌지 않은 객체인데 판정이 바뀐 것(예: 선교를 높여 앞 컨테이너 위반이 해결, 블록이 들어와 판정 못 함으로 바뀜) — 특정 변경에 붙이지 않고 따로 |
+| `resolved_rules[]`/`introduced_rules[]`/`needs_check_rules[]` | 규칙 수준 변화(위반 해결 / 새 위반 / 판정 못 함·적용 제외로 바뀜) |
 | `violations` | 미충족 요소 수 `{"before", "after"}` |
+| `unknown` | 확인 필요(판정 못 함) 요소 수 `{"before", "after"}` |
 | `a`/`b` | 각 버전 요약(전체 판정, 규칙별 상태, 미충족·확인 필요 요소 수) |
 | `geometry.a`/`geometry.b` | 두 버전 객체 형상(m, 호는 분할됨) + 요소 상태 — 비교 창·내보내기가 그대로 그린다 |
-| `bounds`, `units_scale`, `same` | 그림 범위(m), 도면 단위 배율, 변경 없음 여부 |
+| `bounds`, `units_scale`, `same` | 그림 범위(m), 도면 단위 배율, 변경 없음 여부(형상·선박 정보가 같고 **판정도 같을 때만** 참 — 비슷한 레이어 이름 등으로 판정만 바뀌면 거짓) |
 
 handle이 같으면 같은 객체로 본다(AutoCAD는 Undo·저장 후에도 handle 유지). 객체를 지우고 같은 모양으로 다시 그리면 '삭제 + 추가'로 나온다.
 
