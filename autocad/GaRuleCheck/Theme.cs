@@ -12,10 +12,18 @@ namespace GaRuleCheck
         public static readonly Color Line = Color.FromArgb(62, 69, 80);
         public static readonly Color Text = Color.FromArgb(230, 233, 238);
         public static readonly Color Muted = Color.FromArgb(150, 160, 172);
-        public static readonly Color Pass = Color.FromArgb(63, 178, 127);
-        public static readonly Color Fail = Color.FromArgb(229, 83, 75);
-        public static readonly Color Warn = Color.FromArgb(224, 163, 58);
-        public static readonly Color Info = Color.FromArgb(91, 155, 234);
+        // 판정 색 규칙(10-18): 충족 = 파랑, 미충족 = 빨강, 확인 필요 = 주황.
+        // 버전 비교의 추가(초록)·삭제(빨강 점선)·변경(노랑)과 헷갈리지 않게 '충족'은 초록을 쓰지 않는다.
+        public static readonly Color Pass = Color.FromArgb(59, 130, 246);
+        public static readonly Color Fail = Color.FromArgb(229, 72, 77);
+        public static readonly Color Warn = Color.FromArgb(240, 140, 40);
+        /// 버튼·선택 강조색(판정 색과 겹치지 않게 보라 계열)
+        public static readonly Color Info = Color.FromArgb(124, 106, 230);
+
+        // 버전 비교 색 (흑백 인쇄용 패턴·아이콘과 함께 쓴다)
+        public static readonly Color DiffAdded = Color.FromArgb(46, 170, 90);
+        public static readonly Color DiffRemoved = Color.FromArgb(220, 60, 60);
+        public static readonly Color DiffModified = Color.FromArgb(230, 190, 40);
         public static readonly Color Skip = Color.FromArgb(125, 133, 144);
         public static readonly Color Input = Color.FromArgb(28, 31, 36);
 
@@ -38,7 +46,7 @@ namespace GaRuleCheck
         {
             "pass" => Pass,
             "fail" => Fail,
-            "na" or "review" or "incomplete" => Warn,
+            "na" or "review" or "incomplete" or "unknown" => Warn,
             "skip" => Skip,
             _ => Info,
         };
@@ -62,6 +70,16 @@ namespace GaRuleCheck
             b.FlatAppearance.MouseOverBackColor = CardHover;
             return b;
         }
+
+        /// 요소 판정 표시 문구(툴팁·체크리스트). 아이콘은 글꼴에 없을 수 있어 기호 + 글자를 같이 쓴다.
+        public static string ElementMark(string status) => status switch
+        {
+            "pass" => "✔ 충족",
+            "fail" => "✖ 미충족",
+            _ => "⚠ 확인 필요",
+        };
+
+        public static int StatusRank(string? s) => s switch { "fail" => 0, "unknown" or "review" or "na" => 1, "pass" => 2, _ => 3 };
 
         public static Label Label(string text, Font? font = null, Color? color = null) => new()
         {

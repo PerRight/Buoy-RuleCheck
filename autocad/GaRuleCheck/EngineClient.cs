@@ -37,7 +37,7 @@ namespace GaRuleCheck
         private static readonly HttpClient Http = new(new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false })
         {
             BaseAddress = new Uri(BaseUrl),
-            Timeout = TimeSpan.FromSeconds(3),
+            Timeout = TimeSpan.FromSeconds(30),   // 요청마다 CancellationToken으로 짧게 끊는다(검사 3초, 비교 30초)
         };
 
         private static bool _startTried;
@@ -45,29 +45,39 @@ namespace GaRuleCheck
         public static CheckResponse Check(string docId, RawDrawing raw)
         {
             var body = JsonSerializer.Serialize(new CheckRequest { DocId = docId, Raw = raw }, Contract.Json);
-            var text = Post("/v1/check", body);
+            var text = Post("/v1/check", body, TimeSpan.FromSeconds(3));
             return JsonSerializer.Deserialize<CheckResponse>(text, Contract.Json)
                    ?? throw new EngineException("엔진 응답을 읽을 수 없습니다.");
+        }
+
+        /// 두 버전 스냅샷 비교 — 변경 항목·해결된 위반·형상(엔진이 계산, 플러그인은 그리기만).
+        public static CompareResponse Compare(RawDrawing a, RawDrawing b, string labelA, string labelB)
+        {
+            var body = JsonSerializer.Serialize(new CompareRequest { A = a, B = b, Labels = new() { labelA, labelB } }, Contract.Json);
+            var text = Post("/v1/compare", body, TimeSpan.FromSeconds(30));
+            return JsonSerializer.Deserialize<CompareResponse>(text, Contract.Json)
+                   ?? throw new EngineException("비교 응답을 읽을 수 없습니다.");
         }
 
         /// 마지막 검사 결과와 이력으로 만든 HTML 리포트.
         public static string Report(string docId, string title)
         {
-            var text = Post("/v1/report", JsonSerializer.Serialize(new { doc_id = docId, title }));
+            var text = Post("/v1/report", JsonSerializer.Serialize(new { doc_id = docId, title }), TimeSpan.FromSeconds(10));
             return JsonSerializer.Deserialize<ReportResponse>(text, Contract.Json)?.Html
                    ?? throw new EngineException("리포트 응답을 읽을 수 없습니다.");
         }
 
         public static void Reset(string docId)
         {
-            try { Post("/v1/reset", JsonSerializer.Serialize(new { doc_id = docId })); } catch { /* 무시 */ }
+            try { Post("/v1/reset", JsonSerializer.Serialize(new { doc_id = docId }), TimeSpan.FromSeconds(3)); } catch { /* 무시 */ }
         }
 
         public static string Health()
         {
             try
             {
-                var resp = Task.Run(() => Http.GetAsync("/v1/health")).GetAwaiter().GetResult();
+                using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(3));
+                var resp = Task.Run(() => Http.GetAsync("/v1/health", cts.Token)).GetAwaiter().GetResult();
                 return Task.Run(() => resp.Content.ReadAsStringAsync()).GetAwaiter().GetResult();
             }
             catch (Exception ex)
@@ -76,12 +86,13 @@ namespace GaRuleCheck
             }
         }
 
-        private static string Post(string path, string json)
+        private static string Post(string path, string json, TimeSpan? timeout = null)
         {
             try
             {
                 using var content = new StringContent(json, Encoding.UTF8, "application/json");
-                var resp = Task.Run(() => Http.PostAsync(path, content)).GetAwaiter().GetResult();
+                using var cts = new System.Threading.CancellationTokenSource(timeout ?? Http.Timeout);
+                var resp = Task.Run(() => Http.PostAsync(path, content, cts.Token)).GetAwaiter().GetResult();
                 var text = Task.Run(() => resp.Content.ReadAsStringAsync()).GetAwaiter().GetResult();
                 if (!resp.IsSuccessStatusCode)
                     throw new EngineException($"엔진 오류 {(int)resp.StatusCode}: {text}");

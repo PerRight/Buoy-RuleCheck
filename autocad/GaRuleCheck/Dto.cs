@@ -87,7 +87,25 @@ namespace GaRuleCheck
         public string? SuggestionKo { get; set; }
         public List<string> Limitations { get; set; } = new();
         public List<OverlayDto> Overlays { get; set; } = new();
+        /// 객체별 판정(마우스 오버 툴팁·체크리스트). 판정은 엔진이 한다.
+        public List<ElementCheckDto> Elements { get; set; } = new();
         public bool Cached { get; set; }
+    }
+
+    /// 요소(도면 객체) 하나의 판정 — 상태는 pass / fail / unknown(확인 필요) 셋뿐.
+    public sealed class ElementCheckDto
+    {
+        public string ElementId { get; set; } = "";
+        public string RuleId { get; set; } = "";
+        public string RuleName { get; set; } = "";
+        public string Role { get; set; } = "";
+        public string RoleKo { get; set; } = "";
+        public string Status { get; set; } = "";
+        public string Required { get; set; } = "";
+        public string Actual { get; set; } = "";
+        public string? Diff { get; set; }
+        public string? Guide { get; set; }
+        public double? Margin { get; set; }
     }
 
     public sealed class DiffDto
@@ -123,5 +141,134 @@ namespace GaRuleCheck
         public List<string> CachedRules { get; set; } = new();
         public List<TransitionDto> Transitions { get; set; } = new();
         public double? UnitsScale { get; set; }
+    }
+
+    // ── 버전 비교 (POST /v1/compare) ─────────────────────────────────────────
+
+    public sealed class CompareRequest
+    {
+        public RawDrawing A { get; set; } = new();
+        public RawDrawing B { get; set; } = new();
+        public List<string> Labels { get; set; } = new();
+    }
+
+    public sealed class RuleBriefDto
+    {
+        public string RuleId { get; set; } = "";
+        public string TitleKo { get; set; } = "";
+        public string Status { get; set; } = "";
+        public string StatusKo { get; set; } = "";
+        public string MessageKo { get; set; } = "";
+    }
+
+    public sealed class VersionSummaryDto
+    {
+        public string Label { get; set; } = "";
+        public string Overall { get; set; } = "";
+        public string OverallKo { get; set; } = "";
+        public Dictionary<string, int> Summary { get; set; } = new();
+        public int FailElements { get; set; }
+        public int UnknownElements { get; set; }
+        public List<RuleBriefDto> Rules { get; set; } = new();
+        public double? UnitsScale { get; set; }
+    }
+
+    public sealed class ChangeRefDto
+    {
+        public string RuleId { get; set; } = "";
+        public string RuleName { get; set; } = "";
+        public string Text { get; set; } = "";
+    }
+
+    /// 변경 항목 한 건. kind = added / removed / modified / ship / conditions. 좌표는 m(엔진 좌표).
+    public sealed class ChangeDto
+    {
+        public int Number { get; set; }
+        public string Kind { get; set; } = "";
+        public string? ElementId { get; set; }
+        public string? Role { get; set; }
+        public string RoleKo { get; set; } = "";
+        public string DescKo { get; set; } = "";
+        public string BeforeKo { get; set; } = "";
+        public string AfterKo { get; set; } = "";
+        public List<ChangeRefDto> Resolved { get; set; } = new();
+        public List<ChangeRefDto> Introduced { get; set; } = new();
+        public List<string> RelatedRules { get; set; } = new();
+        public double[]? Center { get; set; }
+        public double[]? Bbox { get; set; }
+    }
+
+    public sealed class IndirectDto
+    {
+        public string ElementId { get; set; } = "";
+        public string RoleKo { get; set; } = "";
+        public string RuleId { get; set; } = "";
+        public string RuleName { get; set; } = "";
+        public string? From { get; set; }
+        public string? To { get; set; }
+        public string Text { get; set; } = "";
+    }
+
+    public sealed class GeomDto
+    {
+        public string Handle { get; set; } = "";
+        public string Role { get; set; } = "";
+        public List<double[]> Points { get; set; } = new();
+        public bool Closed { get; set; }
+        public string? Status { get; set; }
+    }
+
+    public sealed class GeometryPairDto
+    {
+        public List<GeomDto> A { get; set; } = new();
+        public List<GeomDto> B { get; set; } = new();
+    }
+
+    public sealed class ViolationsDto
+    {
+        public int Before { get; set; }
+        public int After { get; set; }
+    }
+
+    public sealed class CompareResponse
+    {
+        public string Schema { get; set; } = "";
+        public VersionSummaryDto A { get; set; } = new();
+        public VersionSummaryDto B { get; set; } = new();
+        public List<ChangeDto> Changes { get; set; } = new();
+        public List<ChangeRefDto> ResolvedRules { get; set; } = new();
+        public List<ChangeRefDto> IntroducedRules { get; set; } = new();
+        public List<IndirectDto> Indirect { get; set; } = new();
+        public ViolationsDto Violations { get; set; } = new();
+        public GeometryPairDto Geometry { get; set; } = new();
+        public double[]? Bounds { get; set; }
+        public double? UnitsScale { get; set; }
+        public bool Same { get; set; }
+    }
+
+    // ── 버전 기록 (<도면이름>.garc/versions.json) ─────────────────────────────
+
+    public sealed class VersionEntry
+    {
+        public int Version { get; set; }
+        public string File { get; set; } = "";
+        public string Created { get; set; } = "";
+        public string Author { get; set; } = "";
+        /// rule_violation / feedback / other
+        public string Reason { get; set; } = "other";
+        /// 관련 규정 조항 또는 피드백 내용
+        public string Reference { get; set; } = "";
+        public string Note { get; set; } = "";
+        public string? Overall { get; set; }
+        public int? FailElements { get; set; }
+        /// 스냅샷 내용 지문 — 바뀐 게 없으면 새 버전을 만들지 않는다
+        public string? Hash { get; set; }
+    }
+
+    public sealed class VersionIndex
+    {
+        public string Schema { get; set; } = "garc.versions/1";
+        public string Drawing { get; set; } = "";
+        public List<VersionEntry> Versions { get; set; } = new();
     }
 }
