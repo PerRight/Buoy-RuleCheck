@@ -40,6 +40,10 @@ namespace GaRuleCheck
         private DateTime _lastChange = DateTime.MinValue;
         private bool _busy;
         public bool Busy => _busy;
+        /// GA_ 레이어·선박 정보가 바뀌었는데 아직 다시 검사하지 않았음(마지막 결과가 지금 도면보다 오래됨)
+        public bool Dirty => _dirty;
+        /// 마지막 검사가 엔진 오류로 실패했음(배지 '엔진 응답 없음'용)
+        public bool LastFailed { get; private set; }
         private HashSet<string> _lastHandles = new();
         private Dictionary<string, string> _tips = new();   // handle → 마우스 툴팁 문구
         private Dictionary<string, List<ElementCheckDto>> _elements = new();
@@ -273,11 +277,13 @@ namespace GaRuleCheck
                 {
                     Overlay.Show(Doc, Last);
                 }
+                LastFailed = false;
                 Checked?.Invoke(this);
             }
             catch (EngineException ex)
             {
                 Last = null;
+                LastFailed = true;
                 ClearTips();
                 Overlay.Clear();
                 Failed?.Invoke(this, ex.Message);
@@ -285,6 +291,7 @@ namespace GaRuleCheck
             catch (Exception ex)
             {
                 Last = null;
+                LastFailed = true;
                 ClearTips();   // 이전 결과의 툴팁·강조가 남지 않게
                 Overlay.Clear();
                 Failed?.Invoke(this, "플러그인 오류: " + ex.Message);

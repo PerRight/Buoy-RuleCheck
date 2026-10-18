@@ -34,7 +34,7 @@ namespace GaRuleCheck
             float m = 70;   // 여백
             // ── 머리말 ──
             g.DrawString("도면 변경 비교 — 생산팀 전달", title, black, m, m - 10);
-            string reason = vb == null ? "" : VersionStore.ReasonText(vb.Reason) + (string.IsNullOrWhiteSpace(vb.Reference) ? "" : $" — {vb.Reference}");
+            string reason = vb == null ? "" : VersionStore.ReasonText(vb.Reason) + (string.IsNullOrWhiteSpace(vb.Reference) ? "" : $" — {CompareForm.OneLine(vb.Reference)}");
             var meta = new (string k, string v)[]
             {
                 ("도면 번호", dwgNo),
@@ -60,8 +60,8 @@ namespace GaRuleCheck
 
             // ── 요약 줄 ──
             // 비교 창과 같은 요약(미충족·확인 필요 개수, 해결/새 위반/확인 필요 규칙, 두 버전의 전체 판정). 작성자 줄은 머리말에 있으므로 뺀다.
-            var lines = CompareForm.SummaryText(d, labelA, labelB, vb).text.Split('\n');
-            string summary = string.Join("\n", lines.Take(Math.Max(lines.Length - 1, 1)));
+            var parts = CompareForm.SummaryParts(d, labelA, labelB, vb);
+            string summary = parts.head + "\n" + parts.verdict;
             var sumSize = g.MeasureString(summary, body, (int)(Width - 2 * m));
             g.DrawString(summary, body, black, new RectangleF(m, headerBottom + 14, Width - 2 * m, sumSize.Height + 2));
             float top = headerBottom + 14 + sumSize.Height + 22;

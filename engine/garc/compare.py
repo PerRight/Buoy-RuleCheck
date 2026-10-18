@@ -21,7 +21,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from .contract import raw_to_model
+from .contract import issues_for, raw_to_model
 from .engine import Report, all_rules, evaluate, ROLE_KO
 from .session import diff_models
 
@@ -137,7 +137,11 @@ def compare_models(ma: dict[str, Any], mb: dict[str, Any], labels: tuple[str, st
             sa = _status_of(ea.get(handle), rule.id)
             sb = None if removed else _status_of(eb.get(handle), rule.id)
             if sa == "fail" and removed:
-                res.append(ref(rule.id, f"{rule.title_ko} 위반 해결 (객체 삭제로)"))
+                # 삭제로 해결 — 단, 삭제 뒤 그 규칙을 판정할 수 있을 때만(입력 누락·검토 불가·적용 제외면 '확인 필요')
+                if rule_status_b.get(rule.id) in ("pass", "fail"):
+                    res.append(ref(rule.id, f"{rule.title_ko} 위반 해결 (객체 삭제로)"))
+                else:
+                    check.append(ref(rule.id, f"{rule.title_ko} 위반 객체가 삭제됐지만 규칙을 판정할 수 없음 — 확인 필요"))
             elif sa == "fail" and sb == "pass":
                 res.append(ref(rule.id, f"{rule.title_ko} 위반 해결 (기준 충족으로)"))
             elif sb == "fail" and sa != "fail":
@@ -158,7 +162,7 @@ def compare_models(ma: dict[str, Any], mb: dict[str, Any], labels: tuple[str, st
             elif sb == "fail":
                 intro.append(ref(rid, f"{title[rid]} 새 위반"))
             elif sb in ("na", "review"):
-                check.append(ref(rid, f"{title[rid]} {'입력 누락' if sb == 'na' else '검토 불가'}로 바뀜 — 확인 필요"))
+                check.append(ref(rid, f"{title[rid]} {'입력 누락으로' if sb == 'na' else '검토 불가로'} 바뀜 — 확인 필요"))
             elif sb == "skip":
                 check.append(ref(rid, f"{title[rid]} 적용 제외로 바뀜 — 적용 조건(LOA·용골 거치일 등) 입력 확인"))
         return res, intro, check
@@ -208,10 +212,26 @@ def compare_models(ma: dict[str, Any], mb: dict[str, Any], labels: tuple[str, st
         attributed.update(fresh)
         return rule_transitions(fresh)
 
+    # 선박 정보 값끼리 대조하는 검사(L_LL↔LOA, AP↔FP 등)는 규칙이 직접 읽지 않는 값으로도 판정을 막는다
+    # → 그런 선박 정보 문제(issue)가 생기거나 없어진 규칙도 선박 정보 변경과 관련된 규칙으로 본다.
+    SHIP_ISSUES = {"SHIP_VALUE_INVALID", "SHIP_VALUE_MISMATCH", "PERP_ORDER", "PROP_INVALID", "PROP_DUPLICATE"}
+
+    def ship_issue_msgs(model: dict[str, Any], rule) -> set[str]:
+        return {i["message_ko"] for i in issues_for(model, rule.roles) if i["code"] in SHIP_ISSUES}
+
+    ship_issue_changed = {r.id for r in rules if ship_issue_msgs(ma, r) != ship_issue_msgs(mb, r)}
+
+    def with_cause(refs: list[dict]) -> list[dict]:
+        """선박 정보가 여러 개 함께 바뀌었으면 어느 값 때문인지 단정하지 않는다."""
+        if len(diff["ship_changed"]) <= 1:
+            return refs
+        keys = "·".join(SHIP_KO.get(kk, kk) for kk in diff["ship_changed"])
+        return [{**x, "text": x["text"] + f" (함께 바뀐 {keys} 중 원인 확인)"} for x in refs]
+
     for k in diff["ship_changed"]:
         va, vb = ma["ship"].get(k), mb["ship"].get(k)
-        related = [r.id for r in rules if k in r.ship_keys]
-        res, intro, check = rule_transitions_once(related)
+        related = [r.id for r in rules if k in r.ship_keys or r.id in ship_issue_changed]
+        res, intro, check = (with_cause(x) for x in rule_transitions_once(related))
         unit = "" if k in ("keel_laid", "ship_type") else " m"
         fa = "없음" if va is None else f"{va:g}{unit}" if isinstance(va, (int, float)) else str(va)
         fb = "없음" if vb is None else f"{vb:g}{unit}" if isinstance(vb, (int, float)) else str(vb)
@@ -236,22 +256,36 @@ def compare_models(ma: dict[str, Any], mb: dict[str, Any], labels: tuple[str, st
     # 바뀌지 않은 객체인데 판정이 바뀐 것 (예: 선교를 올려서 앞 장애물이 해결) — 특정 변경 하나에 붙이지 않고 따로 알린다
     changed = {c["element_id"] for c in changes if c["element_id"]}
     indirect = []
+    lost: dict[tuple[str, str | None], list[str]] = {}   # (규칙, 이후 상태) → 판정 못 하게 된 객체들
     for h in sorted(set(oa) & set(ob) - changed):
         for rule in rules:
             sa, sb = _status_of(ea.get(h), rule.id), _status_of(eb.get(h), rule.id)
             if sa == sb or not ({"fail", "unknown", None} & {sa, sb}):
                 continue
-            if sa == "fail" and sb == "pass":
-                what = "위반 해결"
-            elif sb == "fail":
-                what = "새 위반"
-            elif sb in ("unknown", None):
-                what = "판정 못 함으로 바뀜 — 확인 필요" if sb == "unknown" else "판정 대상에서 빠짐 — 확인 필요"
-            else:
-                what = "판정 가능해짐"
-            indirect.append({"element_id": h, "role_ko": ROLE_KO.get(ob[h]["role"], ob[h]["role"]),
+            if sb in ("unknown", None):
+                lost.setdefault((rule.id, sb), []).append(h)
+                continue
+            what = "위반 해결" if sa == "fail" and sb == "pass" else "새 위반" if sb == "fail" else "판정 가능해짐"
+            indirect.append({"element_id": h, "element_ids": [h], "count": 1, "role_ko": ROLE_KO.get(ob[h]["role"], ob[h]["role"]),
                              "rule_id": rule.id, "rule_name": rule.title_ko, "from": sa, "to": sb,
                              "text": f"{ROLE_KO.get(ob[h]['role'], '객체')}(handle {h}) {rule.title_ko}: {what} (다른 변경의 영향)"})
+    # 판정 못 하게 된 것은 규칙마다 한 줄로 묶는다(LOA 오입력 하나로 객체 수백 줄이 나오지 않게)
+    for (rid, sb), hs in sorted(lost.items(), key=lambda kv: (kv[0][0], str(kv[0][1]))):
+        why = "판정 못 함으로 바뀜" if sb == "unknown" else "판정 대상에서 빠짐"
+        froms = sorted({str(_status_of(ea.get(h), rid)) for h in hs})
+        if len(hs) == 1:
+            h = hs[0]
+            who = f"{ROLE_KO.get(ob[h]['role'], '객체')}(handle {h})"
+        else:
+            kinds: dict[str, int] = {}
+            for h in hs:
+                k = ROLE_KO.get(ob[h]["role"], "객체")
+                kinds[k] = kinds.get(k, 0) + 1
+            who = f"객체 {len(hs)}개(" + "·".join(f"{k} {n}" for k, n in kinds.items()) + ")"
+        indirect.append({"element_id": hs[0], "element_ids": hs, "count": len(hs),
+                         "role_ko": ROLE_KO.get(ob[hs[0]]["role"], ob[hs[0]]["role"]),
+                         "rule_id": rid, "rule_name": title[rid], "from": froms[0] if len(froms) == 1 else None, "to": sb,
+                         "text": f"{who} {title[rid]}: {why} — 확인 필요 (다른 변경의 영향)"})
 
     resolved_rules, introduced_rules, needs_check_rules = rule_transitions([r.id for r in rules])
     fail_a = sum(1 for els in ea.values() for e in els if e["status"] == "fail")

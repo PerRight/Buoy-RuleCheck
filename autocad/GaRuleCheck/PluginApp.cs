@@ -290,14 +290,18 @@ namespace GaRuleCheck
                 }
                 var idx = VersionStore.Load(folder);
                 int next = (VersionStore.Latest(idx)?.Version ?? 0) + 1;
-                // 직전 검사가 저장 전 상태일 수 있으니 지금 상태로 한 번 더 검사한 결과를 기본값·기록에 쓴다
+                // 마지막 검사 뒤에 GA_ 레이어·선박 정보가 바뀌었으면(Dirty) 지금 상태로 다시 검사해 기본값·기록에 쓴다.
+                // 바뀐 게 없으면 다시 검사하지 않는다 — 같은 입력으로 다시 돌리면 '해결' 전환이 사라져 기본 사유가 '기타'로 바뀌므로.
                 Watchers.TryGetValue(doc, out var w);
-                if (w != null && !w.Busy) w.RunCheck();
+                var prev = w?.Last;
+                if (w is { Busy: false, Dirty: true }) w.RunCheck();
                 var last = w?.Last;
-                // 기본값: 직전 검사에서 해결된 위반이 있으면 '규정 위반', 관련 조항은 위반·해결 규칙의 조항
-                var refs = last?.Results.Where(r => r.Status == "fail" || last.Transitions.Any(t => t.RuleId == r.RuleId && t.Kind == "resolved"))
+                // 기본값: 위반이 있거나 해결된 위반이 있으면 '규정 위반', 관련 조항은 위반·해결 규칙의 조항
+                var transitions = last == null ? new List<TransitionDto>()
+                    : last.Transitions.Count == 0 && last.SameAsRevision != null && prev != null ? prev.Transitions : last.Transitions;
+                var refs = last?.Results.Where(r => r.Status == "fail" || transitions.Any(t => t.RuleId == r.RuleId && t.Kind == "resolved"))
                                .Select(r => r.Ref).Distinct().ToList() ?? new List<string>();
-                string reason = last != null && (last.Transitions.Any(t => t.Kind == "resolved") || last.Results.Any(r => r.Status == "fail")) ? "rule_violation" : "other";
+                string reason = last != null && (transitions.Any(t => t.Kind == "resolved") || last.Results.Any(r => r.Status == "fail")) ? "rule_violation" : "other";
                 string author = (AcApp.GetSystemVariable("LOGINNAME") as string) ?? Environment.UserName;
                 var (fail, unknown) = w?.ElementCounts() ?? (0, 0);
                 string summary = last == null ? "아직 검사 결과 없음" : $"현재 판정: {last.OverallKo} · 미충족 {fail} · 확인 필요 {unknown}";
@@ -328,8 +332,10 @@ namespace GaRuleCheck
             var form = new CompareForm(doc, VersionStore.FolderFor(doc),
                 d =>
                 {
-                    if (d == null) Overlay.ClearDiff();
-                    else if (Active == doc) Overlay.ShowDiff(doc, d);
+                    if (d == null) { Overlay.ClearDiff(); return true; }
+                    if (Active != doc) return false;   // 비교 창이 '현재 도면 탭이 아님'을 알린다
+                    Overlay.ShowDiff(doc, d);
+                    return true;
                 },
                 (c, scale) =>
                 {
@@ -410,9 +416,9 @@ namespace GaRuleCheck
                 var (f0, u0) = w0.ElementCounts();
                 FloatingUi.SetStatus(w0.Last.Overall, f0, u0);
             }
-            else FloatingUi.SetStatus("idle", 0, 0);
+            else FloatingUi.SetStatus(w0 is { LastFailed: true } ? "down" : "idle", 0, 0);
             bool shown = (_palette != null && _palette.Visible) || FloatingUi.PanelOpen;
-            if (!Panels().Any() || !shown) return;
+            if (!Panels().Any() || !shown) { ReapplyCompare(doc); return; }
             Overlay.Clear();
             Overlay.ClearDiff();
             var props = DrawingProps.Read(doc.Database);
@@ -433,6 +439,13 @@ namespace GaRuleCheck
             {
                 ForPanels(p => p.SetIdle("설정되지 않은 도면", DocName(doc), showSetup: true));
             }
+            ReapplyCompare(doc);
+        }
+
+        /// 이 도면의 비교 창이 '도면에 표시' 중이면 다시 그린다(탭을 바꾸면 임시 표시를 지우므로).
+        private static void ReapplyCompare(Document doc)
+        {
+            if (CompareForms.TryGetValue(doc, out var cf) && !cf.IsDisposed) cf.ReapplyDrawing();
         }
 
         private static void Redraw(Document? doc)

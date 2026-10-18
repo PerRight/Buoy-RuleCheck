@@ -18,7 +18,8 @@ namespace GaRuleCheck
         private readonly Document _doc;
         private readonly string _folder;
         private VersionIndex _index = new();
-        private readonly Action<CompareResponse?> _showOnDrawing;
+        /// 도면 위 임시 표시. false = 이 비교 창의 도면이 지금 활성 탭이 아니라 표시하지 못함.
+        private readonly Func<CompareResponse?, bool> _showOnDrawing;
         private readonly Action<ChangeDto, double> _focusInDrawing;
 
         private readonly ComboBox _a = Combo(), _b = Combo();
@@ -37,7 +38,7 @@ namespace GaRuleCheck
         private bool _drawOnDwg;
         private bool _loading;
 
-        public CompareForm(Document doc, string folder, Action<CompareResponse?> showOnDrawing, Action<ChangeDto, double> focusInDrawing)
+        public CompareForm(Document doc, string folder, Func<CompareResponse?, bool> showOnDrawing, Action<ChangeDto, double> focusInDrawing)
         {
             _doc = doc;
             _folder = folder;
@@ -118,7 +119,7 @@ namespace GaRuleCheck
             {
                 _drawOnDwg = !_drawOnDwg;
                 Mark(_onDwg, _drawOnDwg);
-                _showOnDrawing(_drawOnDwg ? _data : null);
+                if (!_showOnDrawing(_drawOnDwg ? _data : null)) NotActive();
             };
             _export.Click += (_, _) => Export();
             _a.SelectedIndexChanged += (_, _) => Reload();
@@ -130,6 +131,7 @@ namespace GaRuleCheck
             }
             KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) Close(); };
             FormClosed += (_, _) => _showOnDrawing(null);
+            _summary.Resize += (_, _) => FitSummary();
 
             LoadVersions();
             SetMode(CanvasMode.Diff);
@@ -201,7 +203,8 @@ namespace GaRuleCheck
                 var (text, color) = SummaryText(_data, la, lb, eb);
                 _summary.Text = text;
                 _summary.ForeColor = color;
-                if (_drawOnDwg) _showOnDrawing(_data);
+                FitSummary();
+                if (_drawOnDwg && !_showOnDrawing(_data)) NotActive();
             }
             catch (Exception ex)
             {
@@ -209,23 +212,46 @@ namespace GaRuleCheck
                 foreach (var cv in new[] { _left, _right, _main }) cv.Bind(null, _view);   // 이전 결과가 남아 보이지 않게
                 _summary.ForeColor = Theme.Warn;
                 _summary.Text = "비교할 수 없습니다 — " + ex.Message;
+                FitSummary();
                 _list.Controls.Clear();
                 if (_drawOnDwg) _showOnDrawing(null);
             }
             finally { Cursor = Cursors.Default; }
         }
 
+        /// 도면 탭이 다시 활성이 되면(PluginApp.OnActivated) 켜 둔 '도면에 표시'를 다시 그린다.
+        public void ReapplyDrawing()
+        {
+            if (_drawOnDwg && _data != null) _showOnDrawing(_data);
+        }
+
+        /// 비교 창의 도면이 활성 탭이 아니면 표시·이동을 하지 않고, 버튼을 끄고 알린다(조용히 무시하지 않게).
+        private void NotActive()
+        {
+            _drawOnDwg = false;
+            Mark(_onDwg, false);
+            MessageBox.Show(this, $"'{Path.GetFileName(_doc.Name)}' 도면 탭이 활성일 때만 도면에 표시할 수 있습니다. 그 탭으로 바꾼 뒤 다시 누르세요.",
+                            "도면에 표시", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
         /// 요약: 미충족·확인 필요 개수, 해결/새 위반/확인 필요 규칙, 두 버전의 전체 판정, 작성자·사유.
         /// 판정 못 함(확인 필요)으로 바뀐 것은 '해결'로 보이지 않게 주황으로 따로 적는다.
         internal static (string text, Color color) SummaryText(CompareResponse d, string la, string lb, VersionEntry? eb)
         {
+            var p = SummaryParts(d, la, lb, eb);
+            return (p.head + "\n" + p.verdict + "\n" + p.who, p.color);
+        }
+
+        /// 요약을 (머리줄, 두 버전 판정, 작성자·사유) 따로 — 내보내기는 작성자 줄을 머리말에 따로 쓰므로 앞의 둘만 쓴다.
+        internal static (string head, string verdict, string who, Color color) SummaryParts(CompareResponse d, string la, string lb, VersionEntry? eb)
+        {
             static string Names(List<ChangeRefDto> xs) => string.Join(", ", xs.Select(x => x.RuleName));
             string who = eb != null
-                ? $"{lb} 작성자 {eb.Author} · 사유 {VersionStore.ReasonText(eb.Reason)}" + (string.IsNullOrWhiteSpace(eb.Reference) ? "" : $" — {eb.Reference}")
+                ? $"{lb} 작성자 {eb.Author} · 사유 {VersionStore.ReasonText(eb.Reason)}" + (string.IsNullOrWhiteSpace(eb.Reference) ? "" : $" — {OneLine(eb.Reference)}")
                 : "이후: 저장 전 현재 도면";
             string verdict = $"판정  {la}: {d.A.OverallKo}  →  {lb}: {d.B.OverallKo}";
             if (d.Same)
-                return ($"{la} → {lb}: GA_ 레이어·선박 정보와 판정에 바뀐 것이 없습니다.\n{verdict}", Theme.Text);
+                return ($"{la} → {lb}: GA_ 레이어·선박 정보와 판정에 바뀐 것이 없습니다.", verdict, who, Theme.Text);
             var parts = new List<string> { $"{la} → {lb}", $"미충족 요소 {d.Violations.Before} → {d.Violations.After}" };
             if (d.Unknown.Before + d.Unknown.After > 0) parts.Add($"확인 필요 요소 {d.Unknown.Before} → {d.Unknown.After}");
             parts.Add(d.Changes.Count > 0 ? $"변경 {d.Changes.Count}건" : "형상·선박 정보 변경 없음 — 판정만 바뀜(비슷한 레이어 이름·블록 등 확인)");
@@ -235,7 +261,17 @@ namespace GaRuleCheck
             var color = d.Violations.After > 0 ? Theme.Fail
                       : d.Unknown.After > 0 || d.NeedsCheckRules.Count > 0 || d.B.Overall != "pass" ? Theme.Warn
                       : Theme.Text;
-            return (string.Join("   ·   ", parts) + "\n" + verdict + "\n" + who, color);
+            return (string.Join("   ·   ", parts), verdict, who, color);
+        }
+
+        internal static string OneLine(string s) => string.Join(" / ", s.Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.RemoveEmptyEntries));
+
+        /// 요약 줄 높이를 글 길이에 맞춘다(창 폭이 좁거나 사유가 길어도 마지막 줄이 잘리지 않게).
+        private void FitSummary()
+        {
+            int w = Math.Max(_summary.ClientSize.Width - _summary.Padding.Horizontal, 200);
+            int h = TextRenderer.MeasureText(_summary.Text, _summary.Font, new Size(w, 0), TextFormatFlags.WordBreak).Height;
+            _summary.Height = Math.Clamp(h + _summary.Padding.Vertical + 6, 44, 140);
         }
 
         private void FillList()

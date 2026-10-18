@@ -203,6 +203,9 @@ namespace GaRuleCheck
     public sealed class IndirectDto
     {
         public string ElementId { get; set; } = "";
+        /// 판정 못 하게 된 객체는 규칙마다 한 줄로 묶여 온다(element_ids, count)
+        public List<string> ElementIds { get; set; } = new();
+        public int Count { get; set; } = 1;
         public string RoleKo { get; set; } = "";
         public string RuleId { get; set; } = "";
         public string RuleName { get; set; } = "";

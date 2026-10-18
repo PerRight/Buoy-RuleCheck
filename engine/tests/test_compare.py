@@ -141,8 +141,19 @@ class Compare(unittest.TestCase):
         out = compare_raws(a, b)
         self.assert_not_resolved(out)
         loa = next(c for c in out["changes"] if c["kind"] == "ship")
-        self.assertEqual([x["rule_id"] for x in loa["needs_check"]], [VIS])
+        # 충돌격벽 규칙은 LOA를 직접 읽지 않지만 L_LL↔LOA 대조로 막히므로 LOA 변경에 함께 붙는다
+        self.assertEqual(sorted(x["rule_id"] for x in loa["needs_check"]), sorted([VIS, BHD]))
         self.assertIn("확인", loa["needs_check"][0]["text"])
+        self.assertNotIn("함께 바뀐", loa["needs_check"][0]["text"])
+
+    def test_multi_ship_keys_do_not_guess_cause(self):
+        p2 = {**PROPS, "GARC_LOA": "14", "GARC_X_FP": "133", "GARC_KEEL_LAID": "1990-01-01"}
+        out = compare_raws(raw(extra=[box("C1", 100, 112, 13.5, 24.0)]), raw(props=p2, extra=[box("C1", 100, 112, 13.5, 24.0)]))
+        self.assert_not_resolved(out)
+        checks = [x for c in out["changes"] if c["kind"] == "ship" for x in c["needs_check"]]
+        self.assertEqual(sorted(x["rule_id"] for x in checks), sorted([VIS, BHD]))   # 규칙마다 한 번
+        for x in checks:
+            self.assertIn("중 원인 확인", x["text"])
 
     def test_near_miss_layer_not_same(self):
         """형상 변경이 없어도 비슷한 레이어(GA-OBST)가 생겨 판정이 바뀌면 '같음'이 아니다."""
@@ -153,6 +164,31 @@ class Compare(unittest.TestCase):
         self.assertEqual(out["changes"], [])
         self.assertNotEqual(out["a"]["overall"], out["b"]["overall"])
         self.assert_not_resolved(out)
+
+    def test_delete_then_unjudgeable_is_not_resolution(self):
+        """위반 충돌격벽을 지워 규칙이 '입력 누락'이 되면 삭제로 '해결'이 아니라 '확인 필요'."""
+        a = raw(bhd_x=122.5)
+        b = raw(bhd_x=122.5)
+        b["entities"] = [e for e in b["entities"] if e["handle"] != "B1"]
+        out = compare_raws(a, b)
+        b1 = next(c for c in out["changes"] if c["element_id"] == "B1")
+        self.assertEqual(b1["kind"], "removed")
+        self.assertEqual(b1["resolved"], [])
+        self.assertEqual([x["rule_id"] for x in b1["needs_check"]], [BHD])
+        self.assert_not_resolved(out)
+        self.assertTrue(any("입력 누락으로 바뀜" in x["text"] for x in out["needs_check_rules"]), out["needs_check_rules"])
+
+    def test_indirect_unknown_grouped_per_rule(self):
+        """LOA 오입력으로 여러 객체가 판정 못 함이 되면 간접 영향은 규칙마다 한 줄."""
+        extra = [box(f"C{i}", 60 + i * 8, 66 + i * 8, 13.5, 20.0) for i in range(6)]
+        a = raw(extra=extra)
+        b = raw(props={**PROPS, "GARC_LOA": "14"}, extra=extra)
+        out = compare_raws(a, b)
+        vis = [x for x in out["indirect"] if x["rule_id"] == VIS]
+        self.assertEqual(len(vis), 1, vis)
+        self.assertGreaterEqual(vis[0]["count"], 6)
+        self.assertEqual(len(vis[0]["element_ids"]), vis[0]["count"])
+        self.assertIn("확인 필요", vis[0]["text"])
 
     def test_needs_check_key_always_present(self):
         out = compare_raws(self.v1(), self.v2())
