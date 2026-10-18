@@ -74,8 +74,14 @@ namespace GaRuleCheck
             else ShowLogo();
         }
 
+        private static long _lastToggle;
+
         public static void Toggle()
         {
+            // Ctrl+. 이 AutoCAD 메시지 훅과 로고/패널 KeyDown 양쪽에서 들어와도 한 번만(200 ms 안 중복 무시)
+            long now = Environment.TickCount64;
+            if (now - _lastToggle < 200) return;
+            _lastToggle = now;
             if (PanelOpen) Close(animate: true);
             else Open(animate: true);
         }
@@ -212,11 +218,13 @@ namespace GaRuleCheck
 
         private void UpdateRegion()
         {
-            var path = new GraphicsPath();
+            // Winding: 로고 원과 배지 원이 겹치는 부분이 구멍(XOR)으로 빠지지 않게
+            using var path = new GraphicsPath(FillMode.Winding);
             path.AddEllipse(Side - LogoD - 2, Side - LogoD - 2, LogoD, LogoD);
-            if (_fail + _unknown > 0) path.AddEllipse(Side - 24, 0, 24, 24);
-            Region?.Dispose();
+            if (BadgeText() != null) path.AddEllipse(Side - 24, 0, 24, 24);
+            var old = Region;
             Region = new Region(path);
+            old?.Dispose();
         }
 
         public void SetExpanded(bool on)
@@ -236,7 +244,24 @@ namespace GaRuleCheck
             Invalidate();
         }
 
-        private string CountText() => _fail > 0 ? $"미충족 {_fail}개" : _unknown > 0 ? $"확인 필요 {_unknown}개" : "미충족 없음";
+        /// 미충족이 없다고 '문제 없음'처럼 보이지 않게: 엔진 응답 없음·판정 불가도 문구와 '!' 배지로 알린다.
+        private string CountText() => _fail > 0 ? $"미충족 {_fail}개"
+            : _unknown > 0 ? $"확인 필요 {_unknown}개"
+            : _overall switch
+            {
+                "down" => "엔진 응답 없음 — 판정 안 됨",
+                "incomplete" or "na" or "review" => "판정 불가 있음 — 확인 필요",
+                "pass" => "미충족 없음",
+                _ => "검사 전",
+            };
+
+        /// 배지 글자: 미충족 수 > 확인 필요 수 > 엔진 응답 없음·판정 불가('!') > 없음(null)
+        private string? BadgeText()
+        {
+            int n = _fail > 0 ? _fail : _unknown;
+            if (n > 0) return n > 99 ? "99+" : n.ToString();
+            return _overall is "down" or "incomplete" or "na" or "review" ? "!" : null;
+        }
 
         private void UpdateAccessibility()
         {
@@ -290,13 +315,12 @@ namespace GaRuleCheck
             using (var pen = new Pen(ring, 4f)) g.DrawEllipse(pen, Rectangle.Inflate(r, -2, -2));
             if (_expanded)
                 using (var p2 = new Pen(Color.FromArgb(200, 255, 255, 255), 1.5f)) g.DrawEllipse(p2, Rectangle.Inflate(r, -7, -7));
-            int n = _fail > 0 ? _fail : _unknown;
-            if (n > 0)
+            if (BadgeText() is string badge)
             {
                 var br = new Rectangle(Side - 24, 0, 23, 23);
                 using (var b = new SolidBrush(_fail > 0 ? Theme.Fail : Theme.Warn)) g.FillEllipse(b, br);
                 using (var p = new Pen(Color.White, 1.5f)) g.DrawEllipse(p, br);
-                TextRenderer.DrawText(g, n > 99 ? "99+" : n.ToString(), n > 9 ? BadgeSmall : BadgeFont, br,
+                TextRenderer.DrawText(g, badge, badge.Length > 1 ? BadgeSmall : BadgeFont, br,
                                       Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
             }
             if (Focused)

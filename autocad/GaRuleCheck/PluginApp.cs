@@ -31,7 +31,7 @@ namespace GaRuleCheck
         {
             AcApp.DocumentManager.MdiActiveDocument?.Editor.WriteMessage(
                 "\nGA-RuleCheck 로드됨 — 리본 'GA RuleCheck' 탭 또는 GARC 명령으로 시작하세요.\n");
-            AcApp.DocumentManager.DocumentToBeDestroyed += (_, e) => Commands.Detach(e.Document);
+            AcApp.DocumentManager.DocumentToBeDestroyed += (_, e) => Commands.Forget(e.Document);
             AcApp.DocumentManager.DocumentActivated += (_, e) => Commands.OnActivated(e.Document);
             try { RibbonUi.Install(); } catch { /* 리본 없는 환경(콘솔 등) */ }
             StatusTray.Install();
@@ -113,6 +113,7 @@ namespace GaRuleCheck
             var doc = Active;
             if (doc != null) Detach(doc);
             ForPanels(p => p.SetIdle("감시 중지됨", doc != null ? DocName(doc) : null));
+            FloatingUi.SetStatus("idle", 0, 0);   // 로고 배지에 이전 개수가 남지 않게
         }
 
         [CommandMethod("GARCHEALTH")]
@@ -289,7 +290,10 @@ namespace GaRuleCheck
                 }
                 var idx = VersionStore.Load(folder);
                 int next = (VersionStore.Latest(idx)?.Version ?? 0) + 1;
-                var last = Watchers.TryGetValue(doc, out var w) ? w.Last : null;
+                // 직전 검사가 저장 전 상태일 수 있으니 지금 상태로 한 번 더 검사한 결과를 기본값·기록에 쓴다
+                Watchers.TryGetValue(doc, out var w);
+                if (w != null && !w.Busy) w.RunCheck();
+                var last = w?.Last;
                 // 기본값: 직전 검사에서 해결된 위반이 있으면 '규정 위반', 관련 조항은 위반·해결 규칙의 조항
                 var refs = last?.Results.Where(r => r.Status == "fail" || last.Transitions.Any(t => t.RuleId == r.RuleId && t.Kind == "resolved"))
                                .Select(r => r.Ref).Distinct().ToList() ?? new List<string>();
@@ -320,13 +324,17 @@ namespace GaRuleCheck
                 doc.Editor.WriteMessage("\n엔진 서버에 연결할 수 없어 비교할 수 없습니다. 'python -m garc serve'를 실행하세요.\n");
                 return;
             }
+            // 비교 창은 연 도면(doc)에 묶인다 — 다른 도면 탭이 활성일 때는 그 도면에 표시·이동하지 않는다
             var form = new CompareForm(doc, VersionStore.FolderFor(doc),
-                d => { var dd = Active; if (dd != null) Overlay.ShowDiff(dd, d); },
+                d =>
+                {
+                    if (d == null) Overlay.ClearDiff();
+                    else if (Active == doc) Overlay.ShowDiff(doc, d);
+                },
                 (c, scale) =>
                 {
-                    var dd = Active;
-                    if (dd == null || c.Bbox == null) return;
-                    using (dd.LockDocument()) Overlay.FocusBox(dd, c.Bbox, scale);
+                    if (Active != doc || c.Bbox == null) return;
+                    using (doc.LockDocument()) Overlay.FocusBox(doc, c.Bbox, scale);
                 });
             form.FormClosed += (_, _) => CompareForms.Remove(doc);
             CompareForms[doc] = form;
@@ -361,7 +369,7 @@ namespace GaRuleCheck
             w.Failed += (_, msg) =>
             {
                 ForPanels(p => p.ShowEngineDown(msg));
-                FloatingUi.SetStatus("down", 0, 0);
+                if (doc == Active) FloatingUi.SetStatus("down", 0, 0);
                 StatusTray.Set("down", "검토 불가 — 엔진 연결 안 됨");
                 doc.Editor.WriteMessage("\nGA-RuleCheck: " + msg + "\n");
             };
@@ -379,6 +387,14 @@ namespace GaRuleCheck
             try { EngineClient.Reset(Extractor.DocId(doc)); } catch { }
         }
 
+        /// 도면이 닫힐 때: 감시를 끊고, 그 도면의 비교 창도 닫는다.
+        internal static void Forget(Document doc)
+        {
+            Detach(doc);
+            if (CompareForms.TryGetValue(doc, out var cf) && !cf.IsDisposed) cf.Close();
+            CompareForms.Remove(doc);
+        }
+
         internal static void DetachAll()
         {
             foreach (var doc in new List<Document>(Watchers.Keys)) Detach(doc);
@@ -387,8 +403,16 @@ namespace GaRuleCheck
         /// 도면 탭을 바꾸면 그 도면의 결과·선박 정보로 팔레트를 바꾼다. 설정된 도면이면 자동 감시.
         internal static void OnActivated(Document? doc)
         {
+            if (doc == null) return;
+            // 로고 배지는 패널이 접혀 있어도 보이므로, 패널 표시 여부와 상관없이 그 도면의 상태로 바꾼다
+            if (Watchers.TryGetValue(doc, out var w0) && w0.Last != null)
+            {
+                var (f0, u0) = w0.ElementCounts();
+                FloatingUi.SetStatus(w0.Last.Overall, f0, u0);
+            }
+            else FloatingUi.SetStatus("idle", 0, 0);
             bool shown = (_palette != null && _palette.Visible) || FloatingUi.PanelOpen;
-            if (doc == null || !Panels().Any() || !shown) return;
+            if (!Panels().Any() || !shown) return;
             Overlay.Clear();
             Overlay.ClearDiff();
             var props = DrawingProps.Read(doc.Database);
@@ -408,7 +432,6 @@ namespace GaRuleCheck
             else
             {
                 ForPanels(p => p.SetIdle("설정되지 않은 도면", DocName(doc), showSetup: true));
-                FloatingUi.SetStatus("idle", 0, 0);
             }
         }
 

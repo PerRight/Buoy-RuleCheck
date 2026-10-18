@@ -258,7 +258,9 @@ namespace GaRuleCheck
                 if (hidden.Count > 0)
                     _cards.Controls.Add(Theme.Label("미충족만 보기 — 숨김: " + string.Join(" · ", hidden), Theme.Small, warn > 0 ? Theme.Warn : Theme.Muted));
                 if (r.Results.All(x => x.Status != "fail"))
-                    _cards.Controls.Add(Theme.Label("미충족 규칙이 없습니다.", Theme.Body, Theme.Text));
+                    _cards.Controls.Add(warn > 0
+                        ? Theme.Label($"미충족 규칙은 없지만 확인 필요 {warn}건을 숨겼습니다 — '미충족만 보기'를 끄면 보입니다.", Theme.Body, Theme.Warn)
+                        : Theme.Label("미충족 규칙이 없습니다.", Theme.Body, Theme.Text));
             }
             _cards.ResumeLayout();
             FitCards();

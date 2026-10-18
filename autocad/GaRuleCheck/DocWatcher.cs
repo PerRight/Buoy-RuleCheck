@@ -39,6 +39,7 @@ namespace GaRuleCheck
         private bool _dirty = true;
         private DateTime _lastChange = DateTime.MinValue;
         private bool _busy;
+        public bool Busy => _busy;
         private HashSet<string> _lastHandles = new();
         private Dictionary<string, string> _tips = new();   // handle → 마우스 툴팁 문구
         private Dictionary<string, List<ElementCheckDto>> _elements = new();
@@ -211,6 +212,7 @@ namespace GaRuleCheck
             _hit = new HitIndex(raw.Entities.Where(x => tips.ContainsKey(x.Handle))
                                    .Select(x => (x.Handle, (IReadOnlyList<double[]>)x.Points, x.Closed == true)));
             _hoverHandle = null;
+            Overlay.ElementHover(Doc, null, false, "");   // 다시 검사하면 이전 결과의 hover 강조를 지운다
         }
 
         private void ClearTips()
