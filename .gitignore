@@ -36,6 +36,10 @@ plot.log
 *.[Hh][Tt][Mm]
 !samples/S140_report_example.html
 
+# 플러그인 버전 기록(도면 옆 <도면이름>.garc/ — GA_ 레이어 스냅샷이라 도면 내용 포함). 데모 샘플만 허용.
+*.garc/
+!samples/S140_*.garc/
+
 # ── OS·편집기·비밀값 ──
 .DS_Store
 Thumbs.db

@@ -1,0 +1,28 @@
+{
+ "schema": "garc.versions/1",
+ "drawing": "S140_v2_fixed.dxf",
+ "versions": [
+  {
+   "version": 1,
+   "file": "v1.raw.json",
+   "created": "2026-10-20T10:12:00",
+   "author": "표인범",
+   "reason": "other",
+   "reference": "",
+   "note": "기본설계 GA 1차안 — 갑판 컨테이너 4단·선수 크레인 배치",
+   "overall": "fail",
+   "fail_elements": 3
+  },
+  {
+   "version": 2,
+   "file": "v2.raw.json",
+   "created": "2026-10-21T16:40:00",
+   "author": "손종민",
+   "reason": "rule_violation",
+   "reference": "SOLAS V/22.1.1 · SOLAS II-1/12",
+   "note": "가시거리 위반(컨테이너·크레인)과 충돌격벽 상한 초과 수정 — 생산설계 전달 전",
+   "overall": "pass",
+   "fail_elements": 0
+  }
+ ]
+}
