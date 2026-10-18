@@ -40,6 +40,13 @@ plot.log
 *.garc/
 !samples/S140_*.garc/
 
+# 규정집 PDF(선급·협약 원문 — 저작권 자료일 수 있음)는 공개 저장소에 올리지 않는다
+규정/
+
+# Claude Code 개인 설정
+.claude/settings.local.json
+.claude/*.lock
+
 # ── OS·편집기·비밀값 ──
 .DS_Store
 Thumbs.db

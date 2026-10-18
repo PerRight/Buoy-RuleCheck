@@ -75,13 +75,13 @@
 ## 6. 판정 상태
 | 상태 | 뜻 | 화면 |
 |---|---|---|
-| pass | 규칙 후보 기준 충족 | 초록 + "최종 판단은 설계자 검토" |
+| pass | 규칙 후보 기준 충족 | 파랑(v0.4부터, 전에는 초록) + "최종 판단은 설계자 검토" |
 | fail | 위반 | 빨강 + 대상 객체 표시 + 수치 제안 |
 | na | 입력 누락 | 주황 |
 | review | 조건 밖·모순·모호 (단위 불명, 조종위치 2개, LOA 불일치, 지원 안 되는 객체, 장애물 블록, NaN·0 이하 값, 좌표 없는 객체 …) | 주황, "사람 확인" |
 | skip | 적용 대상 아님 (LOA < 55 m 등) | 회색 |
 
-**전체 결과**: fail > incomplete(na·review가 하나라도) > pass. 일부만 통과한 상태를 초록으로 보여주지 않는다.
+**전체 결과**: fail > incomplete(na·review가 하나라도) > pass. 일부만 통과한 상태를 충족(파랑)으로 보여주지 않는다.
 
 ## 7. raw JSON (플러그인·DXF → 엔진)
 ```json
@@ -104,3 +104,43 @@
 `doc_id`(엔진 세션 키)는 플러그인이 `FingerprintGuid:문서별 GUID`로 만든다. 같은 원본에서 복사한 도면은 FingerprintGuid가 같으므로(샘플 S140_rev0~4도 동일) 그것만으로는 구분되지 않는다.
 
 엔진 서버는 Host가 루프백(127.0.0.1·localhost·[::1])이고 `Origin` 헤더가 없는 요청만 받는다(그 외 403).
+
+## 8. 요소별 판정 (`results[].elements`, 엔진 0.3.0)
+마우스 오버 툴팁·체크리스트·로고 배지가 쓰는 객체 단위 판정. **판정은 엔진만** — 플러그인은 그대로 보여 준다.
+```json
+{"element_id": "9A", "rule_id": "SOLAS-V-22.1.1", "rule_name": "선교 전방 수면 가시거리",
+ "role": "obstruction", "role_ko": "장애물", "status": "fail",
+ "required": "상단 z ≤ 22.45 m (x=112.00 m 지점, 입력된 모든 흘수 조건)",
+ "actual": "z = 24.00 m (이 객체만으로 사각 433.84 m > 허용 280 m)",
+ "diff": "1.55 m 초과", "guide": "x=112.00 m 지점 상단을 z=22.45 m 이하로 낮추세요", "margin": -1.55}
+```
+- `status`는 **pass / fail / unknown** 셋. 규칙이 입력 누락(na)·검토 불가(review)면 그 규칙이 읽는 객체는 모두 `unknown`(⚠ 확인 필요) — 판정 안 된 객체가 충족으로 보이지 않게.
+- 가시거리: 객체마다 '이 객체 하나만으로' 사각 거리 기준을 넘는지를 규칙과 **같은 계산**으로 본다 → 규칙이 위반이면 위반 객체가 반드시 하나 이상, 충족이면 없다(무작위 400건 테스트). 선교 뒤 객체는 "전방 시야와 무관"으로 충족. 조종위치는 판정의 기준점이라 위반 개수에 넣지 않고 참고값(이 눈높이의 사각 거리)만 보여 준다.
+- 충돌격벽: 격벽 객체 하나 — 기준점에서의 거리 구간과 허용 구간, 하한·상한 차이.
+- 적용 제외(skip) 규칙은 요소 판정을 내지 않는다.
+
+## 9. 버전 비교 (`POST /v1/compare`, `python -m garc compare A B`)
+요청 `{"a": raw, "b": raw, "labels": ["v1", "v2"]}` → 응답 주요 필드:
+| 필드 | 뜻 |
+|---|---|
+| `changes[]` | 변경 항목: `number`(① …, 선미→선수, 형상 없는 선박 정보·흘수 조건은 끝), `kind`(added/removed/modified/ship/conditions), `element_id`, `desc_ko`(예: "충돌격벽 위치 x 122.50 m → x 124.50 m (기준점에서 11.00 m → 9.00 m)"), `before_ko`/`after_ko`, `resolved[]`/`introduced[]`(이 변경으로 해결·발생한 위반), `related_rules`, `center`/`bbox`(m) |
+| `indirect[]` | 바뀌지 않은 객체인데 판정이 바뀐 것(예: 선교를 높여 앞 컨테이너 위반이 해결) — 특정 변경에 붙이지 않고 따로 |
+| `violations` | 미충족 요소 수 `{"before", "after"}` |
+| `a`/`b` | 각 버전 요약(전체 판정, 규칙별 상태, 미충족·확인 필요 요소 수) |
+| `geometry.a`/`geometry.b` | 두 버전 객체 형상(m, 호는 분할됨) + 요소 상태 — 비교 창·내보내기가 그대로 그린다 |
+| `bounds`, `units_scale`, `same` | 그림 범위(m), 도면 단위 배율, 변경 없음 여부 |
+
+handle이 같으면 같은 객체로 본다(AutoCAD는 Undo·저장 후에도 handle 유지). 객체를 지우고 같은 모양으로 다시 그리면 '삭제 + 추가'로 나온다.
+
+## 10. 버전 기록 폴더 (플러그인, `<도면이름>.garc\`)
+도면을 저장할 때(또는 `GARCVERSION`) 플러그인이 도면 옆에 쓴다. 저장 안 된 도면은 `내 문서\GaRuleCheck\<이름>.garc\`.
+```json
+{"schema": "garc.versions/1", "drawing": "S140_v2_fixed.dxf",
+ "versions": [{"version": 1, "file": "v1.raw.json", "created": "2026-10-20T10:12:00", "author": "표인범",
+               "reason": "other", "reference": "", "note": "…", "overall": "fail", "fail_elements": 3, "hash": "…"}]}
+```
+- `reason`: `rule_violation`(규정 위반) / `feedback`(피드백) / `other`(기타). `reference`: 관련 규정 조항 또는 피드백 내용.
+- `v{n}.raw.json`: 그때의 raw 스냅샷(§7 형식) — **GA_ 레이어 좌표가 들어 있으므로 도면과 같은 보안 등급**. 저장소 `.gitignore`가 `*.garc/`를 막는다(데모 `samples/S140_*.garc/`만 예외).
+- `hash`: 객체·특성 지문. 마지막 버전과 같으면 새 버전을 만들지 않는다.
+- 도면 번호(생산팀 전달 머리말): 도면 특성 `GARC_DWG_NO`, 없으면 파일 이름.
+
