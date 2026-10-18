@@ -290,18 +290,34 @@ namespace GaRuleCheck
                 }
                 var idx = VersionStore.Load(folder);
                 int next = (VersionStore.Latest(idx)?.Version ?? 0) + 1;
-                // 마지막 검사 뒤에 GA_ 레이어·선박 정보가 바뀌었으면(Dirty) 지금 상태로 다시 검사해 기본값·기록에 쓴다.
-                // 바뀐 게 없으면 다시 검사하지 않는다 — 같은 입력으로 다시 돌리면 '해결' 전환이 사라져 기본 사유가 '기타'로 바뀌므로.
+                // 마지막 검사가 지금 도면과 다르면(바뀐 뒤 아직 검사 안 함·검사 실패·감시 밖에서 바뀐 선박 정보) 다시 검사해 기록에 쓴다.
+                // 같으면 다시 검사하지 않는다(같은 입력 재검사는 결과가 같고 시간만 든다).
                 Watchers.TryGetValue(doc, out var w);
-                var prev = w?.Last;
-                if (w is { Busy: false, Dirty: true }) w.RunCheck();
+                if (w is { Busy: false } && (w.Dirty || w.Last == null || w.LastRaw == null
+                                             || VersionStore.Fingerprint(w.LastRaw) != VersionStore.Fingerprint(raw)))
+                    w.RunCheck();
                 var last = w?.Last;
-                // 기본값: 위반이 있거나 해결된 위반이 있으면 '규정 위반', 관련 조항은 위반·해결 규칙의 조항
-                var transitions = last == null ? new List<TransitionDto>()
-                    : last.Transitions.Count == 0 && last.SameAsRevision != null && prev != null ? prev.Transitions : last.Transitions;
-                var refs = last?.Results.Where(r => r.Status == "fail" || transitions.Any(t => t.RuleId == r.RuleId && t.Kind == "resolved"))
+                // 기본값은 '직전 검사 대비'가 아니라 '마지막 기록 버전 대비'로 정한다: 엔진 비교로 해결된 위반이 있으면 '규정 위반',
+                // 관련 조항은 지금 위반 중이거나 이번에 해결된 규칙의 조항. 비교를 못 하면 검사 결과의 전환으로 대신한다.
+                var resolvedIds = new HashSet<string>();
+                var latest = VersionStore.Latest(idx);
+                bool compared = false;
+                if (latest != null)
+                {
+                    try
+                    {
+                        var cmp = EngineClient.Compare(VersionStore.LoadRaw(folder, latest), raw, VersionStore.Label(latest), "현재");
+                        foreach (var x in cmp.ResolvedRules) resolvedIds.Add(x.RuleId);
+                        foreach (var c in cmp.Changes) foreach (var x in c.Resolved) resolvedIds.Add(x.RuleId);
+                        compared = true;
+                    }
+                    catch { /* 엔진이 안 되거나 이전 스냅샷을 못 읽으면 아래로 */ }
+                }
+                if (!compared && last != null)
+                    foreach (var t in last.Transitions.Where(t => t.Kind == "resolved")) resolvedIds.Add(t.RuleId);
+                var refs = last?.Results.Where(r => r.Status == "fail" || resolvedIds.Contains(r.RuleId))
                                .Select(r => r.Ref).Distinct().ToList() ?? new List<string>();
-                string reason = last != null && (transitions.Any(t => t.Kind == "resolved") || last.Results.Any(r => r.Status == "fail")) ? "rule_violation" : "other";
+                string reason = resolvedIds.Count > 0 || (last?.Results.Any(r => r.Status == "fail") ?? false) ? "rule_violation" : "other";
                 string author = (AcApp.GetSystemVariable("LOGINNAME") as string) ?? Environment.UserName;
                 var (fail, unknown) = w?.ElementCounts() ?? (0, 0);
                 string summary = last == null ? "아직 검사 결과 없음" : $"현재 판정: {last.OverallKo} · 미충족 {fail} · 확인 필요 {unknown}";
@@ -418,7 +434,12 @@ namespace GaRuleCheck
             }
             else FloatingUi.SetStatus(w0 is { LastFailed: true } ? "down" : "idle", 0, 0);
             bool shown = (_palette != null && _palette.Visible) || FloatingUi.PanelOpen;
-            if (!Panels().Any() || !shown) { ReapplyCompare(doc); return; }
+            if (!Panels().Any() || !shown)
+            {
+                Overlay.ClearDiff();      // 다른 도면의 비교 표시가 남지 않게
+                ReapplyCompare(doc);
+                return;
+            }
             Overlay.Clear();
             Overlay.ClearDiff();
             var props = DrawingProps.Read(doc.Database);

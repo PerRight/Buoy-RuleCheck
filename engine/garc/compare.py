@@ -272,7 +272,7 @@ def compare_models(ma: dict[str, Any], mb: dict[str, Any], labels: tuple[str, st
     # 판정 못 하게 된 것은 규칙마다 한 줄로 묶는다(LOA 오입력 하나로 객체 수백 줄이 나오지 않게)
     for (rid, sb), hs in sorted(lost.items(), key=lambda kv: (kv[0][0], str(kv[0][1]))):
         why = "판정 못 함으로 바뀜" if sb == "unknown" else "판정 대상에서 빠짐"
-        froms = sorted({str(_status_of(ea.get(h), rid)) for h in hs})
+        froms = sorted({_status_of(ea.get(h), rid) for h in hs}, key=str)   # 하나로 같으면 그 값(없던 상태면 null), 섞이면 null
         if len(hs) == 1:
             h = hs[0]
             who = f"{ROLE_KO.get(ob[h]['role'], '객체')}(handle {h})"

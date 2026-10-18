@@ -189,6 +189,8 @@ class Compare(unittest.TestCase):
         self.assertGreaterEqual(vis[0]["count"], 6)
         self.assertEqual(len(vis[0]["element_ids"]), vis[0]["count"])
         self.assertIn("확인 필요", vis[0]["text"])
+        for x in out["indirect"]:
+            self.assertIn(x["from"], ("pass", "fail", "unknown", None))   # 문자열 "None"이 아니라 null
 
     def test_needs_check_key_always_present(self):
         out = compare_raws(self.v1(), self.v2())
