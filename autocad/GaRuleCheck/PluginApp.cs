@@ -5,10 +5,13 @@
 //   GARCEYE     조종위치(GA_EYE 점) 지정                   GARCPICK   AP/FP/기선을 도면에서 지정
 //   GARCTOGGLE  도면 표시 켜기/끄기                        GARCREPORT HTML 검토 리포트 저장·열기
 //   GARCLARGE   라벨 확대(라벨 글자·선 두께·표식 크기 2.5배 — 판정·도면은 그대로)
+//   GARCVERSION 지금 상태를 버전으로 기록(저장할 때도 자동으로 묻는다)   GARCCOMPARE 버전 비교 창
+//   GARCPANEL   떠 있는 로고 패널 열기/닫기(Ctrl+.)                     GARCLOGO   로고 보이기/숨기기
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
@@ -33,20 +36,42 @@ namespace GaRuleCheck
             try { RibbonUi.Install(); } catch { /* 리본 없는 환경(콘솔 등) */ }
             StatusTray.Install();
             StatusTray.Clicked += Commands.OpenFromTray;
+            // 떠 있는 로고는 메인 창이 준비된 뒤(첫 Idle)에 만든다
+            AcApp.Idle += InitFloatingOnce;
+        }
+
+        private static void InitFloatingOnce(object? sender, EventArgs e)
+        {
+            AcApp.Idle -= InitFloatingOnce;
+            try { Commands.InitFloating(); } catch { /* 로고는 부가 기능 */ }
         }
 
         public void Terminate()
         {
             Commands.DetachAll();
             StatusTray.Remove();
+            FloatingUi.Shutdown();
         }
     }
 
     public sealed class Commands
     {
         private static readonly Dictionary<Document, DocWatcher> Watchers = new();
+        private static readonly Dictionary<Document, CompareForm> CompareForms = new();
         private static PaletteSet? _palette;
         private static ResultPanel? _panel;
+
+        /// 열려 있는 결과 패널 전부(도킹 팔레트 + 떠 있는 로고 패널) — 같은 내용으로 함께 갱신한다.
+        private static IEnumerable<ResultPanel> Panels()
+        {
+            if (_panel != null && !_panel.IsDisposed) yield return _panel;
+            if (FloatingUi.Panel is { IsDisposed: false } fp) yield return fp;
+        }
+
+        private static void ForPanels(Action<ResultPanel> act)
+        {
+            foreach (var p in Panels().ToList()) act(p);
+        }
 
         private static Document? Active => AcApp.DocumentManager.MdiActiveDocument;
         private static string DocName(Document d) => Path.GetFileName(d.Name);
@@ -87,15 +112,15 @@ namespace GaRuleCheck
         {
             var doc = Active;
             if (doc != null) Detach(doc);
-            _panel?.SetIdle("감시 중지됨", doc != null ? DocName(doc) : null);
+            ForPanels(p => p.SetIdle("감시 중지됨", doc != null ? DocName(doc) : null));
         }
 
         [CommandMethod("GARCHEALTH")]
         public void Health()
         {
             var ed = Active?.Editor;
-            try { ed?.WriteMessage("\n엔진 응답: " + EngineClient.Health() + "\n"); _panel?.SetEngine(true); }
-            catch (EngineException ex) { ed?.WriteMessage("\n" + ex.Message + "\n"); _panel?.SetEngine(false); }
+            try { ed?.WriteMessage("\n엔진 응답: " + EngineClient.Health() + "\n"); ForPanels(p => p.SetEngine(true)); }
+            catch (EngineException ex) { ed?.WriteMessage("\n" + ex.Message + "\n"); ForPanels(p => p.SetEngine(false)); }
         }
 
         // ── 입력 ────────────────────────────────────────────────────────────
@@ -106,7 +131,8 @@ namespace GaRuleCheck
             var doc = Active;
             if (doc == null) return;
             DrawingProps.EnsureSetup(doc, props: true);
-            _panel?.Ship.Load(DrawingProps.Read(doc.Database));
+            var props = DrawingProps.Read(doc.Database);
+            ForPanels(p => p.Ship.Load(props));
             doc.Editor.WriteMessage(
                 "\nGA_ 레이어 5개, 라벨 문자 스타일(GARC_LABEL), GARC_* 특성 틀을 만들었습니다." +
                 "\n좌표 규약: 측면도, X = 선수 방향 +, Y = 위 +. 선박 정보는 팔레트 '선박 정보' 탭에서 입력.\n");
@@ -185,7 +211,7 @@ namespace GaRuleCheck
                 _ => ("GARC_Z_BASE", pt.Y * s),
             };
             DrawingProps.Write(doc.Database, new Dictionary<string, string> { [key] = DrawingProps.M(value) });
-            _panel?.Ship.SetField(key, DrawingProps.M(value));
+            ForPanels(p => p.Ship.SetField(key, DrawingProps.M(value)));
             w?.MarkDirty();
             ed.WriteMessage($"\n{key} = {DrawingProps.M(value)} m\n");
         }
@@ -197,7 +223,7 @@ namespace GaRuleCheck
         {
             var doc = Active;
             Overlay.Enabled = !Overlay.Enabled;
-            _panel?.SetOverlayState(Overlay.Enabled);
+            ForPanels(p => p.SetOverlayState(Overlay.Enabled));
             Redraw(doc);
             doc?.Editor.WriteMessage($"\n도면 표시 {(Overlay.Enabled ? "켜짐" : "꺼짐")}\n");
         }
@@ -207,7 +233,7 @@ namespace GaRuleCheck
         {
             var doc = Active;
             Overlay.Scale = Overlay.Scale > 1.0 ? 1.0 : 2.5;
-            _panel?.SetLargeLabelsState(Overlay.Scale > 1.0);
+            ForPanels(p => p.SetLargeLabelsState(Overlay.Scale > 1.0));
             Redraw(doc);
             doc?.Editor.WriteMessage($"\n라벨 확대 {(Overlay.Scale > 1.0 ? "켜짐 (라벨 글자·선 두께·표식 크기 2.5배, 판정은 그대로)" : "꺼짐")}\n");
         }
@@ -239,6 +265,82 @@ namespace GaRuleCheck
             }
         }
 
+        // ── 버전 기록·비교 (기능 1) ─────────────────────────────────────────
+
+        [CommandMethod("GARCVERSION")]
+        public void Version()
+        {
+            var doc = Active;
+            if (doc != null) RecordVersion(doc, fromSave: false);
+        }
+
+        /// 지금 도면 상태를 버전으로 기록. 저장 직후(fromSave)에는 GA_ 레이어·선박 정보가 그대로면 묻지 않는다.
+        internal static void RecordVersion(Document doc, bool fromSave)
+        {
+            try
+            {
+                RawDrawing raw;
+                using (doc.LockDocument()) raw = Extractor.Extract(doc);
+                var folder = VersionStore.FolderFor(doc);
+                if (VersionStore.SameAsLatest(folder, raw))
+                {
+                    if (!fromSave) doc.Editor.WriteMessage("\n마지막 버전과 같아(GA_ 레이어·선박 정보 변화 없음) 새 버전을 만들지 않았습니다.\n");
+                    return;
+                }
+                var idx = VersionStore.Load(folder);
+                int next = (VersionStore.Latest(idx)?.Version ?? 0) + 1;
+                var last = Watchers.TryGetValue(doc, out var w) ? w.Last : null;
+                // 기본값: 직전 검사에서 해결된 위반이 있으면 '규정 위반', 관련 조항은 위반·해결 규칙의 조항
+                var refs = last?.Results.Where(r => r.Status == "fail" || last.Transitions.Any(t => t.RuleId == r.RuleId && t.Kind == "resolved"))
+                               .Select(r => r.Ref).Distinct().ToList() ?? new List<string>();
+                string reason = last != null && (last.Transitions.Any(t => t.Kind == "resolved") || last.Results.Any(r => r.Status == "fail")) ? "rule_violation" : "other";
+                string author = (AcApp.GetSystemVariable("LOGINNAME") as string) ?? Environment.UserName;
+                var (fail, unknown) = w?.ElementCounts() ?? (0, 0);
+                string summary = last == null ? "아직 검사 결과 없음" : $"현재 판정: {last.OverallKo} · 미충족 {fail} · 확인 필요 {unknown}";
+                using var dlg = new VersionDialog(next, DocName(doc), author, reason, string.Join(" · ", refs), summary);
+                if (AcApp.ShowModalDialog(dlg) != System.Windows.Forms.DialogResult.OK) return;
+                var entry = VersionStore.Add(folder, DocName(doc), raw, dlg.Result, last);
+                doc.Editor.WriteMessage($"\n버전 v{entry.Version} 기록 — {VersionStore.ReasonText(entry.Reason)} · {entry.Author} ({folder})\n");
+                if (CompareForms.TryGetValue(doc, out var cf) && !cf.IsDisposed) cf.Close();   // 열린 비교 창은 다시 열 때 새 목록으로
+            }
+            catch (System.Exception ex)
+            {
+                doc.Editor.WriteMessage("\n버전 기록 실패: " + ex.Message + "\n");
+            }
+        }
+
+        [CommandMethod("GARCCOMPARE")]
+        public void Compare()
+        {
+            var doc = Active;
+            if (doc == null) return;
+            if (CompareForms.TryGetValue(doc, out var open) && !open.IsDisposed) { open.Activate(); return; }
+            if (!EngineClient.EnsureRunning())
+            {
+                doc.Editor.WriteMessage("\n엔진 서버에 연결할 수 없어 비교할 수 없습니다. 'python -m garc serve'를 실행하세요.\n");
+                return;
+            }
+            var form = new CompareForm(doc, VersionStore.FolderFor(doc),
+                d => { var dd = Active; if (dd != null) Overlay.ShowDiff(dd, d); },
+                (c, scale) =>
+                {
+                    var dd = Active;
+                    if (dd == null || c.Bbox == null) return;
+                    using (dd.LockDocument()) Overlay.FocusBox(dd, c.Bbox, scale);
+                });
+            form.FormClosed += (_, _) => CompareForms.Remove(doc);
+            CompareForms[doc] = form;
+            AcApp.ShowModelessDialog(form);
+        }
+
+        // ── 떠 있는 로고 패널 (기능 2) ───────────────────────────────────────
+
+        [CommandMethod("GARCPANEL")]
+        public void TogglePanel() => FloatingUi.Toggle();
+
+        [CommandMethod("GARCLOGO")]
+        public void ToggleLogo() => FloatingUi.ToggleLogo();
+
         // ── 내부 ────────────────────────────────────────────────────────────
 
         internal static DocWatcher Attach(Document doc)
@@ -248,15 +350,22 @@ namespace GaRuleCheck
             w.Checked += x =>
             {
                 if (x.Last == null) return;
-                if (x.Doc == Active) _panel?.ShowResult(x.Last, DocName(x.Doc));
+                if (x.Doc == Active)
+                {
+                    ForPanels(p => p.ShowResult(x.Last, DocName(x.Doc)));
+                    var (fail, unknown) = x.ElementCounts();
+                    FloatingUi.SetStatus(x.Last.Overall, fail, unknown);
+                }
                 StatusTray.Update(x.Last, DocName(x.Doc));
             };
             w.Failed += (_, msg) =>
             {
-                _panel?.ShowEngineDown(msg);
+                ForPanels(p => p.ShowEngineDown(msg));
+                FloatingUi.SetStatus("down", 0, 0);
                 StatusTray.Set("down", "검토 불가 — 엔진 연결 안 됨");
                 doc.Editor.WriteMessage("\nGA-RuleCheck: " + msg + "\n");
             };
+            w.VersionRequested += x => RecordVersion(x.Doc, fromSave: true);
             Watchers[doc] = w;
             return w;
         }
@@ -278,23 +387,28 @@ namespace GaRuleCheck
         /// 도면 탭을 바꾸면 그 도면의 결과·선박 정보로 팔레트를 바꾼다. 설정된 도면이면 자동 감시.
         internal static void OnActivated(Document? doc)
         {
-            if (doc == null || _panel == null || _palette == null || !_palette.Visible) return;
+            bool shown = (_palette != null && _palette.Visible) || FloatingUi.PanelOpen;
+            if (doc == null || !Panels().Any() || !shown) return;
             Overlay.Clear();
-            _panel.Ship.Load(DrawingProps.Read(doc.Database));
-            _panel.ClearHistory();
+            Overlay.ClearDiff();
+            var props = DrawingProps.Read(doc.Database);
+            ForPanels(p => { p.Ship.Load(props); p.ClearHistory(); });
             if (Watchers.TryGetValue(doc, out var w) && w.Last != null)
             {
-                _panel.ShowResult(w.Last, DocName(doc), record: false);
+                ForPanels(p => p.ShowResult(w.Last, DocName(doc), record: false));
+                var (fail, unknown) = w.ElementCounts();
+                FloatingUi.SetStatus(w.Last.Overall, fail, unknown);
                 Redraw(doc);
             }
             else if (DrawingProps.IsConfigured(doc.Database))
             {
                 Attach(doc).MarkDirty();
-                _panel.SetIdle("검사 중…", DocName(doc));
+                ForPanels(p => p.SetIdle("검사 중…", DocName(doc)));
             }
             else
             {
-                _panel.SetIdle("설정되지 않은 도면", DocName(doc), showSetup: true);
+                ForPanels(p => p.SetIdle("설정되지 않은 도면", DocName(doc), showSetup: true));
+                FloatingUi.SetStatus("idle", 0, 0);
             }
         }
 
@@ -306,6 +420,61 @@ namespace GaRuleCheck
             else Overlay.Clear();
         }
 
+        /// 결과 패널 하나를 만들고 명령에 연결한다(도킹 팔레트·떠 있는 패널 공용).
+        internal static ResultPanel CreatePanel()
+        {
+            var panel = new ResultPanel();
+            panel.RecheckRequested += () => { var d = Active; if (d != null) { EngineClient.EnsureRunning(); Attach(d).RunCheck(); } };
+            panel.StartRequested += () => Send("_GARCSETUP _GARC ");
+            panel.ToggleOverlayRequested += () => Send("_GARCTOGGLE ");
+            panel.ReportRequested += () => Send("_GARCREPORT ");
+            panel.FocusRequested += FocusTargets;
+            panel.HoverRequested += (h, on) => { var d = Active; if (d != null && Overlay.Enabled) Overlay.Hover(d, h, on); };
+            panel.FitRequested += rr =>
+            {
+                var d = Active;
+                if (d != null && Watchers.TryGetValue(d, out var ww) && ww.Last?.UnitsScale is double sc) Overlay.Fit(d, rr, sc);
+            };
+            panel.LargeLabelsRequested += () => Send("_GARCLARGE ");
+            // 점검 항목 hover → 도면에서 그 객체를 상태 색으로 강조, 클릭 → 그 객체로 확대·이동
+            panel.ElementHoverRequested += (el, on) =>
+            {
+                var d = Active;
+                if (d == null || !Overlay.Enabled) return;
+                var shape = Watchers.TryGetValue(d, out var ww) ? ww.ShapeOf(el.ElementId) : null;
+                Overlay.ElementHover(d, on ? shape?.pts : null, shape?.closed ?? false, el.Status);
+            };
+            panel.ElementFocusRequested += el => FocusTargets(new List<string> { el.ElementId });
+            panel.Ship.PickRequested += what => Send($"_GARCPICK {what} ");
+            panel.Ship.EyeRequested += () => Send("_GARCEYE ");
+            panel.Ship.SetupRequested += () => Send("_GARCSETUP ");
+            panel.Ship.ReloadRequested += () => { var d = Active; if (d != null) panel.Ship.Load(DrawingProps.Read(d.Database)); };
+            panel.Ship.SaveRequested += values =>
+            {
+                var d = Active;
+                if (d == null) return;
+                using (d.LockDocument()) DrawingProps.Write(d.Database, values);
+                Attach(d).MarkDirty();
+                ForPanels(p => p.ShowTab("review"));
+            };
+            // 새로 만든 패널도 지금 도면의 마지막 결과로 채운다
+            var doc = Active;
+            if (doc != null)
+            {
+                panel.Ship.Load(DrawingProps.Read(doc.Database));
+                if (Watchers.TryGetValue(doc, out var w) && w.Last != null) panel.ShowResult(w.Last, DocName(doc), record: false);
+            }
+            panel.SetOverlayState(Overlay.Enabled);
+            panel.SetLargeLabelsState(Overlay.Scale > 1.0);
+            return panel;
+        }
+
+        internal static void InitFloating()
+        {
+            FloatingUi.CollapseAllRequested += () => { if (_palette != null) _palette.Visible = false; };
+            FloatingUi.Init(CreatePanel);
+        }
+
         private static void EnsurePalette()
         {
             if (_palette != null)
@@ -313,31 +482,7 @@ namespace GaRuleCheck
                 _palette.Visible = true;
                 return;
             }
-            _panel = new ResultPanel();
-            _panel.RecheckRequested += () => { var d = Active; if (d != null) { EngineClient.EnsureRunning(); Attach(d).RunCheck(); } };
-            _panel.StartRequested += () => Send("_GARCSETUP _GARC ");
-            _panel.ToggleOverlayRequested += () => Send("_GARCTOGGLE ");
-            _panel.ReportRequested += () => Send("_GARCREPORT ");
-            _panel.FocusRequested += FocusTargets;
-            _panel.HoverRequested += (h, on) => { var d = Active; if (d != null && Overlay.Enabled) Overlay.Hover(d, h, on); };
-            _panel.FitRequested += rr =>
-            {
-                var d = Active;
-                if (d != null && Watchers.TryGetValue(d, out var ww) && ww.Last?.UnitsScale is double sc) Overlay.Fit(d, rr, sc);
-            };
-            _panel.LargeLabelsRequested += () => Send("_GARCLARGE ");
-            _panel.Ship.PickRequested += what => Send($"_GARCPICK {what} ");
-            _panel.Ship.EyeRequested += () => Send("_GARCEYE ");
-            _panel.Ship.SetupRequested += () => Send("_GARCSETUP ");
-            _panel.Ship.ReloadRequested += () => { var d = Active; if (d != null) _panel.Ship.Load(DrawingProps.Read(d.Database)); };
-            _panel.Ship.SaveRequested += values =>
-            {
-                var d = Active;
-                if (d == null) return;
-                using (d.LockDocument()) DrawingProps.Write(d.Database, values);
-                Attach(d).MarkDirty();
-                _panel.ShowTab("review");
-            };
+            _panel = CreatePanel();
 
             _palette = new PaletteSet("GA RuleCheck", new Guid("3f6c2a71-5b8e-4d0a-9c1e-7a2b4d6e8f10"))
             {

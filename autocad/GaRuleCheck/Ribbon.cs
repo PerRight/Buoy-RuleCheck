@@ -50,7 +50,11 @@ namespace GaRuleCheck
             tab.Panels.Add(Panel("표시·기록",
                 Big("표시 켜기/끄기", "GARCTOGGLE", "◐", Color.FromRgb(200, 160, 50), "도면 위 위반 표시·시선·라벨"),
                 Big("라벨 확대", "GARCLARGE", "▣", Color.FromRgb(150, 90, 200), "도면 위 라벨 글자·선 두께·표식 크기만 2.5배로 (프로젝터·화면 공유용, 판정·도면은 그대로)"),
-                Big("리포트", "GARCREPORT", "R", Color.FromRgb(200, 90, 80), "근거·측면도·이력을 HTML로 저장하고 엽니다.")));
+                Big("리포트", "GARCREPORT", "R", Color.FromRgb(200, 90, 80), "근거·측면도·이력을 HTML로 저장하고 엽니다."),
+                Big("로고 패널", "GARCPANEL", "◎", Color.FromRgb(124, 106, 230), "떠 있는 로고의 검토 패널 열기/닫기 (Ctrl+.)")));
+            tab.Panels.Add(Panel("버전",
+                Big("버전 기록", "GARCVERSION", "✎", Color.FromRgb(70, 130, 180), "지금 상태를 버전으로 기록(작성자·사유·관련 규정). 저장할 때도 자동으로 묻습니다."),
+                Big("버전 비교", "GARCCOMPARE", "⇄", Color.FromRgb(46, 150, 90), "두 버전 비교: 나란히·겹쳐·차이만, 변경 목록, 생산팀 전달(PDF/PNG)")));
         }
 
         private static RibbonPanel Panel(string title, params RibbonButton[] buttons)
