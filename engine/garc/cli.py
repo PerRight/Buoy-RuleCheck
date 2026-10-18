@@ -4,6 +4,7 @@
   python -m garc check <file.dxf|model.json>  한 도면 판정
   python -m garc revs <rev0.dxf> <rev1.dxf> … 순서대로 넣어 revision diff·상태 변화 확인
   python -m garc report <file…> [-o out.html]  검토 리포트(HTML) — 여러 파일이면 revision 이력 포함
+  python -m garc compare <A> <B> [--json]      두 버전 비교 — 변경 항목·해결된 위반 (플러그인 비교 창과 같은 계산)
   python -m garc rules                         규칙 목록
 """
 from __future__ import annotations
@@ -56,6 +57,7 @@ def main(argv: list[str] | None = None) -> int:
     c = sub.add_parser("check"); c.add_argument("path"); c.add_argument("--json", action="store_true")
     v = sub.add_parser("revs"); v.add_argument("paths", nargs="+")
     rp = sub.add_parser("report"); rp.add_argument("paths", nargs="+"); rp.add_argument("-o", "--out", default="ga_report.html")
+    cp = sub.add_parser("compare"); cp.add_argument("a"); cp.add_argument("b"); cp.add_argument("--json", action="store_true")
     sub.add_parser("rules")
     a = ap.parse_args(argv)
 
@@ -92,6 +94,26 @@ def main(argv: list[str] | None = None) -> int:
             sess.check(load_any(p))
         Path(a.out).write_text(build_from_session(sess, Path(a.paths[-1]).name), encoding="utf-8")
         print(f"리포트 작성: {a.out}")
+    elif a.cmd == "compare":
+        from .compare import compare_models
+        out = compare_models(load_any(a.a), load_any(a.b), (Path(a.a).stem, Path(a.b).stem))
+        if a.json:
+            print(json.dumps(out, ensure_ascii=False, indent=2, default=str))
+            return 0
+        va, vb = out["a"], out["b"]
+        print(f"=== {va['label']} → {vb['label']}")
+        print(f"    전체: {OVERALL_KO[va['overall']]} → {OVERALL_KO[vb['overall']]}")
+        print(f"    미충족 요소: {out['violations']['before']} → {out['violations']['after']}")
+        for c in out["changes"]:
+            print(f"  {c['number']:>2}. [{c['kind']}] {c['desc_ko']}")
+            for x in c["resolved"]:
+                print(f"      ✔ {x['text']}")
+            for x in c["introduced"]:
+                print(f"      ✖ {x['text']}")
+        for x in out["indirect"]:
+            print(f"   ※ {x['text']}")
+        if out["same"]:
+            print("    변경 없음")
     elif a.cmd == "rules":
         for r in all_rules():
             print(f"{r.id:16} {r.title_ko}  ({r.ref}; {r.edition})")

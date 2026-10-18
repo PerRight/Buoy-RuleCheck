@@ -4,6 +4,7 @@
   POST /v1/check  {"doc_id", "raw"|"model"} → 판정 + revision diff
   POST /v1/reset  {"doc_id"}               → 해당 문서 세션 초기화
   POST /v1/report {"doc_id", "title"?}     → {"html": 검토 리포트} (마지막 revision + 이력)
+  POST /v1/compare {"a": raw, "b": raw, "labels"?: ["v1","v2"]} → 버전 비교(변경 항목·해결된 위반·형상)
 
 127.0.0.1에만 바인딩한다(도면 데이터가 PC 밖으로 나가지 않음).
 추가로 Host 헤더가 루프백 이름이 아니거나 브라우저 Origin 헤더가 붙은 요청은 거부한다
@@ -58,6 +59,16 @@ def handle_check(body: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def handle_compare(body: dict[str, Any]) -> dict[str, Any]:
+    from .compare import compare_raws
+    if not isinstance(body.get("a"), dict) or not isinstance(body.get("b"), dict):
+        raise ContractError("비교할 두 스냅샷 a, b(raw)가 필요합니다.")
+    labels = body.get("labels") or ["A", "B"]
+    if not (isinstance(labels, list) and len(labels) == 2):
+        raise ContractError("labels는 [이전, 이후] 두 개여야 합니다.")
+    return compare_raws(body["a"], body["b"], (str(labels[0]), str(labels[1])))
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "garc/" + __version__
 
@@ -102,6 +113,8 @@ class Handler(BaseHTTPRequestHandler):
                 if sess is None:
                     raise ValueError("이 도면은 아직 검사하지 않았습니다. 먼저 검사하세요.")
                 self._send(200, {"html": build_from_session(sess, body.get("title"))})
+            elif self.path == "/v1/compare":
+                self._send(200, handle_compare(body))
             elif self.path == "/v1/reset":
                 with _lock:
                     _sessions.pop(str(body.get("doc_id") or "default"), None)
