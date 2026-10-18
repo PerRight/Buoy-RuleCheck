@@ -103,17 +103,24 @@ def main(argv: list[str] | None = None) -> int:
         va, vb = out["a"], out["b"]
         print(f"=== {va['label']} → {vb['label']}")
         print(f"    전체: {OVERALL_KO[va['overall']]} → {OVERALL_KO[vb['overall']]}")
-        print(f"    미충족 요소: {out['violations']['before']} → {out['violations']['after']}")
+        print(f"    미충족 요소: {out['violations']['before']} → {out['violations']['after']}   "
+              f"확인 필요 요소: {out['unknown']['before']} → {out['unknown']['after']}")
+        for x in out["needs_check_rules"]:
+            print(f"    ⚠ {x['text']}")
         for c in out["changes"]:
             print(f"  {c['number']:>2}. [{c['kind']}] {c['desc_ko']}")
             for x in c["resolved"]:
                 print(f"      ✔ {x['text']}")
             for x in c["introduced"]:
                 print(f"      ✖ {x['text']}")
+            for x in c["needs_check"]:
+                print(f"      ⚠ {x['text']}")
         for x in out["indirect"]:
             print(f"   ※ {x['text']}")
         if out["same"]:
             print("    변경 없음")
+        elif not out["changes"]:
+            print("    GA_ 객체·선박 정보 변경은 없지만 판정이 바뀜 (위 ⚠ 참고 — 유사 이름 레이어 등)")
     elif a.cmd == "rules":
         for r in all_rules():
             print(f"{r.id:16} {r.title_ko}  ({r.ref}; {r.edition})")

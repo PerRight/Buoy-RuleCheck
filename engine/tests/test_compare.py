@@ -116,6 +116,51 @@ class Compare(unittest.TestCase):
         self.assertIn("조종위치", out["changes"][0]["desc_ko"])
         self.assertEqual([(x["element_id"], x["from"], x["to"]) for x in out["indirect"]], [("C1", "fail", "pass")])
 
+    # ── 2026-10-18 검증 지적(HIGH): 판정을 못 하게 된 것을 '위반 해결'로 세면 안 된다 ──
+    def assert_not_resolved(self, out):
+        texts = [x["text"] for c in out["changes"] for x in c["resolved"]] + [x["text"] for x in out["resolved_rules"]]
+        self.assertEqual(texts, [], "판정 불가·적용 제외로 바뀐 것을 '해결'로 셈")
+        self.assertFalse(out["same"])
+
+    def test_unsupported_block_is_not_resolution(self):
+        """B에 장애물 블록(INSERT)이 들어가 시야 규칙이 '검토 불가'가 되면, A의 위반은 '해결'이 아니라 '확인 필요'."""
+        a = raw(extra=[box("C1", 100, 112, 13.5, 24.0)])
+        b = raw(extra=[box("C1", 100, 112, 13.5, 24.0),
+                       {"handle": "X9", "layer": "GA_OBST", "type": "INSERT", "points": [[60 * S, 15 * S]]}])
+        out = compare_raws(a, b)
+        self.assert_not_resolved(out)
+        self.assertEqual(out["b"]["overall"], "incomplete")
+        self.assertIn(VIS, [x["rule_id"] for x in out["needs_check_rules"]])
+        self.assertTrue(any(x["element_id"] == "C1" and x["to"] == "unknown" for x in out["indirect"]), out["indirect"])
+        self.assertGreater(out["unknown"]["after"], 0)
+
+    def test_loa_typo_is_not_resolution(self):
+        """LOA 140 → 14 오입력: 시야 규칙이 판정을 못 하게 되면 '해결'이 아니다(선박 정보 변경에 '확인 필요'를 붙인다)."""
+        a = raw(extra=[box("C1", 100, 112, 13.5, 24.0)])
+        b = raw(props={**PROPS, "GARC_LOA": "14"}, extra=[box("C1", 100, 112, 13.5, 24.0)])
+        out = compare_raws(a, b)
+        self.assert_not_resolved(out)
+        loa = next(c for c in out["changes"] if c["kind"] == "ship")
+        self.assertEqual([x["rule_id"] for x in loa["needs_check"]], [VIS])
+        self.assertIn("확인", loa["needs_check"][0]["text"])
+
+    def test_near_miss_layer_not_same(self):
+        """형상 변경이 없어도 비슷한 레이어(GA-OBST)가 생겨 판정이 바뀌면 '같음'이 아니다."""
+        a = raw(extra=[box("C1", 100, 112, 13.5, 24.0)])
+        b = raw(extra=[box("C1", 100, 112, 13.5, 24.0)])
+        b["layer_counts"] = {"GA-OBST": 1}
+        out = compare_raws(a, b)
+        self.assertEqual(out["changes"], [])
+        self.assertNotEqual(out["a"]["overall"], out["b"]["overall"])
+        self.assert_not_resolved(out)
+
+    def test_needs_check_key_always_present(self):
+        out = compare_raws(self.v1(), self.v2())
+        for c in out["changes"]:
+            self.assertEqual(c["needs_check"], [])
+        self.assertEqual(out["needs_check_rules"], [])
+        self.assertEqual(out["unknown"], {"before": 0, "after": 0})
+
     def test_http(self):
         from http.server import ThreadingHTTPServer
         from garc.server import Handler

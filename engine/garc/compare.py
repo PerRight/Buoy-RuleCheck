@@ -10,8 +10,9 @@
   role, role_ko
   desc_ko     한 줄 설명 (예: "충돌격벽 위치 x 124.50 → 122.50 m (기준점에서 9.00 → 11.00 m)")
   before_ko / after_ko  변경 전·후 값
-  resolved    이번 변경으로 해결된 위반 [{rule_id, rule_name, text}]
+  resolved    이번 변경으로 해결된 위반 [{rule_id, rule_name, text}] — 이후가 '충족'이거나 객체가 삭제된 경우만
   introduced  이번 변경으로 새로 생긴 위반
+  needs_check 이번 변경으로 판정 못 함(확인 필요)·적용 제외로 바뀐 것 — '해결'로 세지 않는다(모르면 멈춘다)
   related_rules  이 변경이 입력으로 들어가는 규칙
   center, bbox   표식 위치(m) — 플러그인은 units_scale로 나눠 도면 좌표로 바꾼다
 """
@@ -125,27 +126,42 @@ def compare_models(ma: dict[str, Any], mb: dict[str, Any], labels: tuple[str, st
     rule_status_b = {r.rule_id: r.status for r in rb.results}
     title = {r.id: r.title_ko for r in rules}
 
-    def elem_transitions(handle: str, removed: bool = False) -> tuple[list[dict], list[dict]]:
-        res, intro = [], []
+    def ref(rule_id: str, text: str) -> dict[str, str]:
+        return {"rule_id": rule_id, "rule_name": title[rule_id], "text": text}
+
+    def elem_transitions(handle: str, removed: bool = False) -> tuple[list[dict], list[dict], list[dict]]:
+        """객체 하나의 규칙별 상태 변화. '해결'은 이후가 충족이거나 객체가 삭제된 경우만 —
+        판정을 못 하게 된 것(unknown)이나 판정 대상에서 빠진 것(규칙 적용 제외)은 '확인 필요'로 따로 낸다."""
+        res, intro, check = [], [], []
         for rule in rules:
             sa = _status_of(ea.get(handle), rule.id)
             sb = None if removed else _status_of(eb.get(handle), rule.id)
-            if sa == "fail" and sb != "fail":
-                how = "객체 삭제로" if removed else ("기준 충족으로" if sb == "pass" else "판정 변화로")
-                res.append({"rule_id": rule.id, "rule_name": rule.title_ko, "text": f"{rule.title_ko} 위반 해결 ({how})"})
-            if sb == "fail" and sa != "fail":
-                intro.append({"rule_id": rule.id, "rule_name": rule.title_ko, "text": f"{rule.title_ko} 새 위반"})
-        return res, intro
+            if sa == "fail" and removed:
+                res.append(ref(rule.id, f"{rule.title_ko} 위반 해결 (객체 삭제로)"))
+            elif sa == "fail" and sb == "pass":
+                res.append(ref(rule.id, f"{rule.title_ko} 위반 해결 (기준 충족으로)"))
+            elif sb == "fail" and sa != "fail":
+                intro.append(ref(rule.id, f"{rule.title_ko} 새 위반"))
+            elif not removed and sa != sb and sb in ("unknown", None) and sa is not None:
+                why = "판정 못 함으로 바뀜" if sb == "unknown" else "판정 대상에서 빠짐(적용 제외 등)"
+                check.append(ref(rule.id, f"{rule.title_ko} {why} — 확인 필요"))
+        return res, intro, check
 
-    def rule_transitions(rule_ids: list[str]) -> tuple[list[dict], list[dict]]:
-        res, intro = [], []
+    def rule_transitions(rule_ids: list[str]) -> tuple[list[dict], list[dict], list[dict]]:
+        res, intro, check = [], [], []
         for rid in rule_ids:
             sa, sb = rule_status_a.get(rid), rule_status_b.get(rid)
+            if sa == sb:
+                continue
             if sa == "fail" and sb == "pass":
-                res.append({"rule_id": rid, "rule_name": title[rid], "text": f"{title[rid]} 위반 해결"})
-            elif sb == "fail" and sa != "fail":
-                intro.append({"rule_id": rid, "rule_name": title[rid], "text": f"{title[rid]} 새 위반"})
-        return res, intro
+                res.append(ref(rid, f"{title[rid]} 위반 해결"))
+            elif sb == "fail":
+                intro.append(ref(rid, f"{title[rid]} 새 위반"))
+            elif sb in ("na", "review"):
+                check.append(ref(rid, f"{title[rid]} {'입력 누락' if sb == 'na' else '검토 불가'}로 바뀜 — 확인 필요"))
+            elif sb == "skip":
+                check.append(ref(rid, f"{title[rid]} 적용 제외로 바뀜 — 적용 조건(LOA·용골 거치일 등) 입력 확인"))
+        return res, intro, check
 
     changes: list[dict[str, Any]] = []
 
@@ -155,24 +171,24 @@ def compare_models(ma: dict[str, Any], mb: dict[str, Any], labels: tuple[str, st
         sa, sb = _stats(a_obj), _stats(b_obj)
         if kind == "added":
             desc = f"{ROLE_KO.get(role, '객체')} 추가 — {_shape_ko(role, sb)}"
-            res, intro = elem_transitions(handle)
+            res, intro, check = elem_transitions(handle)
         elif kind == "removed":
             desc = f"{ROLE_KO.get(role, '객체')} 삭제 — {_shape_ko(role, sa)}"
-            res, intro = elem_transitions(handle, removed=True)
+            res, intro, check = elem_transitions(handle, removed=True)
         else:
             desc = _modified_desc(role, sa, sb, ra, rb)
-            res, intro = elem_transitions(handle)
+            res, intro, check = elem_transitions(handle)
         boxes = [s for s in (sa, sb) if s]
         bbox = [min(s["x0"] for s in boxes), min(s["z0"] for s in boxes),
                 max(s["x1"] for s in boxes), max(s["z1"] for s in boxes)] if boxes else None
-        ref = sb or sa
-        center = [(ref["x0"] + ref["x1"]) / 2, (ref["z0"] + ref["z1"]) / 2] if ref else None
+        at = sb or sa
+        center = [(at["x0"] + at["x1"]) / 2, (at["z0"] + at["z1"]) / 2] if at else None
         changes.append({
             "kind": kind, "element_id": handle, "role": role, "role_ko": ROLE_KO.get(role, role),
             "desc_ko": desc,
             "before_ko": "없음" if kind == "added" else _shape_ko(role, sa),
             "after_ko": "없음" if kind == "removed" else _shape_ko(role, sb),
-            "resolved": res, "introduced": intro,
+            "resolved": res, "introduced": intro, "needs_check": check,
             "related_rules": [r.id for r in rules_by_role.get(role, [])],
             "center": center, "bbox": bbox,
         })
@@ -184,23 +200,33 @@ def compare_models(ma: dict[str, Any], mb: dict[str, Any], labels: tuple[str, st
     for h in diff["removed"]:
         geo_change("removed", h)
 
+    # 선박 정보·흘수 조건 변경의 규칙 수준 변화는 규칙마다 한 번만(여러 값이 함께 바뀌어도 중복해 붙이지 않음)
+    attributed: set[str] = set()
+
+    def rule_transitions_once(rule_ids: list[str]):
+        fresh = [r for r in rule_ids if r not in attributed]
+        attributed.update(fresh)
+        return rule_transitions(fresh)
+
     for k in diff["ship_changed"]:
         va, vb = ma["ship"].get(k), mb["ship"].get(k)
         related = [r.id for r in rules if k in r.ship_keys]
-        res, intro = rule_transitions(related)
+        res, intro, check = rule_transitions_once(related)
         unit = "" if k in ("keel_laid", "ship_type") else " m"
         fa = "없음" if va is None else f"{va:g}{unit}" if isinstance(va, (int, float)) else str(va)
         fb = "없음" if vb is None else f"{vb:g}{unit}" if isinstance(vb, (int, float)) else str(vb)
         changes.append({"kind": "ship", "element_id": None, "role": None, "role_ko": "선박 정보",
                         "desc_ko": f"선박 정보 {SHIP_KO.get(k, k)} {fa} → {fb}", "before_ko": fa, "after_ko": fb,
-                        "resolved": res, "introduced": intro, "related_rules": related, "center": None, "bbox": None})
+                        "resolved": res, "introduced": intro, "needs_check": check, "related_rules": related,
+                        "center": None, "bbox": None})
     if not diff["initial"] and diff["conditions_changed"]:
         related = [r.id for r in rules if r.uses_conditions]
-        res, intro = rule_transitions(related)
+        res, intro, check = rule_transitions_once(related)
         fa, fb = _fmt_conditions(ma["conditions"]), _fmt_conditions(mb["conditions"])
         changes.append({"kind": "conditions", "element_id": None, "role": None, "role_ko": "흘수 조건",
                         "desc_ko": f"흘수 조건 {fa} → {fb}", "before_ko": fa, "after_ko": fb,
-                        "resolved": res, "introduced": intro, "related_rules": related, "center": None, "bbox": None})
+                        "resolved": res, "introduced": intro, "needs_check": check, "related_rules": related,
+                        "center": None, "bbox": None})
 
     changes.sort(key=lambda c: (_KIND_ORDER[c["kind"]], c["center"][0] if c["center"] else math.inf,
                                 c["element_id"] or c["desc_ko"]))
@@ -213,13 +239,21 @@ def compare_models(ma: dict[str, Any], mb: dict[str, Any], labels: tuple[str, st
     for h in sorted(set(oa) & set(ob) - changed):
         for rule in rules:
             sa, sb = _status_of(ea.get(h), rule.id), _status_of(eb.get(h), rule.id)
-            if sa != sb and "fail" in (sa, sb):
-                indirect.append({"element_id": h, "role_ko": ROLE_KO.get(ob[h]["role"], ob[h]["role"]),
-                                 "rule_id": rule.id, "rule_name": rule.title_ko, "from": sa, "to": sb,
-                                 "text": f"{ROLE_KO.get(ob[h]['role'], '객체')}(handle {h}) {rule.title_ko}: "
-                                         f"{'위반 해결' if sa == 'fail' else '새 위반'} (다른 변경의 영향)"})
+            if sa == sb or not ({"fail", "unknown", None} & {sa, sb}):
+                continue
+            if sa == "fail" and sb == "pass":
+                what = "위반 해결"
+            elif sb == "fail":
+                what = "새 위반"
+            elif sb in ("unknown", None):
+                what = "판정 못 함으로 바뀜 — 확인 필요" if sb == "unknown" else "판정 대상에서 빠짐 — 확인 필요"
+            else:
+                what = "판정 가능해짐"
+            indirect.append({"element_id": h, "role_ko": ROLE_KO.get(ob[h]["role"], ob[h]["role"]),
+                             "rule_id": rule.id, "rule_name": rule.title_ko, "from": sa, "to": sb,
+                             "text": f"{ROLE_KO.get(ob[h]['role'], '객체')}(handle {h}) {rule.title_ko}: {what} (다른 변경의 영향)"})
 
-    resolved_rules, introduced_rules = rule_transitions([r.id for r in rules])
+    resolved_rules, introduced_rules, needs_check_rules = rule_transitions([r.id for r in rules])
     fail_a = sum(1 for els in ea.values() for e in els if e["status"] == "fail")
     fail_b = sum(1 for els in eb.values() for e in els if e["status"] == "fail")
 
@@ -242,13 +276,19 @@ def compare_models(ma: dict[str, Any], mb: dict[str, Any], labels: tuple[str, st
         "changes": changes,
         "resolved_rules": resolved_rules,
         "introduced_rules": introduced_rules,
+        "needs_check_rules": needs_check_rules,
         "indirect": indirect,
         "violations": {"before": fail_a, "after": fail_b},
+        "unknown": {"before": sum(1 for els in ea.values() for e in els if e["status"] == "unknown"),
+                    "after": sum(1 for els in eb.values() for e in els if e["status"] == "unknown")},
         "geometry": {"a": geometry(ma, ea), "b": geometry(mb, eb)},
         "elements": {"a": [e for els in ea.values() for e in els], "b": [e for els in eb.values() for e in els]},
         "bounds": bounds,
         "units_scale": mb.get("units_scale") or ma.get("units_scale"),
-        "same": not changes,
+        # 형상·특성 변경이 없어도 판정이 바뀌었으면(유사 레이어 객체 추가 등) 같은 상태가 아니다
+        "same": not changes and rule_status_a == rule_status_b
+                and {h: sorted((e["rule_id"], e["status"]) for e in v) for h, v in ea.items()}
+                == {h: sorted((e["rule_id"], e["status"]) for e in v) for h, v in eb.items()},
     }
 
 
