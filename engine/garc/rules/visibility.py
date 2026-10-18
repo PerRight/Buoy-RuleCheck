@@ -25,7 +25,7 @@ from datetime import date
 from typing import Any
 
 from ..contract import objects_by_role
-from ..engine import rule, Rule, RuleResult, EPS
+from ..engine import rule, Rule, RuleResult, EPS, element
 
 # 오타 감지용 넓은 범위 (규정값이 아님)
 KEEL_LAID_MIN = date(1950, 1, 1)   # 이보다 이른 용골 거치일은 오타로 본다(1926 → 2026 등)
@@ -93,6 +93,47 @@ def max_height_at(eye: tuple[float, float], x_obj: float, x_target: float, a: fl
     ex, ez = eye
     z_target = a + b * x_target
     return ez + (x_obj - ex) * (z_target - ez) / (x_target - ex)
+
+
+def _floor_cm(v: float) -> float:
+    """'이하로' 제안값은 내림(그대로 적용해도 기준을 넘지 않게). 1e-7 cm 여유는 부동소수점 잡음 흡수용."""
+    return math.floor(v * 100 + 1e-7) / 100
+
+
+def _element_checks(r: Rule, objs: list[dict[str, Any]], eye_obj: dict[str, Any], eye: tuple[float, float],
+                    x_bow: float, limit: float, per_cond: list[dict[str, Any]], d: float, ok: bool,
+                    worst_cond: str, suggestion: str | None) -> list[dict[str, Any]]:
+    """객체마다 '이 객체 하나만으로' 사각 거리 기준을 넘는지. 규칙 판정과 같은 계산(blind_distance)을 써서
+    규칙이 위반이면 반드시 위반 객체가 하나 이상 나오고, 규칙이 충족이면 위반 객체가 없다."""
+    ex, ez = eye
+    x_target = x_bow + limit
+    out = []
+    for o in objs:
+        pts = [(o["handle"], p[0], p[1]) for p in o["points"]]
+        fwd = [(px, pz) for _, px, pz in pts if px > ex + EPS]
+        if not fwd:
+            out.append(element(r, o, "pass", "선교보다 앞에 있는 객체만 전방 시야를 가림", "선교 뒤쪽 — 전방 시야와 무관"))
+            continue
+        d_o = max(blind_distance(eye, pts, x_bow, *c["_ab"])["x_hit"] - x_bow for c in per_cond)
+        bad = d_o > limit + EPS
+        # 설명용 수치: 가장 여유가 적은 꼭짓점의 허용 상단(입력된 모든 흘수 조건 중 최솟값)
+        margin, px, pz = min((min(max_height_at(eye, x, x_target, *c["_ab"]) for c in per_cond) - z, x, z) for x, z in fwd)
+        z_lim = min(pz + margin, ez - 0.01)
+        req = f"상단 z ≤ {_floor_cm(z_lim):.2f} m (x={px:.2f} m 지점, 입력된 모든 흘수 조건)"
+        if bad:
+            exceed = "눈높이 이상 — 시선이 수면에 닿지 않음" if math.isinf(d_o) else f"이 객체만으로 사각 {d_o:.2f} m > 허용 {limit:g} m"
+            out.append(element(r, o, "fail", req, f"z = {pz:.2f} m ({exceed})",
+                               diff=f"{max(-margin, 0.0):.2f} m 초과",
+                               guide=f"x={px:.2f} m 지점 상단을 z={_floor_cm(z_lim):.2f} m 이하로 낮추세요", margin=margin))
+        else:
+            out.append(element(r, o, "pass", req, f"z = {pz:.2f} m (여유 {max(margin, 0.0):.2f} m)", margin=margin))
+    # 조종위치는 '판정의 기준점'이지 위반 대상이 아니다 — 입력이 유효하면(여기까지 왔으면) 충족으로 두고,
+    # 이 눈높이에서의 사각 거리를 참고로 보여 준다. 위반 개수는 장애물·선체·격벽 요소로만 센다.
+    seen = "시선이 수면에 닿지 않음" if math.isinf(d) else f"사각 {d:.2f} m / 허용 {limit:g} m (최악: {worst_cond})"
+    out.append(element(r, eye_obj, "pass", "조종위치 1개 · 선체 범위 안 · 선수보다 뒤",
+                       f"눈높이 z = {ez:.2f} m · 이 눈높이에서 {seen}",
+                       guide=None if ok else "앞 장애물을 낮추기 어렵다면 선교(조종위치)를 높이는 것도 방법입니다."))
+    return out
 
 
 def _label(at, text, loa, status="info"):
@@ -241,10 +282,13 @@ def check_visibility(model: dict[str, Any], r: Rule) -> RuleResult:
 
     overlays = _overlays(eye, x_bow, limit, d, ok, worst, ship, loa)
 
+    judged = hull + objects_by_role(model, "obstruction")
     if ok:
         msg = f"사각 거리 {d:.2f} m ≤ 허용 {limit:g} m (최악: {worst['condition']})"
         return r.result("pass", msg, actual=round(d, 3), limit=limit, condition=worst["condition"],
-                        evidence=evidence, overlays=overlays, targets=[])
+                        evidence=evidence, overlays=overlays, targets=[],
+                        elements=_element_checks(r, judged, eyes[0], eye, x_bow, limit, per_cond, d, True,
+                                                 worst["condition"], None))
 
     crit_h = worst["critical_handle"]
     x_target = x_bow + limit
@@ -309,4 +353,6 @@ def check_visibility(model: dict[str, Any], r: Rule) -> RuleResult:
     overlays.append(_label([ox, zmax], f"허용 상단 z ≤ {zmax_disp:.2f} m", loa, "fail"))
     overlays.append({"kind": "tick", "status": "fail", "points": [[ox - loa * 0.02, zmax], [ox + loa * 0.02, zmax]]})
     return r.result("fail", msg, actual=actual, limit=limit, condition=worst["condition"],
-                    targets=[crit_h] + others, evidence=evidence, overlays=overlays, suggestion_ko=sugg)
+                    targets=[crit_h] + others, evidence=evidence, overlays=overlays, suggestion_ko=sugg,
+                    elements=_element_checks(r, judged, eyes[0], eye, x_bow, limit, per_cond, d, False,
+                                             worst["condition"], sugg))

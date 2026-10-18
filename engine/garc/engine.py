@@ -29,6 +29,18 @@ OVERALL_KO = {
 }
 DISCLAIMER_KO = "규칙 엔진의 후보 판정입니다. 선급 승인이나 적합 증명이 아니며, 최종 판단은 설계자·선급 검토로 합니다."
 EPS = 1e-6  # m. 부동소수점 비교 보정용(경계값 포함 판정). 설계 허용오차가 아님.
+ROLE_KO = {"hull": "선체 윤곽", "eye": "조종위치", "obstruction": "장애물", "collision_bhd": "충돌격벽", "bulb": "구상선수"}
+ELEMENT_STATUSES = ("pass", "fail", "unknown")
+
+
+def element(r: "Rule", obj: dict[str, Any], status: str, required: str, actual: str,
+            diff: str | None = None, guide: str | None = None, margin: float | None = None) -> dict[str, Any]:
+    """요소 판정 한 건. status는 pass/fail/unknown만 — '판정 못 함'은 unknown(⚠ 확인 필요)으로 통일."""
+    assert status in ELEMENT_STATUSES, status
+    return {"element_id": obj["handle"], "rule_id": r.id, "rule_name": r.title_ko, "role": obj["role"],
+            "role_ko": ROLE_KO.get(obj["role"], obj["role"]), "status": status, "required": required,
+            "actual": actual, "diff": diff, "guide": guide,
+            "margin": None if margin is None else round(margin, 3)}
 
 
 @dataclass
@@ -47,6 +59,9 @@ class RuleResult:
     limitations: list[str] = field(default_factory=list)   # 이 판정이 다루지 않는 범위
     suggestion_ko: str | None = None
     overlays: list[dict[str, Any]] = field(default_factory=list)  # 도면 위 임시 표시(시선 등), m 좌표
+    # 요소(도면 객체)별 판정 — 마우스 오버 툴팁·체크리스트용. 상태는 pass / fail / unknown(확인 필요) 셋.
+    # {element_id(handle), rule_id, rule_name, role, role_ko, status, required, actual, diff, guide, margin}
+    elements: list[dict[str, Any]] = field(default_factory=list)
     cached: bool = False
 
     def to_dict(self) -> dict[str, Any]:
@@ -85,11 +100,23 @@ class Rule:
     def evaluate(self, model: dict[str, Any]) -> RuleResult:
         blocking = issues_for(model, self.roles)
         if blocking:
-            return self.result("review", "; ".join(i["message_ko"] for i in blocking),
-                               evidence={"issues": [i["code"] for i in blocking]})
+            r = self.result("review", "; ".join(i["message_ko"] for i in blocking),
+                            evidence={"issues": [i["code"] for i in blocking]})
+            self._fill_unknown_elements(model, r)
+            return r
         r = self.fn(model, self)
         r.limitations = list(self.limitations) + r.limitations
+        self._fill_unknown_elements(model, r)
         return r
+
+    def _fill_unknown_elements(self, model: dict[str, Any], r: RuleResult) -> None:
+        """입력 누락·검토 불가면 이 규칙이 읽는 객체를 모두 '확인 필요'로 — 판정 안 된 객체가 파랑(충족)으로 보이지 않게."""
+        if r.status not in ("na", "review") or r.elements:
+            return
+        why = r.message_ko if len(r.message_ko) <= 120 else r.message_ko[:117] + "…"
+        r.elements = [element(self, o, "unknown", "판정에 필요한 입력이 갖춰져야 함", "판정 안 됨",
+                              guide=why)
+                      for o in model["objects"] if o["role"] in self.roles]
 
     def result(self, status: str, message_ko: str, **kw: Any) -> RuleResult:
         return RuleResult(rule_id=self.id, title_ko=self.title_ko, ref=self.ref,

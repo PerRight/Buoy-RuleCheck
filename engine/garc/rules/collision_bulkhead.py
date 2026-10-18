@@ -14,7 +14,7 @@ import math
 from typing import Any
 
 from ..contract import objects_by_role
-from ..engine import rule, Rule, RuleResult, EPS
+from ..engine import rule, Rule, RuleResult, EPS, element
 
 LIMITATIONS = [
     "구상선수 연장부는 GA_BULB 윤곽의 최전단으로만 판단 — '수선 아래' 여부는 사람 확인",
@@ -97,18 +97,27 @@ def check_collision_bulkhead(model: dict[str, Any], r: Rule) -> RuleResult:
     ]
     common = dict(actual=actual, limit=[round(lower, 3), round(upper, 3)],
                   targets=[bhds[0]["handle"]], evidence=evidence, overlays=overlays)
+    req = f"기준점({ref_name})에서 {lower:.2f}~{upper:.2f} m"
+
+    def el(status: str, diff: str | None = None, guide: str | None = None, margin: float | None = None):
+        return [element(r, bhds[0], status, req, f"{rng}", diff=diff, guide=guide, margin=margin)]
 
     if ok:   # 통과는 '위반 조건이 아님'이 아니라 '범위 안임'이 참일 때만 (NaN 비교는 항상 거짓)
         common["targets"] = []
-        return r.result("pass", base, **common)
+        return r.result("pass", base, elements=el("pass", margin=min(d_min - lower, upper - d_max)), **common)
     if (d_max - d_min) > (upper - lower) + EPS:
         # 계단·리세스 폭이 허용 구간보다 넓으면 어느 쪽으로 옮겨도 한쪽이 벗어난다
-        return r.result("fail", base + " — 계단 폭이 허용 구간보다 넓음",
-                        suggestion_ko=f"격벽 계단 폭 {d_max - d_min:.2f} m가 허용 구간 폭 {upper - lower:.2f} m보다 넓어 "
-                                      "이동만으로는 해결되지 않습니다. 계단·리세스 폭을 줄이세요.", **common)
+        sugg = (f"격벽 계단 폭 {d_max - d_min:.2f} m가 허용 구간 폭 {upper - lower:.2f} m보다 넓어 "
+                "이동만으로는 해결되지 않습니다. 계단·리세스 폭을 줄이세요.")
+        return r.result("fail", base + " — 계단 폭이 허용 구간보다 넓음", suggestion_ko=sugg,
+                        elements=el("fail", f"계단 폭 {d_max - d_min:.2f} m > 허용 구간 폭 {upper - lower:.2f} m", sugg),
+                        **common)
     if d_min < lower - EPS:
         need = _ceil_cm(lower - d_min)
-        return r.result("fail", base + " — 하한 미달", suggestion_ko=f"격벽을 선미 쪽으로 {need:.2f} m 이상 옮기세요.", **common)
+        sugg = f"격벽을 선미 쪽으로 {need:.2f} m 이상 옮기세요."
+        return r.result("fail", base + " — 하한 미달", suggestion_ko=sugg,
+                        elements=el("fail", f"하한보다 {lower - d_min:.2f} m 짧음", sugg, d_min - lower), **common)
     need = _ceil_cm(d_max - upper)
-    return r.result("fail", base + " — 상한 초과 (주관청 허용 시 예외 가능 → 사람 확인)",
-                    suggestion_ko=f"격벽을 선수 쪽으로 {need:.2f} m 이상 옮기세요.", **common)
+    sugg = f"격벽을 선수 쪽으로 {need:.2f} m 이상 옮기세요."
+    return r.result("fail", base + " — 상한 초과 (주관청 허용 시 예외 가능 → 사람 확인)", suggestion_ko=sugg,
+                    elements=el("fail", f"상한보다 {d_max - upper:.2f} m 김", sugg, upper - d_max), **common)
