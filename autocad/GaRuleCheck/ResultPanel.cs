@@ -1,7 +1,8 @@
 // 팔레트 화면 (WinForms, 코드로 구성, AutoCAD 다크 테마).
 //   상단: 전체 판정 + rev·도면·엔진 상태, 도구 버튼(검사·표시·리포트)
 //   탭:   검토(규칙 카드) / 선박 정보(특성 편집) / 이력(revision 타임라인)
-//   하단: 면책 문구 고정 — 초록은 '규칙 후보 기준 충족'일 뿐 승인 아님
+//   하단: 면책 문구 고정 — 충족(파랑)은 '규칙 후보 기준 충족'일 뿐 승인 아님
+//   탭 줄 오른쪽: '미충족만 보기' 필터(팔레트·떠 있는 패널이 함께 바뀜, ui.json에 기억)
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -21,13 +22,19 @@ namespace GaRuleCheck
         public event Action<List<string>, bool>? HoverRequested;
         public event Action<RuleResultDto>? FitRequested;
         public event Action? LargeLabelsRequested;
+        public event Action<ElementCheckDto, bool>? ElementHoverRequested;
+        public event Action<ElementCheckDto>? ElementFocusRequested;
 
         public ShipInfoView Ship { get; } = new() { Dock = DockStyle.Fill };
 
-        private readonly Panel _header = new() { Dock = DockStyle.Top, Height = 66, BackColor = Theme.Card, Padding = new Padding(12, 8, 8, 6) };
+        private readonly Panel _header = new() { Dock = DockStyle.Top, Height = 74, BackColor = Theme.Card, Padding = new Padding(12, 8, 8, 6) };
         private readonly StatusDot _dot = new() { Location = new Point(12, 12) };
-        private readonly Label _overall = new() { AutoSize = false, Location = new Point(34, 6), Height = 24, Font = Theme.Title, ForeColor = Theme.Text, AutoEllipsis = true };
-        private readonly Label _sub = new() { AutoSize = false, Location = new Point(34, 30), Height = 18, Font = Theme.Small, ForeColor = Theme.Muted, AutoEllipsis = true };
+        // 긴 전체 판정 문구가 잘리지 않게 두 줄까지 줄바꿈(짧으면 큰 글씨)
+        private readonly Label _overall = new() { AutoSize = false, Location = new Point(34, 4), Height = 36, Font = Theme.Title, ForeColor = Theme.Text, AutoEllipsis = true };
+        private readonly Label _sub = new() { AutoSize = false, Location = new Point(34, 44), Height = 18, Font = Theme.Small, ForeColor = Theme.Muted, AutoEllipsis = true };
+        private readonly Button _failOnly;
+        private CheckResponse? _last;
+        private string _lastDoc = "";
         private readonly Label _engine = new() { AutoSize = true, Font = Theme.Small, ForeColor = Theme.Muted, Anchor = AnchorStyles.Top | AnchorStyles.Right };
 
         private readonly FlowLayoutPanel _tools = new() { Dock = DockStyle.Top, Height = 36, BackColor = Theme.Bg, Padding = new Padding(10, 6, 6, 0) };
@@ -58,8 +65,9 @@ namespace GaRuleCheck
             _header.Controls.AddRange(new Control[] { _dot, _overall, _sub, _engine });
             _header.Resize += (_, _) =>
             {
-                _engine.Location = new Point(_header.Width - _engine.Width - 10, 34);
+                _engine.Location = new Point(_header.Width - _engine.Width - 10, 46);
                 _overall.Width = _header.Width - 44;
+                FitOverallFont();
                 _sub.Width = Math.Max(_engine.Left - 40, 60);
             };
 
@@ -97,6 +105,19 @@ namespace GaRuleCheck
                 _tabs.Controls.Add(b);
             }
 
+            _failOnly = new Button
+            {
+                Text = "미충족만 보기", FlatStyle = FlatStyle.Flat, AutoSize = true, Font = Theme.Small, ForeColor = Theme.Muted,
+                BackColor = Theme.Bg, Margin = new Padding(12, 3, 0, 0), Cursor = Cursors.Hand, UseVisualStyleBackColor = false,
+                AccessibleRole = AccessibleRole.CheckButton,
+            };
+            _failOnly.FlatAppearance.BorderColor = Theme.Line;
+            _failOnly.Click += (_, _) => UiState.SetFailOnly(!UiState.Current.FailOnly);
+            tip.SetToolTip(_failOnly, "미충족(빨강) 규칙·객체만 보여 줍니다. 확인 필요 항목은 숨긴 개수를 표시합니다.");
+            _tabs.Controls.Add(_failOnly);
+            UiState.FailOnlyChanged += OnFailOnlyChanged;
+            SyncFailOnlyButton();
+
             _history.Columns.Add("rev", 44);
             _history.Columns.Add("시각", 64);
             _history.Columns.Add("변경 · 판정 변화", 400);
@@ -122,6 +143,35 @@ namespace GaRuleCheck
 
         public void SetOverlayState(bool on) => _overlayBtn.Text = on ? "도면 표시: 켜짐" : "도면 표시: 꺼짐";
 
+        private void OnFailOnlyChanged()
+        {
+            if (IsDisposed) return;
+            SyncFailOnlyButton();
+            if (_last != null) ShowResult(_last, _lastDoc, record: false);
+        }
+
+        private void SyncFailOnlyButton()
+        {
+            bool on = UiState.Current.FailOnly;
+            _failOnly.Text = on ? "미충족만 보기 ●" : "미충족만 보기";
+            _failOnly.ForeColor = on ? Theme.Text : Theme.Muted;
+            _failOnly.BackColor = on ? Theme.Fail : Theme.Bg;
+            _failOnly.AccessibleName = "미충족만 보기 " + (on ? "켜짐" : "꺼짐");
+        }
+
+        private void SetOverall(string text)
+        {
+            _overall.Text = text;
+            FitOverallFont();
+        }
+
+        private void FitOverallFont()
+        {
+            if (_overall.Width <= 0) return;
+            bool fits = TextRenderer.MeasureText(_overall.Text, Theme.Title).Width <= _overall.Width;
+            _overall.Font = fits ? Theme.Title : Theme.Bold;
+        }
+
         public void SetLargeLabelsState(bool on)
         {
             _largeBtn.BackColor = on ? Theme.Info : Theme.Card;
@@ -133,13 +183,14 @@ namespace GaRuleCheck
             _engine.Text = up switch { true => "● 엔진 연결", false => "● 엔진 끊김", _ => "● 엔진 대기" };
             _engine.ForeColor = up switch { true => Theme.Pass, false => Theme.Fail, _ => Theme.Muted };
             _header.PerformLayout();
-            _engine.Location = new Point(_header.Width - _engine.Width - 10, 34);
+            _engine.Location = new Point(_header.Width - _engine.Width - 10, 46);
         }
 
         public void SetIdle(string text, string? docName = null, bool showSetup = false)
         {
             _dot.Color = Theme.Skip;
-            _overall.Text = text;
+            _last = null;
+            SetOverall(text);
             _sub.Text = docName ?? "";
             _cards.Controls.Clear();
             var box = new Panel { BackColor = Theme.Card, Padding = new Padding(14), Margin = new Padding(0, 0, 0, 8), Height = 120 };
@@ -158,7 +209,8 @@ namespace GaRuleCheck
         public void ShowEngineDown(string message)
         {
             _dot.Color = Theme.Warn;
-            _overall.Text = "검토 불가 — 엔진 연결 안 됨";
+            _last = null;
+            SetOverall("검토 불가 — 엔진 연결 안 됨");
             _sub.Text = message;
             SetEngine(false);
             _cards.Controls.Clear();
@@ -171,8 +223,10 @@ namespace GaRuleCheck
         public void ShowResult(CheckResponse r, string docName, bool record = true)
         {
             SetEngine(true);
+            _last = r;
+            _lastDoc = docName;
             _dot.Color = Theme.Status(r.Overall);
-            _overall.Text = r.OverallKo;
+            SetOverall(r.OverallKo);
             _sub.Text = $"rev {r.Revision}{(r.SameAsRevision is int s ? $" (=rev{s})" : "")} · {docName} · {DateTime.Now:HH:mm:ss}";
             _footer.Text = r.DisclaimerKo;
 
@@ -180,13 +234,31 @@ namespace GaRuleCheck
             _cards.Controls.Clear();
             var banner = Banner(r);
             if (banner != null) _cards.Controls.Add(banner);
+            bool failOnly = UiState.Current.FailOnly;
             foreach (var x in r.Results)
             {
-                var card = new RuleCard(x);
+                if (failOnly && x.Status != "fail") continue;
+                var card = new RuleCard(x, failOnly);
                 card.FocusRequested += h => FocusRequested?.Invoke(h);
                 card.HoverChanged += (h, on) => HoverRequested?.Invoke(h, on);
                 card.FitRequested += rr => FitRequested?.Invoke(rr);
+                card.ElementHover += (e, on) => ElementHoverRequested?.Invoke(e, on);
+                card.ElementClicked += e => ElementFocusRequested?.Invoke(e);
                 _cards.Controls.Add(card);
+            }
+            if (failOnly)
+            {
+                // 숨긴 항목 개수는 꼭 보여 준다 — '확인 필요'를 숨겨서 초록·파랑처럼 보이면 안 되므로 주황으로
+                int pass = r.Results.Count(x => x.Status == "pass"), warn = r.Results.Count(x => x.Status is "na" or "review"),
+                    skip = r.Results.Count(x => x.Status == "skip");
+                var hidden = new List<string>();
+                if (warn > 0) hidden.Add($"확인 필요 {warn}");
+                if (pass > 0) hidden.Add($"기준 충족 {pass}");
+                if (skip > 0) hidden.Add($"적용 제외 {skip}");
+                if (hidden.Count > 0)
+                    _cards.Controls.Add(Theme.Label("미충족만 보기 — 숨김: " + string.Join(" · ", hidden), Theme.Small, warn > 0 ? Theme.Warn : Theme.Muted));
+                if (r.Results.All(x => x.Status != "fail"))
+                    _cards.Controls.Add(Theme.Label("미충족 규칙이 없습니다.", Theme.Body, Theme.Text));
             }
             _cards.ResumeLayout();
             FitCards();
@@ -239,6 +311,12 @@ namespace GaRuleCheck
         }
 
         public void ClearHistory() => _history.Items.Clear();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) UiState.FailOnlyChanged -= OnFailOnlyChanged;   // 정적 이벤트가 패널을 붙잡지 않게
+            base.Dispose(disposing);
+        }
 
         private static string Short(string id) => id.StartsWith("SOLAS-V") ? "가시거리" : id.StartsWith("SOLAS-II1") ? "충돌격벽" : id;
 

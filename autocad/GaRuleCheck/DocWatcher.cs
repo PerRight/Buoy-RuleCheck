@@ -3,8 +3,15 @@
 // 동기화 원칙: 이벤트는 '다시 검사해야 한다'는 신호(dirty)로만 쓴다. 무엇이 바뀌었는지는 엔진이
 // 이전 스냅샷과 비교해서 계산한다. 그래서 Undo/Redo/복사/레이어 변경 어떤 경로로 바뀌어도
 // 다음 검사의 스냅샷이 곧 진실이 되고, 결과 캐시도 엔진에서 입력 해시로 맞춰진다.
+//
+// 마우스 오버(기능 3): 커서 아래 객체의 요소 판정(엔진 elements)을 툴팁으로(✔ 충족 / ✖ 미충족 / ⚠ 확인 필요)
+// 보여 주고 상태 색으로 강조한다. AutoCAD가 집어 준 객체가 없으면 공간 인덱스(HitIndex)로 커서 근처 선분·감싸는
+// 닫힌 도형을 찾는다. 계산은 40 ms에 한 번(throttle) — 그 사이 이벤트는 직전 결과를 재사용.
+// 저장(기능 1): 도면을 저장하면 다음 Idle에 버전 기록 요청(VersionRequested)을 낸다.
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Text;
 using Autodesk.AutoCAD.ApplicationServices;
@@ -26,12 +33,21 @@ namespace GaRuleCheck
         public CheckResponse? Last { get; private set; }
         public event Action<DocWatcher>? Checked;
         public event Action<DocWatcher, string>? Failed;
+        /// 도면이 저장된 뒤(다음 Idle) — 버전 기록 창을 띄우라는 신호
+        public event Action<DocWatcher>? VersionRequested;
 
         private bool _dirty = true;
         private DateTime _lastChange = DateTime.MinValue;
         private bool _busy;
         private HashSet<string> _lastHandles = new();
         private Dictionary<string, string> _tips = new();   // handle → 마우스 툴팁 문구
+        private Dictionary<string, List<ElementCheckDto>> _elements = new();
+        private Dictionary<string, (List<double[]> pts, bool closed)> _shapes = new();   // 마지막 스냅샷의 도면 단위 좌표
+        private HitIndex? _hit;
+        private readonly Stopwatch _hoverClock = Stopwatch.StartNew();
+        private string? _hoverHandle;
+        private bool _versionPending;
+        public RawDrawing? LastRaw { get; private set; }
 
         public DocWatcher(Document doc)
         {
@@ -42,6 +58,7 @@ namespace GaRuleCheck
             db.ObjectErased += OnErased;
             doc.CommandEnded += OnCommandEnded;
             doc.Editor.PointMonitor += OnPointMonitor;
+            db.SaveComplete += OnSaveComplete;
             AcApp.Idle += OnIdle;
         }
 
@@ -56,6 +73,7 @@ namespace GaRuleCheck
                 db.ObjectErased -= OnErased;
                 Doc.CommandEnded -= OnCommandEnded;
                 Doc.Editor.PointMonitor -= OnPointMonitor;
+                db.SaveComplete -= OnSaveComplete;
             }
             catch { /* 문서가 이미 닫힘 */ }
         }
@@ -93,38 +111,125 @@ namespace GaRuleCheck
             return n.StartsWith("GA", StringComparison.Ordinal);
         }
 
-        /// 위반·검토 불가 객체 위에 커서를 올리면 규칙·수치·제안을 툴팁으로 보여준다.
+        /// 판정 대상 객체 위에 커서를 올리면 요소 판정(충족·미충족·확인 필요)을 툴팁으로, 객체를 상태 색으로 강조.
         private void OnPointMonitor(object sender, PointMonitorEventArgs e)
         {
             if (_tips.Count == 0) return;
             try
             {
-                var paths = e.Context.GetPickedEntities();
-                if (paths == null) return;
-                foreach (var path in paths)
-                    foreach (var id in path.GetObjectIds())
-                        if (_tips.TryGetValue(id.Handle.ToString(), out var tip))
-                        {
-                            e.AppendToolTipText(tip);
-                            return;
-                        }
+                if (_hoverClock.ElapsedMilliseconds >= 40)   // throttle: 40 ms에 한 번만 다시 찾는다
+                {
+                    _hoverClock.Restart();
+                    var h = FindHovered(e);
+                    if (h != _hoverHandle)
+                    {
+                        _hoverHandle = h;
+                        if (h != null && _shapes.TryGetValue(h, out var sh) && Overlay.Enabled)
+                            Overlay.ElementHover(Doc, sh.pts, sh.closed, WorstStatus(h));
+                        else
+                            Overlay.ElementHover(Doc, null, false, "");
+                    }
+                }
+                if (_hoverHandle != null && _tips.TryGetValue(_hoverHandle, out var tip)) e.AppendToolTipText(tip);
             }
-            catch { /* 툴팁은 부가 기능 — 실패해도 무시 */ }
+            catch { /* 툴팁·강조는 부가 기능 — 실패해도 무시 */ }
         }
 
-        private void BuildTips()
+        private string? FindHovered(PointMonitorEventArgs e)
+        {
+            var paths = e.Context.GetPickedEntities();
+            if (paths != null)
+                foreach (var path in paths)
+                    foreach (var id in path.GetObjectIds())
+                    {
+                        var h = id.Handle.ToString();
+                        if (_tips.ContainsKey(h)) return h;
+                    }
+            if (_hit == null) return null;
+            // AutoCAD가 집지 못한 경우(닫힌 도형 안쪽 등): 공간 인덱스로 커서 근처(화면 6 px) 선분 → 감싸는 도형
+            var p = e.Context.RawPoint;
+            return _hit.Hit(p.X, p.Y, 6 * Overlay.UnitsPerPixel(Doc));
+        }
+
+        public string WorstStatus(string handle) =>
+            _elements.TryGetValue(handle, out var list) && list.Count > 0
+                ? list.OrderBy(x => Theme.StatusRank(x.Status)).First().Status
+                : "unknown";
+
+        public (List<double[]> pts, bool closed)? ShapeOf(string handle) =>
+            _shapes.TryGetValue(handle, out var s) ? s : null;
+
+        /// 미충족 요소 수, 확인 필요 요소 수(로고 배지용)
+        public (int fail, int unknown) ElementCounts()
+        {
+            int f = 0, u = 0;
+            foreach (var list in _elements.Values)
+                foreach (var x in list)
+                    if (x.Status == "fail") f++;
+                    else if (x.Status == "unknown") u++;
+            return (f, u);
+        }
+
+        private void BuildTips(RawDrawing raw)
         {
             var tips = new Dictionary<string, string>();
+            var elements = new Dictionary<string, List<ElementCheckDto>>();
             if (Last != null)
+            {
+                foreach (var r in Last.Results)
+                    foreach (var x in r.Elements)
+                    {
+                        if (!elements.TryGetValue(x.ElementId, out var list)) elements[x.ElementId] = list = new List<ElementCheckDto>();
+                        list.Add(x);
+                    }
+                foreach (var (h, list) in elements)
+                {
+                    var parts = list.OrderBy(x => Theme.StatusRank(x.Status)).Select(x =>
+                    {
+                        var t = $"{Theme.ElementMark(x.Status)} — {x.RuleName}\n  기준 {x.Required}\n  실제 {x.Actual}";
+                        if (!string.IsNullOrEmpty(x.Diff)) t += $"\n  차이 {x.Diff}";
+                        if (!string.IsNullOrEmpty(x.Guide)) t += $"\n  {(x.Status == "unknown" ? "사유" : "가이드")} {x.Guide}";
+                        return t;
+                    });
+                    tips[h] = $"[{list[0].RoleKo} {h}]\n" + string.Join("\n\n", parts);
+                }
+                // 요소 판정이 없는 규칙 대상(예: 엔진이 elements를 못 낸 경우)도 예전처럼 규칙 문구로
                 foreach (var r in Last.Results)
                 {
                     if (r.Status is not ("fail" or "review")) continue;
-                    var text = $"[{r.StatusKo}] {r.TitleKo}\n{r.MessageKo}"
-                               + (string.IsNullOrEmpty(r.SuggestionKo) ? "" : "\n제안: " + r.SuggestionKo);
                     foreach (var h in r.Targets)
-                        tips[h] = tips.TryGetValue(h, out var prev) ? prev + "\n\n" + text : text;
+                        if (!tips.ContainsKey(h))
+                            tips[h] = $"[{r.StatusKo}] {r.TitleKo}\n{r.MessageKo}" + (string.IsNullOrEmpty(r.SuggestionKo) ? "" : "\n제안: " + r.SuggestionKo);
                 }
+            }
+            var shapes = new Dictionary<string, (List<double[]> pts, bool closed)>();
+            foreach (var en in raw.Entities)
+                shapes[en.Handle] = (en.Points, en.Closed == true);
             _tips = tips;
+            _elements = elements;
+            _shapes = shapes;
+            _hit = new HitIndex(raw.Entities.Where(x => tips.ContainsKey(x.Handle))
+                                   .Select(x => (x.Handle, (IReadOnlyList<double[]>)x.Points, x.Closed == true)));
+            _hoverHandle = null;
+        }
+
+        private void ClearTips()
+        {
+            _tips = new();
+            _elements = new();
+            _shapes = new();
+            _hit = null;
+            _hoverHandle = null;
+            Overlay.ElementHover(Doc, null, false, "");
+        }
+
+        private void OnSaveComplete(object sender, DatabaseIOEventArgs e)
+        {
+            // 자동 저장(.sv$)·임시 파일은 버전으로 남기지 않는다
+            var f = e.FileName ?? "";
+            var ext = Path.GetExtension(f).ToLowerInvariant();
+            if (ext is ".sv$" or ".bak" or ".tmp" || f.Contains(Path.GetTempPath(), StringComparison.OrdinalIgnoreCase)) return;
+            _versionPending = true;
         }
 
         private void OnCommandEnded(object sender, CommandEventArgs e)
@@ -134,6 +239,12 @@ namespace GaRuleCheck
 
         private void OnIdle(object? sender, EventArgs e)
         {
+            if (_versionPending && !_busy && AcApp.DocumentManager.MdiActiveDocument == Doc && string.IsNullOrEmpty(Doc.CommandInProgress))
+            {
+                _versionPending = false;
+                VersionRequested?.Invoke(this);
+                return;
+            }
             if (!_dirty || _busy) return;
             if (AcApp.DocumentManager.MdiActiveDocument != Doc) return;
             if (!string.IsNullOrEmpty(Doc.CommandInProgress)) return;
@@ -153,8 +264,9 @@ namespace GaRuleCheck
                     raw = Extractor.Extract(Doc);
                 }
                 _lastHandles = raw.Entities.Select(x => x.Handle).ToHashSet();
+                LastRaw = raw;
                 Last = EngineClient.Check(Extractor.DocId(Doc), raw);
-                BuildTips();
+                BuildTips(raw);
                 using (Doc.LockDocument())
                 {
                     Overlay.Show(Doc, Last);
@@ -164,14 +276,14 @@ namespace GaRuleCheck
             catch (EngineException ex)
             {
                 Last = null;
-                _tips = new();
+                ClearTips();
                 Overlay.Clear();
                 Failed?.Invoke(this, ex.Message);
             }
             catch (Exception ex)
             {
                 Last = null;
-                _tips = new();   // 이전 결과의 툴팁이 남지 않게
+                ClearTips();   // 이전 결과의 툴팁·강조가 남지 않게
                 Overlay.Clear();
                 Failed?.Invoke(this, "플러그인 오류: " + ex.Message);
             }
