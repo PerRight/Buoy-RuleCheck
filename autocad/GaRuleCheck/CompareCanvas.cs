@@ -278,12 +278,17 @@ namespace GaRuleCheck
             BackColor = PaintStyle.Screen.Back;
         }
 
-        public void Bind(CompareResponse data, ViewState shared)
+        /// data가 null이면(비교 실패) 이전 그림을 지우고 안내 문구만 보인다 — 이전 결과가 남아 보이지 않게.
+        public void Bind(CompareResponse? data, ViewState shared)
         {
             View.Changed -= Invalidate;
             View = shared;
             View.Changed += Invalidate;
             Data = data;
+            _markers.Clear();
+            _hover = null;
+            _tip.SetToolTip(this, "");
+            if (data == null) { _byHandle = new(); _index = null; Invalidate(); return; }
             _byHandle = data.Changes.Where(c => c.ElementId != null).GroupBy(c => c.ElementId!).ToDictionary(g => g.Key, g => g.First());
             var shapes = data.Geometry.A.Concat(data.Geometry.B)
                 .Where(gm => _byHandle.ContainsKey(gm.Handle))
@@ -315,7 +320,16 @@ namespace GaRuleCheck
                 return;
             }
             _markers.Clear();
-            CanvasPainter.Paint(e.Graphics, ClientRectangle, Data, Mode, View, st, OverlayOpacity, Highlight, _markers);
+            try
+            {
+                CanvasPainter.Paint(e.Graphics, ClientRectangle, Data, Mode, View, st, OverlayOpacity, Highlight, _markers);
+            }
+            catch (Exception ex)   // 극단 확대 등으로 GDI+ 오버플로가 나도 창이 죽지 않게
+            {
+                e.Graphics.Clear(st.Back);
+                TextRenderer.DrawText(e.Graphics, "그림을 그리지 못했습니다 — 두 번 클릭하면 전체 보기 (" + ex.GetType().Name + ")", Theme.Body,
+                                      ClientRectangle, Theme.Warn, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            }
             if (!string.IsNullOrEmpty(Caption))
             {
                 var sz = TextRenderer.MeasureText(Caption, Theme.Bold);
@@ -330,10 +344,24 @@ namespace GaRuleCheck
             if (Data == null) return;
             var (mx, my) = CanvasPainter.ToModel(View, ClientRectangle, e.Location);
             double f = e.Delta > 0 ? 1.2 : 1 / 1.2;
+            // 확대 범위 제한: 전체 보기의 1/20 ~ 2000배 (GDI+ 좌표 넘침 방지)
+            if (Data.Bounds is double[] b && b.Length >= 4 && ClientSize.Width > 0 && ClientSize.Height > 0)
+            {
+                double fit = Math.Min(ClientSize.Width / Math.Max(b[2] - b[0], 1e-6), ClientSize.Height / Math.Max(b[3] - b[1], 1e-6));
+                double next = View.Scale * f;
+                if (next < fit * 0.05 || next > fit * 2000 || double.IsNaN(next)) return;
+            }
             View.Scale *= f;
             View.Cx = mx - (mx - View.Cx) / f;
             View.Cy = my - (my - View.Cy) / f;
             View.Notify();
+        }
+
+        /// 마우스가 올라오면 포커스를 받아 휠 확대가 바로 먹게 한다(창이 활성일 때만).
+        protected override void OnMouseEnter(EventArgs e)
+        {
+            base.OnMouseEnter(e);
+            if (FindForm() is Form f && f == Form.ActiveForm && !Focused) Focus();
         }
 
         protected override void OnMouseDown(MouseEventArgs e)
@@ -367,7 +395,8 @@ namespace GaRuleCheck
                 _hover = hit;
                 ChangeHovered?.Invoke(hit);
                 _tip.SetToolTip(this, hit == null ? "" : $"{hit.Number}. {hit.DescKo}\n이전: {hit.BeforeKo}\n이후: {hit.AfterKo}"
-                    + string.Concat(hit.Resolved.Select(x => "\n✔ " + x.Text)) + string.Concat(hit.Introduced.Select(x => "\n✖ " + x.Text)));
+                    + string.Concat(hit.Resolved.Select(x => "\n✔ " + x.Text)) + string.Concat(hit.Introduced.Select(x => "\n✖ " + x.Text))
+                    + string.Concat(hit.NeedsCheck.Select(x => "\n⚠ " + x.Text)));
             }
         }
 

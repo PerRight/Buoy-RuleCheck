@@ -193,6 +193,8 @@ namespace GaRuleCheck
         public string AfterKo { get; set; } = "";
         public List<ChangeRefDto> Resolved { get; set; } = new();
         public List<ChangeRefDto> Introduced { get; set; } = new();
+        /// 이번 변경으로 판정 못 함·적용 제외로 바뀐 것 — '해결'이 아니다(확인 필요)
+        public List<ChangeRefDto> NeedsCheck { get; set; } = new();
         public List<string> RelatedRules { get; set; } = new();
         public double[]? Center { get; set; }
         public double[]? Bbox { get; set; }
@@ -238,8 +240,11 @@ namespace GaRuleCheck
         public List<ChangeDto> Changes { get; set; } = new();
         public List<ChangeRefDto> ResolvedRules { get; set; } = new();
         public List<ChangeRefDto> IntroducedRules { get; set; } = new();
+        public List<ChangeRefDto> NeedsCheckRules { get; set; } = new();
         public List<IndirectDto> Indirect { get; set; } = new();
         public ViolationsDto Violations { get; set; } = new();
+        /// 확인 필요(판정 못 함) 요소 수 — 이전/이후
+        public ViolationsDto Unknown { get; set; } = new();
         public GeometryPairDto Geometry { get; set; } = new();
         public double[]? Bounds { get; set; }
         public double? UnitsScale { get; set; }

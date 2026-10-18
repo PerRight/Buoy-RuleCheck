@@ -25,7 +25,7 @@ namespace GaRuleCheck
         private readonly Button _side, _over, _diff, _export, _onDwg;
         private readonly TrackBar _opacity = new() { Minimum = 0, Maximum = 100, Value = 60, TickStyle = TickStyle.None, Width = 110, Height = 26 };
         private readonly Label _opLabel = Theme.Label("투명도 60%", Theme.Small, Theme.Muted);
-        private readonly Label _summary = new() { Dock = DockStyle.Top, Height = 44, Font = Theme.Body, ForeColor = Theme.Text, BackColor = Theme.Card, Padding = new Padding(12, 4, 12, 4) };
+        private readonly Label _summary = new() { Dock = DockStyle.Top, Height = 74, Font = Theme.Body, ForeColor = Theme.Text, BackColor = Theme.Card, Padding = new Padding(12, 4, 12, 4) };
         private readonly CompareCanvas _left = new() { Dock = DockStyle.Fill, Mode = CanvasMode.Before };
         private readonly CompareCanvas _right = new() { Dock = DockStyle.Fill, Mode = CanvasMode.After };
         private readonly CompareCanvas _main = new() { Dock = DockStyle.Fill, Mode = CanvasMode.Diff };
@@ -198,23 +198,44 @@ namespace GaRuleCheck
                 _right.Caption = $"이후 · {lb}";
                 _view.Fit(_data.Bounds ?? new double[] { 0, 0, 1, 1 }, _mode == CanvasMode.Before ? _left.ClientSize : _main.ClientSize);
                 FillList();
-                var resolved = _data.ResolvedRules.Count > 0 ? "  ·  해결: " + string.Join(", ", _data.ResolvedRules.Select(x => x.RuleName)) : "";
-                var intro = _data.IntroducedRules.Count > 0 ? "  ·  새 위반: " + string.Join(", ", _data.IntroducedRules.Select(x => x.RuleName)) : "";
-                _summary.ForeColor = _data.Violations.After > 0 ? Theme.Warn : Theme.Text;
-                _summary.Text = _data.Same
-                    ? $"{la} → {lb}: GA_ 레이어·선박 정보에 바뀐 것이 없습니다."
-                    : $"{la} → {lb}   미충족 요소 {_data.Violations.Before} → {_data.Violations.After}   변경 {_data.Changes.Count}건{resolved}{intro}"
-                      + (eb != null ? $"\n{lb} 작성자 {eb.Author} · 사유 {VersionStore.ReasonText(eb.Reason)}" + (string.IsNullOrWhiteSpace(eb.Reference) ? "" : $" — {eb.Reference}") : "\n이후: 저장 전 현재 도면");
+                var (text, color) = SummaryText(_data, la, lb, eb);
+                _summary.Text = text;
+                _summary.ForeColor = color;
                 if (_drawOnDwg) _showOnDrawing(_data);
             }
             catch (Exception ex)
             {
                 _data = null;
+                foreach (var cv in new[] { _left, _right, _main }) cv.Bind(null, _view);   // 이전 결과가 남아 보이지 않게
                 _summary.ForeColor = Theme.Warn;
                 _summary.Text = "비교할 수 없습니다 — " + ex.Message;
                 _list.Controls.Clear();
+                if (_drawOnDwg) _showOnDrawing(null);
             }
             finally { Cursor = Cursors.Default; }
+        }
+
+        /// 요약: 미충족·확인 필요 개수, 해결/새 위반/확인 필요 규칙, 두 버전의 전체 판정, 작성자·사유.
+        /// 판정 못 함(확인 필요)으로 바뀐 것은 '해결'로 보이지 않게 주황으로 따로 적는다.
+        internal static (string text, Color color) SummaryText(CompareResponse d, string la, string lb, VersionEntry? eb)
+        {
+            static string Names(List<ChangeRefDto> xs) => string.Join(", ", xs.Select(x => x.RuleName));
+            string who = eb != null
+                ? $"{lb} 작성자 {eb.Author} · 사유 {VersionStore.ReasonText(eb.Reason)}" + (string.IsNullOrWhiteSpace(eb.Reference) ? "" : $" — {eb.Reference}")
+                : "이후: 저장 전 현재 도면";
+            string verdict = $"판정  {la}: {d.A.OverallKo}  →  {lb}: {d.B.OverallKo}";
+            if (d.Same)
+                return ($"{la} → {lb}: GA_ 레이어·선박 정보와 판정에 바뀐 것이 없습니다.\n{verdict}", Theme.Text);
+            var parts = new List<string> { $"{la} → {lb}", $"미충족 요소 {d.Violations.Before} → {d.Violations.After}" };
+            if (d.Unknown.Before + d.Unknown.After > 0) parts.Add($"확인 필요 요소 {d.Unknown.Before} → {d.Unknown.After}");
+            parts.Add(d.Changes.Count > 0 ? $"변경 {d.Changes.Count}건" : "형상·선박 정보 변경 없음 — 판정만 바뀜(비슷한 레이어 이름·블록 등 확인)");
+            if (d.ResolvedRules.Count > 0) parts.Add("해결: " + Names(d.ResolvedRules));
+            if (d.IntroducedRules.Count > 0) parts.Add("새 위반: " + Names(d.IntroducedRules));
+            if (d.NeedsCheckRules.Count > 0) parts.Add("⚠ 확인 필요: " + Names(d.NeedsCheckRules));
+            var color = d.Violations.After > 0 ? Theme.Fail
+                      : d.Unknown.After > 0 || d.NeedsCheckRules.Count > 0 || d.B.Overall != "pass" ? Theme.Warn
+                      : Theme.Text;
+            return (string.Join("   ·   ", parts) + "\n" + verdict + "\n" + who, color);
         }
 
         private void FillList()
@@ -232,7 +253,11 @@ namespace GaRuleCheck
                 _list.Controls.Add(row);
             }
             foreach (var x in _data.Indirect)
-                _list.Controls.Add(new Label { Text = "※ " + x.Text, AutoSize = false, Width = w, Height = 36, ForeColor = Theme.Muted, Font = Theme.Small });
+                _list.Controls.Add(new Label
+                {
+                    Text = (x.To is null or "unknown" ? "⚠ " : "※ ") + x.Text, AutoSize = false, Width = w, Height = 36, Font = Theme.Small,
+                    ForeColor = x.To is null or "unknown" ? Theme.Warn : Theme.Muted,
+                });
             _list.ResumeLayout();
             _list.Resize -= ListResize;
             _list.Resize += ListResize;
@@ -288,7 +313,7 @@ namespace GaRuleCheck
         {
             if (_data == null) return;
             string dwgNo = DwgNumber();
-            string baseName = $"{Safe(dwgNo)}_{Safe(_la)}-{Safe(_lb)}_변경";
+            string baseName = $"{Safe(dwgNo)}_{Safe(_la)}-{Safe(_lb)}_변경";   // 점(.)도 바꿔서 확장자로 오인되지 않게
             using var dlg = new SaveFileDialog
             {
                 Title = "생산팀 전달 — 저장",
@@ -298,12 +323,16 @@ namespace GaRuleCheck
                 AddExtension = true,
             };
             if (dlg.ShowDialog(this) != DialogResult.OK) return;
+            // 확장자가 .pdf/.png가 아니면 고른 형식에 맞춰 붙인다
+            string path = dlg.FileName;
+            string ext = Path.GetExtension(path).ToLowerInvariant();
+            if (ext != ".pdf" && ext != ".png") path += dlg.FilterIndex == 2 ? ".png" : ".pdf";
             try
             {
                 using var bmp = ExportSheet.Render(_data, _ea, _eb, _la, _lb, dwgNo, Path.GetFileName(_doc.Name));
-                if (dlg.FileName.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) bmp.Save(dlg.FileName, ImageFormat.Png);
-                else RasterPdf.WriteImagePage(dlg.FileName, bmp, $"{dwgNo} {_la}→{_lb} 변경");
-                Process.Start(new ProcessStartInfo(dlg.FileName) { UseShellExecute = true });
+                if (path.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) bmp.Save(path, ImageFormat.Png);
+                else RasterPdf.WriteImagePage(path, bmp, $"{dwgNo} {_la}→{_lb} 변경");
+                Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
             }
             catch (Exception ex)
             {
@@ -322,7 +351,7 @@ namespace GaRuleCheck
             return Path.GetFileNameWithoutExtension(_doc.Name);
         }
 
-        private static string Safe(string s) => string.Concat(s.Select(ch => Path.GetInvalidFileNameChars().Contains(ch) || ch == ' ' ? '_' : ch));
+        private static string Safe(string s) => string.Concat(s.Select(ch => Path.GetInvalidFileNameChars().Contains(ch) || ch == ' ' || ch == '.' ? '_' : ch));
 
         private static ComboBox Combo() => new()
         {
@@ -374,7 +403,8 @@ namespace GaRuleCheck
         private string Body() =>
             $"이전: {Change.BeforeKo}\n이후: {Change.AfterKo}\n사유: {_reason}"
             + string.Concat(Change.Resolved.Select(x => "\n✔ 해결: " + x.Text))
-            + string.Concat(Change.Introduced.Select(x => "\n✖ 새 위반: " + x.Text));
+            + string.Concat(Change.Introduced.Select(x => "\n✖ 새 위반: " + x.Text))
+            + string.Concat(Change.NeedsCheck.Select(x => "\n⚠ 확인 필요: " + x.Text));
 
         public void Relayout()
         {

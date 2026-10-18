@@ -45,20 +45,26 @@ namespace GaRuleCheck
                 ("출력일", DateTime.Now.ToString("yyyy-MM-dd HH:mm")),
             };
             float mx = Width * 0.52f, my = m - 6;
+            float vw = Width - m - mx - 210;
             foreach (var (k, v) in meta)
             {
                 g.DrawString(k, h2, gray, mx, my);
-                g.DrawString(v, body, black, new RectangleF(mx + 210, my, Width - m - mx - 210, 40));
-                my += 38;
+                // 긴 사유·조항은 두 줄까지 감싼다(그 이상은 줄임표)
+                float vh = Math.Min(g.MeasureString(v, body, (int)vw).Height, body.GetHeight(g) * 2 + 2);
+                using (var fmt = new StringFormat { Trimming = StringTrimming.EllipsisWord })
+                    g.DrawString(v, body, black, new RectangleF(mx + 210, my, vw, vh + 1), fmt);
+                my += Math.Max(38, vh + 8);
             }
             float headerBottom = Math.Max(my, m + 110) + 14;
             g.DrawLine(line, m, headerBottom, Width - m, headerBottom);
 
             // ── 요약 줄 ──
-            string summary = $"미충족 요소 {d.Violations.Before} → {d.Violations.After}  ·  변경 {d.Changes.Count}건  ·  "
-                             + $"{labelA}: {d.A.OverallKo}  →  {labelB}: {d.B.OverallKo}";
-            g.DrawString(summary, body, black, new RectangleF(m, headerBottom + 14, Width - 2 * m, 40));
-            float top = headerBottom + 64;
+            // 비교 창과 같은 요약(미충족·확인 필요 개수, 해결/새 위반/확인 필요 규칙, 두 버전의 전체 판정). 작성자 줄은 머리말에 있으므로 뺀다.
+            var lines = CompareForm.SummaryText(d, labelA, labelB, vb).text.Split('\n');
+            string summary = string.Join("\n", lines.Take(Math.Max(lines.Length - 1, 1)));
+            var sumSize = g.MeasureString(summary, body, (int)(Width - 2 * m));
+            g.DrawString(summary, body, black, new RectangleF(m, headerBottom + 14, Width - 2 * m, sumSize.Height + 2));
+            float top = headerBottom + 14 + sumSize.Height + 22;
 
             // ── 차이 강조 그림 ──
             float footer = 150;
@@ -77,7 +83,8 @@ namespace GaRuleCheck
             {
                 var text = $"{c.DescKo}\n이전: {c.BeforeKo}   이후: {c.AfterKo}"
                            + string.Concat(c.Resolved.Select(x => $"\n✔ 해결: {x.Text}"))
-                           + string.Concat(c.Introduced.Select(x => $"\n✖ 새 위반: {x.Text}"));
+                           + string.Concat(c.Introduced.Select(x => $"\n✖ 새 위반: {x.Text}"))
+                           + string.Concat(c.NeedsCheck.Select(x => $"\n⚠ 확인 필요: {x.Text}"));
                 var sz = g.MeasureString(text, small, (int)(lw - 70));
                 if (ly + sz.Height > img.Bottom - 40)
                 {
@@ -100,7 +107,7 @@ namespace GaRuleCheck
                 ly += 42;
                 foreach (var x in d.Indirect.Take(4))
                 {
-                    g.DrawString("※ " + x.Text, small, gray, new RectangleF(lx, ly, lw, 60));
+                    g.DrawString((x.To is null or "unknown" ? "⚠ " : "※ ") + x.Text, small, gray, new RectangleF(lx, ly, lw, 60));
                     ly += 40;
                 }
             }
