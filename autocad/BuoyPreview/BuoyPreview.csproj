@@ -12,35 +12,35 @@
     <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
-    <RootNamespace>GaRuleCheck</RootNamespace>
+    <RootNamespace>BuoyRuleCheck</RootNamespace>
     <AssemblyName>BuoyPreview</AssemblyName>
     <NoWarn>$(NoWarn);WFO1000</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="..\GaRuleCheck\Theme.cs" Link="Shared\Theme.cs" />
-    <Compile Include="..\GaRuleCheck\OrbModel.cs" Link="Shared\OrbModel.cs" />
-    <Compile Include="..\GaRuleCheck\OrbRenderer.cs" Link="Shared\OrbRenderer.cs" />
-    <Compile Include="..\GaRuleCheck\BuoyAnim.cs" Link="Shared\BuoyAnim.cs" />
-    <Compile Include="..\GaRuleCheck\UiState.cs" Link="Shared\UiState.cs" />
-    <Compile Include="..\GaRuleCheck\Dto.cs" Link="Shared\Dto.cs" />
-    <Compile Include="..\GaRuleCheck\UiText.cs" Link="Shared\UiText.cs" />
-    <Compile Include="..\GaRuleCheck\BuoyCard.cs" Link="Shared\BuoyCard.cs" />
-    <Compile Include="..\GaRuleCheck\PaletteParts.cs" Link="Shared\PaletteParts.cs" />
-    <Compile Include="..\GaRuleCheck\RuleCard.cs" Link="Shared\RuleCard.cs" />
-    <Compile Include="..\GaRuleCheck\ResultPanel.cs" Link="Shared\ResultPanel.cs" />
-    <Compile Include="..\GaRuleCheck\ShipInfoView.cs" Link="Shared\ShipInfoView.cs" />
-    <Compile Include="..\GaRuleCheck\DrawingPropsText.cs" Link="Shared\DrawingPropsText.cs" />
-    <Compile Include="..\GaRuleCheck\FloatingParts.cs" Link="Shared\FloatingParts.cs" />
-    <Compile Include="..\GaRuleCheck\ParticularsDialog.cs" Link="Shared\ParticularsDialog.cs" />
-    <Compile Include="..\GaRuleCheck\LinkProgress.cs" Link="Shared\LinkProgress.cs" />
-    <Compile Include="..\GaRuleCheck\CompareForm.cs" Link="Shared\CompareForm.cs" />
-    <Compile Include="..\GaRuleCheck\CompareParts.cs" Link="Shared\CompareParts.cs" />
-    <Compile Include="..\GaRuleCheck\CompareCanvas.cs" Link="Shared\CompareCanvas.cs" />
-    <Compile Include="..\GaRuleCheck\ExportSheet.cs" Link="Shared\ExportSheet.cs" />
-    <Compile Include="..\GaRuleCheck\RasterPdf.cs" Link="Shared\RasterPdf.cs" />
-    <Compile Include="..\GaRuleCheck\VersionStore.cs" Link="Shared\VersionStore.cs" />
-    <Compile Include="..\GaRuleCheck\EngineClient.cs" Link="Shared\EngineClient.cs" />
-    <Compile Include="..\GaRuleCheck\HitIndex.cs" Link="Shared\HitIndex.cs" />
+    <Compile Include="..\BuoyRuleCheck\Theme.cs" Link="Shared\Theme.cs" />
+    <Compile Include="..\BuoyRuleCheck\OrbModel.cs" Link="Shared\OrbModel.cs" />
+    <Compile Include="..\BuoyRuleCheck\OrbRenderer.cs" Link="Shared\OrbRenderer.cs" />
+    <Compile Include="..\BuoyRuleCheck\BuoyAnim.cs" Link="Shared\BuoyAnim.cs" />
+    <Compile Include="..\BuoyRuleCheck\UiState.cs" Link="Shared\UiState.cs" />
+    <Compile Include="..\BuoyRuleCheck\Dto.cs" Link="Shared\Dto.cs" />
+    <Compile Include="..\BuoyRuleCheck\UiText.cs" Link="Shared\UiText.cs" />
+    <Compile Include="..\BuoyRuleCheck\BuoyCard.cs" Link="Shared\BuoyCard.cs" />
+    <Compile Include="..\BuoyRuleCheck\PaletteParts.cs" Link="Shared\PaletteParts.cs" />
+    <Compile Include="..\BuoyRuleCheck\RuleCard.cs" Link="Shared\RuleCard.cs" />
+    <Compile Include="..\BuoyRuleCheck\ResultPanel.cs" Link="Shared\ResultPanel.cs" />
+    <Compile Include="..\BuoyRuleCheck\ShipInfoView.cs" Link="Shared\ShipInfoView.cs" />
+    <Compile Include="..\BuoyRuleCheck\DrawingPropsText.cs" Link="Shared\DrawingPropsText.cs" />
+    <Compile Include="..\BuoyRuleCheck\FloatingParts.cs" Link="Shared\FloatingParts.cs" />
+    <Compile Include="..\BuoyRuleCheck\ParticularsDialog.cs" Link="Shared\ParticularsDialog.cs" />
+    <Compile Include="..\BuoyRuleCheck\LinkProgress.cs" Link="Shared\LinkProgress.cs" />
+    <Compile Include="..\BuoyRuleCheck\CompareForm.cs" Link="Shared\CompareForm.cs" />
+    <Compile Include="..\BuoyRuleCheck\CompareParts.cs" Link="Shared\CompareParts.cs" />
+    <Compile Include="..\BuoyRuleCheck\CompareCanvas.cs" Link="Shared\CompareCanvas.cs" />
+    <Compile Include="..\BuoyRuleCheck\ExportSheet.cs" Link="Shared\ExportSheet.cs" />
+    <Compile Include="..\BuoyRuleCheck\RasterPdf.cs" Link="Shared\RasterPdf.cs" />
+    <Compile Include="..\BuoyRuleCheck\VersionStore.cs" Link="Shared\VersionStore.cs" />
+    <Compile Include="..\BuoyRuleCheck\EngineClient.cs" Link="Shared\EngineClient.cs" />
+    <Compile Include="..\BuoyRuleCheck\HitIndex.cs" Link="Shared\HitIndex.cs" />
     <EmbeddedResource Include="samples.json" LogicalName="BuoyPreview.samples.json" />
     <EmbeddedResource Include="samples_compare.json" LogicalName="BuoyPreview.samples_compare.json" />
   </ItemGroup>

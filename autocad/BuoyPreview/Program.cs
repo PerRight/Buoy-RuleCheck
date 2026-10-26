@@ -2,7 +2,7 @@
 using System;
 using System.Windows.Forms;
 
-namespace GaRuleCheck
+namespace BuoyRuleCheck
 {
     internal static class Program
     {

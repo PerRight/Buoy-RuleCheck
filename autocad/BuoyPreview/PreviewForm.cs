@@ -5,7 +5,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
-namespace GaRuleCheck
+namespace BuoyRuleCheck
 {
     public sealed class PreviewForm : Form
     {

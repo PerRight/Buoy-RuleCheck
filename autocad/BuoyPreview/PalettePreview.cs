@@ -10,7 +10,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Windows.Forms;
 
-namespace GaRuleCheck
+namespace BuoyRuleCheck
 {
     public sealed class PalettePreview : Form
     {

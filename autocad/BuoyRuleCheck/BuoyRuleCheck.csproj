@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Buoy-RuleCheck — AutoCAD 2027 (.NET 10) 플러그인. 빌드: dotnet build -c Release   (.NET 10 SDK 필요)
+    AutoCAD가 다른 경로에 설치돼 있으면: dotnet build -c Release -p:AcadDir="D:\Autodesk\AutoCAD 2027"
+    AutoCAD 2025/2026(.NET 8)용으로 빌드하려면: -p:TargetFramework=net8.0-windows -p:AcadDir="...\AutoCAD 2025"
+    (버전마다 바이너리 호환이 안 되므로 쓰는 AutoCAD 버전에 맞춰 다시 빌드해야 한다)
+    AutoCAD DLL은 참조만 하고 출력 폴더로 복사하지 않는다(Private=false).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>BuoyRuleCheck</AssemblyName>
+    <RootNamespace>BuoyRuleCheck</RootNamespace>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <!-- 디자이너를 쓰지 않는 코드 전용 UI라 WinForms 직렬화 분석기 경고는 끈다 -->
+    <NoWarn>$(NoWarn);WFO1000</NoWarn>
+    <AcadDir Condition="'$(AcadDir)' == ''">C:\Program Files\Autodesk\AutoCAD 2027</AcadDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="AcCoreMgd">
+      <HintPath>$(AcadDir)\accoremgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="AcDbMgd">
+      <HintPath>$(AcadDir)\acdbmgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="AcMgd">
+      <HintPath>$(AcadDir)\acmgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="AdWindows">
+      <!-- 리본 API (Autodesk.Windows) -->
+      <HintPath>$(AcadDir)\AdWindows.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>
