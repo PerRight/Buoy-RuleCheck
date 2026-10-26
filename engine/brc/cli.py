@@ -54,8 +54,8 @@ def _print_json(obj: Any) -> None:
     한국어 Windows의 파이프·리다이렉트는 cp949라 UTF-8로 읽는 쪽이 깨지고(UnicodeDecodeError), cp949에 없는
     '—'·'→'는 '?'로 바뀐다. ASCII JSON은 어떤 코드 페이지로 읽어도 같은 값이고 JSON 해석기가 한글로 되돌린다."""
     try:
-        tty = sys.stdout.isatty()
-    except (AttributeError, ValueError):
+        tty = bool(sys.stdout.isatty())
+    except Exception:   # isatty가 없거나 닫힌 stream·이상한 대체 stream이면 파이프로 본다(ASCII, 안전 쪽)
         tty = False
     print(json.dumps(obj, ensure_ascii=not tty, indent=2, default=str))
 
