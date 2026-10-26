@@ -48,7 +48,7 @@ engine/brc (Python 3.10+, 표준 라이브러리만 — 옛 이름 garc도 같�
 ```bash
 cd engine
 pip install ezdxf                       # DXF 경로에만 필요
-python -m unittest discover -s tests    # 24건 기대값 포함 158개 테스트 (ezdxf 없으면 DXF 테스트는 skip)
+python -m unittest discover -s tests    # 24건 기대값 포함 161개 테스트 (ezdxf 없으면 DXF 테스트는 skip)
 python -m brc revs ../samples/S140_rev*.dxf
 ```
 출력 예:
@@ -94,7 +94,7 @@ AutoCAD 없이 화면만 보려면: `cd autocad\BuoyPreview` → `dotnet run` (�
 
 ## 현재 상태 (2026-10-26)
 - **Buoy UI(플러그인 0.6 · 엔진 0.5)**: 디자인 명세대로 화면을 바꾸고 이름을 Buoy-RuleCheck로 — 명령 `BRC*`(옛 `GARC*` 별칭), 도면 특성 `BRC_*`(옛 `GARC_*`도 읽음), 엔진 패키지 `brc`(옛 `garc` 별칭), 버전 기록 폴더 `<도면>.brc`(옛 `.garc`는 옮겨 씀). 엔진에는 표시용 필드(부표 자리 anchor · 카드 숫자 fix · 비교 제목)만 더했고 판정은 그대로(샘플·실도면 판정이 바이트 단위로 같음). AutoCAD 2027 참조로 **컴파일 확인**, AutoCAD 안 실행 확인은 진행 중
-- 엔진 0.4.0: 실도면 연결(축척 1/N·측면도 영역·객체/레이어 역할·블록 펼침·LBP 대조·준비 상태·치수표 읽기 `/v1/particulars`). 엔진 0.3.0: 요소(객체)별 판정, 버전 비교(`/v1/compare`, `python -m brc compare`). 테스트 158개 통과(Python 3.10~3.14 — GitHub Actions가 push·PR마다 자동 실행), 24건 기대값은 독립 재계산(정확 산술)과 일치 — 팀원 수기 검산은 진행 중. 오류 수정과 공개 준비는 Sonnet 독립 검증 1~7차를 거쳤다 — [검증 기록](docs/review/2026-10-12_오류수정_검증기록.md)
+- 엔진 0.4.0: 실도면 연결(축척 1/N·측면도 영역·객체/레이어 역할·블록 펼침·LBP 대조·준비 상태·치수표 읽기 `/v1/particulars`). 엔진 0.3.0: 요소(객체)별 판정, 버전 비교(`/v1/compare`, `python -m brc compare`). 테스트 161개 통과(Python 3.10~3.14 — GitHub Actions가 push·PR마다 자동 실행), 24건 기대값은 독립 재계산(정확 산술)과 일치 — 팀원 수기 검산은 진행 중. 오류 수정과 공개 준비는 Sonnet 독립 검증 1~7차를 거쳤다 — [검증 기록](docs/review/2026-10-12_오류수정_검증기록.md)
 - 플러그인: v0.3.1 AutoCAD 2027 빌드·실행 확인. v0.4.0(버전 비교·로고 패널·마우스 오버)·v0.5.0(실도면 연결)은 AutoCAD 2027 참조로 **컴파일 확인**, AutoCAD 안 실행 확인은 진행 중 — [autocad/README.md](autocad/README.md) 확인표 15~35
 - 실도면: 팀이 가진 실제 GA 5건(저장소에는 넣지 않음)에서 치수표·축척 5/5 자동 추출, 탱커 GA 1건은 역할 지정 후 엔진 판정까지 확인(장애물 7천~1만여 객체, 계약+판정 0.3~1.1 초). 마스트·크레인 같은 좁은 구조물을 수면 가시거리 장애물로 볼지는 확인 필요 — [규칙 정의](docs/rule-definitions.md)
 - 데모: `samples/S140_v1_review.dxf`(수정 소요 3건) → `S140_v2_fixed.dxf`(수정 완료) + 버전 기록 `S140_v2_fixed.brc/` — AutoCAD에서 `S140_v2_fixed.dxf`를 열고 `BRC` → `BRCCOMPARE`, 또는 `python -m brc compare ../samples/S140_v1_review.dxf ../samples/S140_v2_fixed.dxf`

@@ -560,7 +560,7 @@ namespace BuoyRuleCheck
         {
             var panel = new ResultPanel();
             panel.RecheckRequested += () => { var d = Active; if (d != null) { EngineClient.EnsureRunning(); Attach(d).RunCheck(); } };
-            panel.StartRequested += () => Send("_BRCSETUP _BRC ");
+            panel.StartRequested += setup => Send(setup ? "_BRCSETUP _BRC " : "_BRC ");   // '검사 시작'은 도면 무수정, '레이어 만들고 시작'만 BRCSETUP
             panel.LinkRequested += () => Send("_BRCLINK ");
             panel.ToggleOverlayRequested += () => Send("_BRCTOGGLE ");
             panel.ReportRequested += () => Send("_BRCREPORT ");

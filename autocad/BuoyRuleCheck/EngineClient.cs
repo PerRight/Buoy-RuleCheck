@@ -98,18 +98,22 @@ namespace BuoyRuleCheck
             try { Post("/v1/reset", JsonSerializer.Serialize(new { doc_id = docId }), TimeSpan.FromSeconds(3)); } catch { /* 무시 */ }
         }
 
-        public static string Health()
+        public static string Health(TimeSpan? timeout = null)
         {
+            HttpResponseMessage resp;
+            string text;
             try
             {
-                using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(3));
-                var resp = Task.Run(() => Http.GetAsync("/v1/health", cts.Token)).GetAwaiter().GetResult();
-                return Task.Run(() => resp.Content.ReadAsStringAsync()).GetAwaiter().GetResult();
+                using var cts = new System.Threading.CancellationTokenSource(timeout ?? TimeSpan.FromSeconds(3));
+                resp = Task.Run(() => Http.GetAsync("/v1/health", cts.Token)).GetAwaiter().GetResult();
+                text = Task.Run(() => resp.Content.ReadAsStringAsync()).GetAwaiter().GetResult();
             }
             catch (Exception ex)
             {
                 throw new EngineException($"엔진 서버({BaseUrl})에 연결할 수 없습니다.", ex);
             }
+            if (!resp.IsSuccessStatusCode) throw new EngineException($"엔진 상태 확인 오류 {(int)resp.StatusCode} — 엔진 창을 닫고 다시 검사하세요.");
+            return text;
         }
 
         /// 엔진 버전 확인(한 번 맞으면 기억, 연결이 끊기면 다시 확인). 연결 실패는 여기서 다루지 않는다(Post가 같은 방식으로 처리).
@@ -117,12 +121,41 @@ namespace BuoyRuleCheck
         {
             if (_compatible) return;
             string text;
-            try { text = Health(); } catch (EngineException) { return; }
+            try { text = Health(TimeSpan.FromSeconds(1.5)); }
+            catch (EngineException) { return; }   // 연결 안 됨·느림: 아래 Post가 다루고, 응답의 Server 헤더로 다시 확인한다
             var ver = EngineVersionOf(text);
             if (ver != null && ver >= Version.Parse(MinEngineVersion)) { _compatible = true; return; }
-            throw new EngineException(
-                $"옛 엔진({(ver?.ToString() ?? "버전 모름")})이 켜져 있어 판정하지 않습니다 — 이 플러그인은 엔진 {MinEngineVersion} 이상이 필요합니다. " +
-                "엔진 창(python -m garc serve)을 닫고 [다시 검사]를 누르세요. 새 엔진(python -m brc serve)이 자동으로 켜집니다.");
+            throw OldEngine(ver);
+        }
+
+        private static EngineException OldEngine(Version? ver) => new(
+            $"옛 엔진({(ver?.ToString() ?? "버전 모름")})이 켜져 있어 판정하지 않습니다 — 이 플러그인은 엔진 {MinEngineVersion} 이상이 필요합니다. " +
+            "엔진 창(python -m garc serve)을 닫고 [다시 검사]를 누르세요. 새 엔진(python -m brc serve)이 자동으로 켜집니다.");
+
+        /// 응답마다 Server 헤더(엔진: 'brc/0.5.0', 옛 엔진: 'garc/0.4.0')로 엔진을 다시 확인한다 — 버전 확인 뒤 같은 포트의
+        /// 엔진이 옛 것으로 바뀌었거나, health가 느려 확인을 건너뛴 경우에도 옛 엔진 판정을 쓰지 않게.
+        /// 헤더가 없거나 읽을 수 없으면: 이미 health로 확인했으면 그대로, 아니면 엔진이 아닌 것으로 본다.
+        private static void CheckServer(HttpResponseMessage resp)
+        {
+            string? name = null;
+            Version? ver = null;
+            try
+            {
+                foreach (var p in resp.Headers.Server)
+                {
+                    if (p.Product?.Name is not ("brc" or "garc")) continue;
+                    name = p.Product.Name;
+                    ver = Version.TryParse(p.Product.Version, out var v) ? v : null;
+                    break;
+                }
+            }
+            catch (FormatException) { /* 헤더를 읽을 수 없음 = 엔진 표시 없음 */ }
+            if (name == "brc" && ver != null && ver >= Version.Parse(MinEngineVersion)) return;
+            if (name == null && _compatible) return;   // health로 이미 확인한 엔진(헤더만 빠짐)
+            _compatible = false;
+            if (name == null)
+                throw new EngineException($"엔진 주소({BaseUrl})에서 응답한 프로그램이 검사 엔진인지 확인할 수 없어 판정하지 않습니다 — 엔진 창을 닫고 다시 검사하세요.");
+            throw OldEngine(ver);
         }
 
         /// /v1/health 응답의 version("0.5.0") → Version. 읽을 수 없으면 null(= 옛 엔진으로 본다).
@@ -131,6 +164,7 @@ namespace BuoyRuleCheck
             try
             {
                 using var d = JsonDocument.Parse(healthJson);
+                if (d.RootElement.ValueKind != JsonValueKind.Object) return null;   // null·[]·숫자 등 — 엔진 응답 아님
                 if (!d.RootElement.TryGetProperty("version", out var v) || v.ValueKind != JsonValueKind.String) return null;
                 var s = v.GetString() ?? "";
                 int end = 0;
@@ -148,6 +182,7 @@ namespace BuoyRuleCheck
                 using var content = new StringContent(json, Encoding.UTF8, "application/json");
                 using var cts = new System.Threading.CancellationTokenSource(timeout ?? Http.Timeout);
                 var resp = Task.Run(() => Http.PostAsync(path, content, cts.Token)).GetAwaiter().GetResult();
+                CheckServer(resp);
                 var text = Task.Run(() => resp.Content.ReadAsStringAsync()).GetAwaiter().GetResult();
                 if (!resp.IsSuccessStatusCode)
                     throw new EngineException($"엔진 오류 {(int)resp.StatusCode}: {text}");

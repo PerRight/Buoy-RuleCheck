@@ -41,7 +41,7 @@ AutoCAD 2027에서 GA(일반배치도) 측면도가 바뀌면 → 바뀐 객체�
 - 규칙을 추가하거나 바꾸면 engine/tests/cases/expected_24.json에 정상·경계·위반·누락 케이스를 같이 넣고, scripts/render_cases.py로 docs/test-cases.md를 다시 만든다. 기대값을 엔진 출력에 맞춰 고치지 말고, 손으로 계산한 근거(hand_calc)를 먼저 쓴다.
 
 ## 현재 상태 (2026-10-26 기준)
-- 엔진 0.5.0: 테스트 158개 통과 (24건 기대값 + 입력 계약·revision·서버·리포트·DXF + 오류 회귀 + 요소 판정·버전 비교·실도면 연결·옛 이름 호환).
+- 엔진 0.5.0: 테스트 161개 통과 (24건 기대값 + 입력 계약·revision·서버·리포트·DXF + 오류 회귀 + 요소 판정·버전 비교·실도면 연결·옛 이름 호환).
 - 플러그인 0.6.0(Buoy UI): 도면 위 부표·떠 있는 로고·수정 소요 목록·팔레트·리본·연결 마법사 5단계·버전 비교·A4 전달. 명령 BRC*(옛 GARC* 별칭). Claude 작업 환경에서 AutoCAD 2027 DLL 참조로 컴파일 확인(오류·경고 0), AutoCAD 안 실행은 autocad/README.md 확인표로 확인할 차례. 화면만 보려면 autocad/BuoyPreview에서 dotnet run.
 - 검증 기록: docs/review/ (최근 2026-10-26_BuoyUI_검증기록.md)
 - 저장소: GitHub 공개(Public) 저장소로 공유. main은 항상 테스트 통과 상태 — 작업은 브랜치 → PR(체크리스트) → Actions 초록 → 병합. 실도면 DWG·DXF와 검토 리포트는 커밋하지 않는다.

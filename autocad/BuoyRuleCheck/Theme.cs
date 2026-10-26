@@ -166,9 +166,10 @@ namespace BuoyRuleCheck
         {
             "pass" => Pass,
             "fail" => Fail,
-            "na" or "review" or "incomplete" or "unknown" or "down" => Warn,
+            "na" or "review" or "incomplete" or "unknown" or "down" or "warn" => Warn,
             "skip" => Skip,
-            _ => Faint,
+            null or "" or "idle" or "none" or "check" or "muted" => Faint,   // 판정이 아닌 상태(검사 전·검사 중·바뀌지 않음)
+            _ => Warn,                                                       // 모르는 상태 문자열은 확인 필요(파랑으로 보이지 않게)
         };
 
         /// 사용자에게 보이는 상태 이름(명세 3절: 통과는 '문제없음', '적합·승인'은 쓰지 않는다).
@@ -176,10 +177,12 @@ namespace BuoyRuleCheck
         {
             "pass" => "문제없음",
             "fail" => "수정 소요",
-            "na" or "review" or "incomplete" or "unknown" => "확인 필요",
+            "na" or "review" or "incomplete" or "unknown" or "warn" => "확인 필요",
             "down" => "연결 끊김",
             "skip" => "적용 제외",
-            _ => "검사 전",
+            null or "" or "idle" or "none" => "검사 전",
+            "check" => "검사 중",
+            _ => "확인 필요",   // 모르는 상태 문자열
         };
 
         /// 기본 버튼(흰 잉크 채움)이면 accent에 Theme.Info, 나머지는 1px 링.

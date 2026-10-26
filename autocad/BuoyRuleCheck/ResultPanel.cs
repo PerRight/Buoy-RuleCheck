@@ -15,7 +15,8 @@ namespace BuoyRuleCheck
     public sealed class ResultPanel : UserControl
     {
         public event Action? RecheckRequested;
-        public event Action? StartRequested;
+        /// 검사 시작(인자 true = '레이어 만들고 시작' — 사용자가 GA_ 레이어 만들기를 고른 경우만 도면을 바꾼다)
+        public event Action<bool>? StartRequested;
         /// 실도면 연결 마법사 요청 — 준비 상태 카드·시작 화면의 버튼
         public event Action? LinkRequested;
         public event Action? ToggleOverlayRequested;
@@ -178,7 +179,7 @@ namespace BuoyRuleCheck
             var card = new InfoCard("GA 도면이 바뀌면 고칠 자리에 부표가 떠요",
                 "1) 선박 정보 탭에서 LOA·L·AP·FP·흘수 입력\n2) GA_ 레이어에 선체·조종위치·장애물·충돌격벽 그리기\n3) 검사 시작\n" +
                 "실제 도면(GA_ 레이어 없음, 1/1000 축척 등)은 [실도면 연결]로 레이어와 객체를 바꾸지 않고 연결합니다.");
-            card.Add(Theme.PrimaryButton(showSetup ? "레이어 만들고 시작" : "검사 시작")).Click += (_, _) => StartRequested?.Invoke();
+            card.Add(Theme.PrimaryButton(showSetup ? "레이어 만들고 시작" : "검사 시작")).Click += (_, _) => StartRequested?.Invoke(showSetup);
             card.Add(Theme.RingButton("실도면 연결")).Click += (_, _) => LinkRequested?.Invoke();
             _cards.Controls.Add(card);
             FitCards();

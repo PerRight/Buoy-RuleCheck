@@ -77,7 +77,7 @@ namespace BuoyRuleCheck
 
             foreach (var (key, (r, e)) in now)
             {
-                string st = e.Status == "fail" ? "fail" : e.Status == "unknown" ? "warn" : "pass";
+                string st = e.Status == "fail" ? "fail" : e.Status == "pass" ? "pass" : "warn";   // 모르는 요소 상태는 확인 필요(문제없음 아님)
                 bool hasAnchor = e.Anchor is { Length: >= 2 } && _scale > 0;
                 if (Buoys.TryGetValue(key, out var b))
                 {
@@ -480,7 +480,7 @@ namespace BuoyRuleCheck
             if (e?.Anchor is not { Length: >= 2 } a || scale <= 0) return false;
             const double pad = 8;   // m — 고칠 자리 주변이 함께 보이게
             try { using (doc.LockDocument()) Overlay.FocusBox(doc, new[] { a[0] - pad, a[1] - pad, a[0] + pad, a[1] + pad }, scale); } catch { }
-            string st = e.Status == "fail" ? "fail" : e.Status == "unknown" ? "warn" : "pass";
+            string st = e.Status == "fail" ? "fail" : e.Status == "pass" ? "pass" : "warn";   // 모르는 요소 상태는 확인 필요(문제없음 아님)
             var card = new BuoyCard(new List<BuoyCardItem> { new(st, r.RuleId, r.Condition, e) });
             card.EvidenceRequested += it => EvidenceRequested?.Invoke(it.RuleId, it.Element.ElementId);
             card.ZoomRequested += list => ZoomTo(list);

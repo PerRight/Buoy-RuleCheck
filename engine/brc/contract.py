@@ -365,15 +365,21 @@ def parse_conditions(text: str) -> list[dict[str, Any]]:
     return out
 
 
-def _same_prop_value(a: str, b: str) -> bool:
+_PLAIN_NUMBER = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?")   # ASCII 숫자만(\d는 전각 숫자도 받음)
+
+
+def _same_prop_value(key: str, a: str, b: str) -> bool:
     """같은 특성이 두 번 들어 있을 때 같은 값으로 볼지: 글자가 같거나, 한쪽이 비었거나(= 없음),
-    둘 다 유한한 숫자로 읽혀 값이 같을 때("140"과 "140.0"). 그 밖(1,40 · nan · 다른 숫자 · 다른 글)은 다른 값."""
+    숫자 특성(LOA·L·AP·FP 등)에서 둘 다 평범한 십진수 표기이고 값이 같을 때("140"과 "140.0").
+    그 밖(1,40 · 1_40 · 0x10 · 전각 숫자 · nan · inf · 다른 숫자 · 글자 특성의 "001"과 "1")은 다른 값 — 판정을 멈춘다."""
     if a == b or a == "" or b == "":
         return True
-    try:
-        fa, fb = float(a), float(b)
-    except ValueError:
+    spec = PROP_KEYS.get(key)
+    if not spec or spec[1] is not float:
         return False
+    if not (_PLAIN_NUMBER.fullmatch(a) and _PLAIN_NUMBER.fullmatch(b)):
+        return False
+    fa, fb = float(a), float(b)
     return math.isfinite(fa) and math.isfinite(fb) and fa == fb
 
 
@@ -394,7 +400,7 @@ def raw_to_model(raw: dict[str, Any]) -> dict[str, Any]:
         canon = PROP_PREFIX + key[len(LEGACY_PROP_PREFIX):] if old_name else key
         fam = "old" if old_name else "new"
         val = str(v).strip()
-        if canon in props and canon.startswith(PROP_PREFIX) and not _same_prop_value(props[canon], val):
+        if canon in props and canon.startswith(PROP_PREFIX) and not _same_prop_value(canon, props[canon], val):
             # 같은 특성이 두 번(대소문자만 다르거나, 새 이름과 옛 이름)인데 값이 다르면 어느 쪽인지 고르지 않는다
             (dup if fam in seen.get(canon, set()) else legacy_dup).add(canon)
         # 둘 다 있으면 새 이름 값(값이 다르면 위 issue로 판정을 멈춘다). 빈 값은 '없음'과 같아서 다른 쪽 값을 덮지 않는다.

@@ -85,12 +85,18 @@ class LegacyProps(unittest.TestCase):
         for blank in ({**NEW, "GARC_LOA": ""}, {"BRC_LOA": "", **{k: v for k, v in NEW.items() if k != "BRC_LOA"}, "GARC_LOA": "140"}):
             with self.subTest(blank=blank):                                    # 빈 값은 '없음'과 같다 — 다른 쪽 값으로 판정
                 self.assertEqual(judge(raw(blank, stack=False))[0]["overall"], "pass")
-        for other in ("140.5", "1,40", "nan", "inf", "140m"):
+        for other in ("140.5", "1,40", "nan", "inf", "140m", "1_40", "0x8C", "１４０", "1e400"):
             with self.subTest(other=other):
                 props = {**NEW, "GARC_LOA": other}
                 rep, res = judge(raw(props, stack=False))
                 self.assertEqual(res[VIS]["status"], "review", other)
                 self.assertIn("PROP_DUPLICATE", res[VIS]["evidence"]["issues"])
+
+    def test_text_props_compare_as_text(self):
+        # 글자 특성(선종 등)은 숫자처럼 보여도 글자로 비교한다 — "001"과 "1"은 다른 값
+        rep, res = judge(raw({**NEW, "BRC_SHIP_TYPE": "001", "GARC_SHIP_TYPE": "1"}, stack=False))
+        self.assertEqual(res[VIS]["status"], "review")
+        self.assertIn("PROP_DUPLICATE", res[VIS]["evidence"]["issues"])
 
     def test_messages_use_new_names(self):
         rep, res = judge(raw({k: v for k, v in NEW.items() if k != "BRC_LOA"}, stack=False))

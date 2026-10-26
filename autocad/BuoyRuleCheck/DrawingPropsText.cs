@@ -28,10 +28,17 @@ namespace BuoyRuleCheck
         public static Dictionary<string, string> Canonical(IReadOnlyDictionary<string, string> raw)
         {
             var d = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            // 엔진(contract.py)과 같은 규칙: 새 이름이 이기고, 빈 값은 '없음'이라 다른 쪽 값을 덮지 않는다.
             foreach (var kv in raw.Where(kv => kv.Key.Trim().StartsWith(LegacyPrefix, StringComparison.OrdinalIgnoreCase)))
-                d[ToNewName(kv.Key)] = kv.Value;
+            {
+                var key = ToNewName(kv.Key);
+                if (!d.TryGetValue(key, out var cur) || string.IsNullOrWhiteSpace(cur)) d[key] = kv.Value;
+            }
             foreach (var kv in raw.Where(kv => !kv.Key.Trim().StartsWith(LegacyPrefix, StringComparison.OrdinalIgnoreCase)))
-                d[kv.Key.Trim()] = kv.Value;
+            {
+                var key = kv.Key.Trim();
+                if (!d.ContainsKey(key) || !string.IsNullOrWhiteSpace(kv.Value)) d[key] = kv.Value;
+            }
             return d;
         }
 
