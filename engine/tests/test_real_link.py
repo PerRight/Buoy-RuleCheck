@@ -611,7 +611,8 @@ class Particulars(unittest.TestCase):
                 try:
                     return 200, json.loads(urllib.request.urlopen(req).read())
                 except urllib.error.HTTPError as e:
-                    return e.code, json.loads(e.read())
+                    with e:   # 응답을 닫는다(Python 3.14 ResourceWarning)
+                        return e.code, json.loads(e.read())
             code, out = post({"texts": self.COLUMNS})
             self.assertEqual((code, out["items"]["loa"]["value"]), (200, 188.4))
             self.assertEqual(post({"texts": "x"})[0], 400)

@@ -212,7 +212,8 @@ class Compare(unittest.TestCase):
                 try:
                     return 200, json.loads(urllib.request.urlopen(req).read())
                 except urllib.error.HTTPError as e:
-                    return e.code, json.loads(e.read())
+                    with e:   # 응답을 닫는다(Python 3.14 ResourceWarning)
+                        return e.code, json.loads(e.read())
             code, out = post({"a": self.v1(), "b": self.v2(), "labels": ["v1", "v2"]})
             self.assertEqual(code, 200)
             self.assertEqual((out["a"]["label"], out["b"]["label"], len(out["changes"])), ("v1", "v2", 4))

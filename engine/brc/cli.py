@@ -49,6 +49,17 @@ def _print_report(rep: dict[str, Any]) -> None:
     print(f"   ※ {DISCLAIMER_KO}")
 
 
+def _print_json(obj: Any) -> None:
+    """--json 출력. 콘솔이면 한글 그대로, 파이프·파일이면 ASCII(\\uXXXX 이스케이프)로 쓴다.
+    한국어 Windows의 파이프·리다이렉트는 cp949라 UTF-8로 읽는 쪽이 깨지고(UnicodeDecodeError), cp949에 없는
+    '—'·'→'는 '?'로 바뀐다. ASCII JSON은 어떤 코드 페이지로 읽어도 같은 값이고 JSON 해석기가 한글로 되돌린다."""
+    try:
+        tty = sys.stdout.isatty()
+    except (AttributeError, ValueError):
+        tty = False
+    print(json.dumps(obj, ensure_ascii=not tty, indent=2, default=str))
+
+
 def main(argv: list[str] | None = None) -> int:
     # cp949 콘솔·파이프에서 '—'·'→'·'⚠' 같은 문자로 죽지 않게 — 인코딩은 그대로 두고 못 쓰는 문자만 '?'로.
     for stream in (sys.stdout, sys.stderr):
@@ -80,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
         from .readiness import readiness
         rep["readiness"] = ready = readiness(model)
         if a.json:
-            print(json.dumps(rep, ensure_ascii=False, indent=2, default=str))
+            _print_json(rep)
         else:
             _print_report(rep)
             if not ready["all_ready"]:
@@ -98,7 +109,7 @@ def main(argv: list[str] | None = None) -> int:
         from .particulars import find_particulars
         out = find_particulars(read_texts(a.path))
         if a.json:
-            print(json.dumps(out, ensure_ascii=False, indent=2))
+            _print_json(out)
         else:
             for k, v in out["items"].items():
                 val = v["value"] if v["status"] == "found" else ("값이 여러 개 — " + ", ".join(f"{c['value']:g}" for c in v["candidates"])
@@ -136,7 +147,7 @@ def main(argv: list[str] | None = None) -> int:
         from .compare import compare_models
         out = compare_models(load_any(a.a), load_any(a.b), (Path(a.a).stem, Path(a.b).stem))
         if a.json:
-            print(json.dumps(out, ensure_ascii=False, indent=2, default=str))
+            _print_json(out)
             return 0
         va, vb = out["a"], out["b"]
         print(f"=== {va['label']} → {vb['label']}")

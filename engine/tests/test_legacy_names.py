@@ -6,6 +6,7 @@
 - 스냅샷 schema: 옛 'garc.raw/1' 파일도 CLI가 raw로 읽는다.
 """
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -190,13 +191,18 @@ class LegacyPackageAndSchema(unittest.TestCase):
             p = Path(d) / "snap.json"
             p.write_text(json.dumps(old_raw, ensure_ascii=False), encoding="utf-8")
             outs = []
+            # 한국어 Windows의 파이프는 cp949 — 그 상태로 돌려도 --json 출력이 UTF-8 해석기로 그대로 읽혀야 한다
+            # (2026-10-26 사용자 PC에서 이 테스트가 UnicodeDecodeError로 실패해 CLI --json을 ASCII 안전하게 고침)
+            env = dict(os.environ, PYTHONIOENCODING="cp949")
+            env.pop("PYTHONUTF8", None)
             for pkg in ("brc", "garc"):
                 r = subprocess.run([sys.executable, "-m", pkg, "check", str(p), "--json"], cwd=HERE.parent,
-                                   capture_output=True, text=True, encoding="utf-8")
-                self.assertEqual(r.returncode, 1, r.stderr)                   # check의 종료 코드: 수정 소요 있음 = 1
-                outs.append(json.loads(r.stdout))
+                                   capture_output=True, env=env)
+                self.assertEqual(r.returncode, 1, r.stderr.decode("cp949", errors="replace"))   # check의 종료 코드: 수정 소요 있음 = 1
+                outs.append(json.loads(r.stdout.decode("utf-8")))
         self.assertEqual(outs[0], outs[1])
         self.assertEqual(outs[0]["overall"], "fail")                         # 옛 schema·옛 키 스냅샷도 판정까지
+        self.assertIn("선급 승인이 아니며", outs[0]["disclaimer_ko"])            # 한글이 깨지거나 '?'로 바뀌지 않고 그대로
 
 
 if __name__ == "__main__":
