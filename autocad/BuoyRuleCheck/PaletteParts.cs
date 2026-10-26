@@ -27,11 +27,18 @@ namespace BuoyRuleCheck
 
         public const TextFormatFlags Wrap = TextFormatFlags.WordBreak | TextFormatFlags.NoPadding | TextFormatFlags.TextBoxControl;
         public const TextFormatFlags Line = TextFormatFlags.SingleLine | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis;
+        /// 재기용 플래그 — 줄임표(EndEllipsis)를 넣으면 안 된다. GDI DrawText(DT_CALCRECT)는 줄임표 플래그가 있으면
+        /// 제안 폭(Size.Empty = 0)에 맞춰 잘린 폭을 돌려줘서, 실제 글자보다 좁게 재고 '수…'처럼 잘리거나 글자가 겹친다
+        /// (2026-10-26 사용자 PC 미리보기에서 발견). 줄임표는 그릴 때(Line)만 쓴다.
+        public const TextFormatFlags Measure = TextFormatFlags.SingleLine | TextFormatFlags.NoPadding;
 
         public static int Height(string text, Font f, int width) =>
             string.IsNullOrEmpty(text) ? 0 : TextRenderer.MeasureText(text, f, new Size(Math.Max(width, 20), 0), Wrap).Height;
 
-        public static int Width(string text, Font f) => TextRenderer.MeasureText(text, f, Size.Empty, Line).Width;
+        public static int Width(string text, Font f) =>
+            string.IsNullOrEmpty(text) ? 0 : TextRenderer.MeasureText(text, f, new Size(int.MaxValue, int.MaxValue), Measure).Width;
+        public static int LineHeight(string text, Font f) =>
+            TextRenderer.MeasureText(string.IsNullOrEmpty(text) ? "가" : text, f, new Size(int.MaxValue, int.MaxValue), Measure).Height;
 
         /// 카드 바탕: 둥근 사각형(12) + 1px 링
         public static void Card(Graphics g, Rectangle r, bool hover, int radius = 12)
@@ -71,7 +78,7 @@ namespace BuoyRuleCheck
         {
             SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
             BackColor = Theme.Bg;
-            Height = 66;
+            Height = Math.Max(66, 24 + Ink.LineHeight("가", Theme.Big) + Ink.LineHeight("0", Theme.MonoSmall));   // 화면 배율이 크면 같이 늘림
             _orb = new OrbView(new OrbSpec { Size = 34, Lamp = true }, 8) { Location = new Point(16, 16) };
             _orb.SetState(OrbStates.Watching);
             Controls.Add(_orb);
@@ -108,18 +115,19 @@ namespace BuoyRuleCheck
             if (rw > 0)
             {
                 TextRenderer.DrawText(g, _right, Ink.Tiny, new Point(right - rw + 10, 16), _rightInk, Ink.Line);
-                Ink.Dot(g, _rightDot, right - rw + 3.5f, 16 + TextRenderer.MeasureText(_right, Ink.Tiny, Size.Empty, Ink.Line).Height / 2f, 5);
+                Ink.Dot(g, _rightDot, right - rw + 3.5f, 16 + Ink.LineHeight(_right, Ink.Tiny) / 2f, 5);
             }
             int avail = right - rw - x - 8;
             int mw = Math.Min(Ink.Width(_main, Theme.Big), avail);
-            TextRenderer.DrawText(g, _main, Theme.Big, new Rectangle(x, 13, mw, 26), Theme.Text, Ink.Line);
+            int mh = Ink.LineHeight(_main, Theme.Big);   // 고정 26 px이면 화면 배율 125·150%에서 아래가 잘린다
+            TextRenderer.DrawText(g, _main, Theme.Big, new Rectangle(x, 13, mw, mh), Theme.Text, Ink.Line);
             if (!string.IsNullOrEmpty(_side) && avail - mw > 30)
             {
-                int bh = TextRenderer.MeasureText(_main, Theme.Big, Size.Empty, Ink.Line).Height;
-                int sh = TextRenderer.MeasureText(_side, Theme.Body, Size.Empty, Ink.Line).Height;
+                int bh = Ink.LineHeight(_main, Theme.Big);
+                int sh = Ink.LineHeight(_side, Theme.Body);
                 TextRenderer.DrawText(g, _side, Theme.Body, new Rectangle(x + mw + 8, 13 + bh - sh - 2, avail - mw - 8, sh + 2), Theme.Muted, Ink.Line);
             }
-            TextRenderer.DrawText(g, _sub, Theme.MonoSmall, new Rectangle(x, 40, right - x, 16), Theme.Faint, Ink.Line);
+            TextRenderer.DrawText(g, _sub, Theme.MonoSmall, new Rectangle(x, Math.Max(40, 13 + mh + 1), right - x, Ink.LineHeight(_sub, Theme.MonoSmall)), Theme.Faint, Ink.Line);
             using var p = new Pen(Theme.Line, 1f);
             g.DrawLine(p, 0, Height - 1, Width, Height - 1);
         }
