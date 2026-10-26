@@ -107,7 +107,7 @@ namespace BuoyRuleCheck
             AccessibleRole = AccessibleRole.Grouping;
             AccessibleName = $"{_name} {Theme.StatusName(r.Status)} — {_title}";
             AccessibleDescription = string.Join(" / ", new[] { _sub }.Concat(_rows.Take(8).Select(e => $"{UiText.RowLabel(e)} {UiText.RowValue(e)}")));
-            _flashTimer.Tick += (_, _) => { _flashTimer.Stop(); _flash = false; Invalidate(); };
+            _flashTimer.Tick += Guard.Wrap("카드 깜빡임", (_, _) => { _flashTimer.Stop(); _flash = false; if (!IsDisposed) Invalidate(); });
         }
 
         public string RuleId => _r.RuleId;

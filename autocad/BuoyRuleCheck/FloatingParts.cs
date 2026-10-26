@@ -257,14 +257,15 @@ namespace BuoyRuleCheck
             AccessibleName = "수정 소요 목록";
             Controls.Add(_rows);
             _palette = new ListRowButton("팔레트에서 자세히 ›", "", null) { Small = true };
-            _palette.Picked += () => PaletteRequested?.Invoke();
+            _palette.Picked += () => Guard.Run("팔레트에서 자세히", () => PaletteRequested?.Invoke());
             Controls.Add(_palette);
-            _fade.Tick += (_, _) =>
+            _fade.Tick += Guard.Wrap("목록 나타남", (_, _) =>
             {
+                if (IsDisposed) { _fade.Stop(); return; }
                 double t = Math.Clamp((DateTime.UtcNow - _t0).TotalMilliseconds / OrbStates.CardInMs, 0, 1);
                 Opacity = t;
                 if (t >= 1) _fade.Stop();
-            };
+            });
         }
 
         protected override CreateParams CreateParams
@@ -503,7 +504,7 @@ namespace BuoyRuleCheck
             AccessibleName = text;
             Size = new Size(Ink.Width(text, Theme.Body) + 44, 30);
             using (var path = Theme.RoundRect(new RectangleF(0, 0, Width, Height), 15)) Region = new Region(path);
-            _timer.Tick += (_, _) => Step();
+            _timer.Tick += Guard.Wrap("토스트", (_, _) => { if (!IsDisposed) Step(); });
         }
 
         protected override bool ShowWithoutActivation => true;

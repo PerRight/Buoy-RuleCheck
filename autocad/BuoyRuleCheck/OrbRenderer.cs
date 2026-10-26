@@ -307,11 +307,18 @@ namespace BuoyRuleCheck
         }
 
         public static Color ColorOf(string status) => status switch { "fail" => Theme.Fail, "pass" => Theme.Pass, _ => Theme.Warn };
+        /// 두 판정 색 사이(k: 0 = a, 1 = b) — 상태가 바뀔 때 0.3 s 섞기
+        public static Color Mix(Color a, Color b, double k)
+        {
+            k = Math.Clamp(k, 0, 1);
+            int L(int x, int y) => (int)Math.Round(x + (y - x) * k);
+            return Color.FromArgb(L(a.A, b.A), L(a.R, b.R), L(a.G, b.G), L(a.B, b.B));
+        }
 
         public static void Paint(Graphics g, PointF anchor, BuoyAnim a, bool reduced, string? cluster = null)
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            var col = ColorOf(a.Status);
+            var col = a.FromStatus is string from ? Mix(ColorOf(from), ColorOf(a.Status), a.ColorK) : ColorOf(a.Status);
             double lo = a.LeaderOpacity(reduced);
             using (var b = new SolidBrush(OrbRenderer.Fade(col, Math.Min(1, lo / 0.75))))
                 g.FillEllipse(b, anchor.X - 1.5f, anchor.Y - 1.5f, 3, 3);

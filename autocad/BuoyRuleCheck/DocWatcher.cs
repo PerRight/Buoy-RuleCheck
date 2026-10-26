@@ -129,7 +129,9 @@ namespace BuoyRuleCheck
         }
 
         /// 판정 대상 객체 위에 커서를 올리면 요소 판정(충족·미충족·확인 필요)을 툴팁으로, 객체를 상태 색으로 강조.
-        private void OnPointMonitor(object sender, PointMonitorEventArgs e)
+        private void OnPointMonitor(object sender, PointMonitorEventArgs e) => Guard.Run("커서", () => PointStep(e));
+
+        private void PointStep(PointMonitorEventArgs e)
         {
             // 부표 위면 부표 카드가 먼저(객체 툴팁·강조와 겹치지 않게)
             try { if (BuoyLayer.Pointer(Doc, e.Context.RawPoint)) return; } catch { }
@@ -148,8 +150,9 @@ namespace BuoyRuleCheck
                         else
                             Overlay.ElementHover(Doc, null, false, "");
                     }
+                    // 디자인 전달(2026-10-25) 3장: 객체 위 호버도 그 객체의 부표 카드·근거로 — AutoCAD 기본 툴팁은 쓰지 않는다
+                    BuoyLayer.HoverObject(Doc, h);
                 }
-                if (_hoverHandle != null && _tips.TryGetValue(_hoverHandle, out var tip)) e.AppendToolTipText(tip);
             }
             catch { /* 툴팁·강조는 부가 기능 — 실패해도 무시 */ }
         }
@@ -243,27 +246,31 @@ namespace BuoyRuleCheck
             Overlay.ElementHover(Doc, null, false, "");
         }
 
-        private void OnSaveComplete(object sender, DatabaseIOEventArgs e)
+        private void OnSaveComplete(object sender, DatabaseIOEventArgs e) => Guard.Run("저장", () =>
         {
             // 자동 저장(.sv$)·임시 파일은 버전으로 남기지 않는다
             var f = e.FileName ?? "";
             var ext = Path.GetExtension(f).ToLowerInvariant();
             if (ext is ".sv$" or ".bak" or ".tmp" || f.Contains(Path.GetTempPath(), StringComparison.OrdinalIgnoreCase)) return;
             _versionPending = true;
-        }
+            // 디자인 전달(2026-10-25) 5장: 저장하면 확인 대기 중인 '문제없음' 부표를 한꺼번에 정리(버전 기록에 '해결 n건')
+            BuoyLayer.ClearResolved(Doc);
+        });
 
-        private void OnCommandEnded(object sender, CommandEventArgs e)
+        private void OnCommandEnded(object sender, CommandEventArgs e) => Guard.Run("명령 끝", () =>
         {
             if (RecheckCommands.Contains(e.GlobalCommandName)) MarkDirty();
             BuoyLayer.CommandFinished(Doc, _dirty);
-        }
+        });
 
         /// 명령 시작: 부표는 멈추고 흐려진다(도면을 고치는 중)
-        private void OnCommandWillStart(object sender, CommandEventArgs e) => BuoyLayer.CommandStarted(Doc, e.GlobalCommandName);
+        private void OnCommandWillStart(object sender, CommandEventArgs e) => Guard.Run("명령 시작", () => BuoyLayer.CommandStarted(Doc, e.GlobalCommandName));
 
-        private void OnCommandStopped(object sender, CommandEventArgs e) => BuoyLayer.CommandFinished(Doc, _dirty);
+        private void OnCommandStopped(object sender, CommandEventArgs e) => Guard.Run("명령 취소", () => BuoyLayer.CommandFinished(Doc, _dirty));
 
-        private void OnIdle(object? sender, EventArgs e)
+        private void OnIdle(object? sender, EventArgs e) => Guard.Run("자동 검사", IdleStep);
+
+        private void IdleStep()
         {
             if (_versionPending && !_busy && AcApp.DocumentManager.MdiActiveDocument == Doc && string.IsNullOrEmpty(Doc.CommandInProgress))
             {
@@ -341,10 +348,6 @@ namespace BuoyRuleCheck
         }
 
         /// 예외 한 줄 요약 + 어디서(첫 스택 줄) — 사용자가 명령줄을 그대로 붙여 주면 원인을 찾을 수 있게.
-        internal static string Describe(Exception ex)
-        {
-            var at = (ex.StackTrace ?? "").Split('\n').Select(l => l.Trim()).FirstOrDefault(l => l.Length > 0) ?? "";
-            return $"{ex.GetType().Name}: {ex.Message}" + (at.Length > 0 ? $" [{at}]" : "");
-        }
+        internal static string Describe(Exception ex) => Guard.Short(ex);
     }
 }

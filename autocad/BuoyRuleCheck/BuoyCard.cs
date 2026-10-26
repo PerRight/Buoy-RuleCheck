@@ -54,17 +54,20 @@ namespace BuoyRuleCheck
             Opacity = 0;
             Size = new Size(CardW, Measure());
             UpdateRegion();
-            _fade.Tick += (_, _) =>
+            _fade.Tick += Guard.Wrap("카드 나타남", (_, _) =>
             {
+                if (IsDisposed) { _fade.Stop(); return; }
                 double p = Math.Clamp((DateTime.UtcNow - _t0).TotalMilliseconds / OrbStates.CardInMs, 0, 1);
-                Opacity = Motion.Reduced ? 1 : CubicBezier.EaseOut.Ease(p);
+                double k = Motion.Reduced ? 1 : CubicBezier.EaseOut.Ease(p);
+                Opacity = k;
+                Top = _restTop + (int)Math.Round(RiseFrom * (1 - k));   // 4 px 아래에서 올라오며(디자인 전달 4장)
                 if (p >= 1) _fade.Stop();
-            };
-            _grace.Tick += (_, _) =>
+            });
+            _grace.Tick += Guard.Wrap("카드 닫힘", (_, _) =>
             {
                 _grace.Stop();
-                if (!_pinned && !MouseInside) Close();
-            };
+                if (!IsDisposed && !_pinned && !MouseInside) Close();
+            });
         }
 
         protected override bool ShowWithoutActivation => true;
@@ -86,15 +89,19 @@ namespace BuoyRuleCheck
             return $"{Theme.StatusName(it.Status == "warn" ? "unknown" : it.Status)} — {UiText.Short(it.RuleId)} — {it.Element.Fix?.ActionKo ?? it.Element.Guide ?? ""}";
         }
 
-        /// 커서 근처(부표 왼쪽 위)에 띄운다. 화면 밖으로 나가지 않게.
+        private const int RiseFrom = 4;
+        private int _restTop;
+
+        /// 부표 왼쪽 위에 띄운다(디자인 전달 4장). 왼쪽에 자리가 없으면 오른쪽 위로. 화면 밖으로 나가지 않게.
         public void ShowNear(Point cursor, IWin32Window owner)
         {
             var wa = Screen.FromPoint(cursor).WorkingArea;
-            int x = cursor.X - Width - 14, y = cursor.Y - Height / 2;
-            if (x < wa.Left) x = cursor.X + 22;
+            int x = cursor.X - Width - 14, y = cursor.Y - Height - 10;
+            if (x < wa.Left + 4) x = cursor.X + 22;
             y = Math.Clamp(y, wa.Top + 4, wa.Bottom - Height - 4);
             x = Math.Clamp(x, wa.Left + 4, wa.Right - Width - 4);
-            Location = new Point(x, y);
+            _restTop = y;
+            Location = new Point(x, Motion.Reduced ? y : y + RiseFrom);
             _t0 = DateTime.UtcNow;
             if (!Visible) Show(owner);
             if (!Motion.Reduced) _fade.Start(); else Opacity = 1;
@@ -103,12 +110,12 @@ namespace BuoyRuleCheck
         /// 커서가 부표를 떠났다 — 150 ms 유예 뒤 닫는다(카드 위로 옮겨 오면 남는다)
         public void LeaveSoon()
         {
-            if (_pinned) return;
+            if (_pinned || IsDisposed) return;
             _grace.Stop();
             _grace.Start();
         }
 
-        public void StayOpen() => _grace.Stop();
+        public void StayOpen() { if (!IsDisposed) _grace.Stop(); }
 
         /// 미리보기용: 처음부터 고정
         public void Pinned2() { _pinned = true; Invalidate(); }
@@ -138,7 +145,7 @@ namespace BuoyRuleCheck
         protected override void OnMouseClick(MouseEventArgs e)
         {
             foreach (var (r, act, _) in _hits.ToList())
-                if (r.Contains(e.Location)) { act(); return; }
+                if (r.Contains(e.Location)) { Guard.Run("카드 단추", act); return; }
             base.OnMouseClick(e);
         }
 
@@ -246,6 +253,26 @@ namespace BuoyRuleCheck
                     TextRenderer.DrawText(g, v, Theme.Mono, new Point(Pad + 40, y - 1), c);
                 }
                 y += 17;
+            }
+            // 얇은 게이지(디자인 전달 4장): 기준(눈금)과 현재(상태 색 점) — 엔진 값 그대로, 계산은 배치만
+            var cur = UiText.Numbers(fx.Current);
+            var lim = UiText.Numbers(fx.Limit);
+            if (cur.Count > 0 && lim.Count > 0)
+            {
+                y += 3;
+                if (paint)
+                {
+                    double lo = Math.Min(cur.Min(), lim.Min()), hi = Math.Max(cur.Max(), lim.Max());
+                    double span = Math.Max(hi - lo, 1e-6);
+                    lo -= span * 0.25; hi += span * 0.25;
+                    float x0 = Pad, x1 = CardW - Pad;
+                    float X(double v) => x0 + (float)((v - lo) / (hi - lo)) * (x1 - x0);
+                    using (var tp = new Pen(Theme.Line, 2f)) g.DrawLine(tp, x0, y + 4, x1, y + 4);
+                    using (var kp = new Pen(Theme.Muted, 1f)) foreach (var v in lim) g.DrawLine(kp, X(v), y, X(v), y + 8);
+                    if (cur.Count >= 2) using (var cp = new Pen(col, 2f)) g.DrawLine(cp, X(cur.Min()), y + 4, X(cur.Max()), y + 4);
+                    using (var cb = new SolidBrush(col)) g.FillEllipse(cb, X(cur[0]) - 3.5f, y + 0.5f, 7, 7);
+                }
+                y += 10;
             }
             // 근거 줄
             y += 4;

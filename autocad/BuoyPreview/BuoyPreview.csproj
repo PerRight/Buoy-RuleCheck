@@ -20,6 +20,7 @@
     <Compile Include="..\BuoyRuleCheck\Theme.cs" Link="Shared\Theme.cs" />
     <Compile Include="..\BuoyRuleCheck\OrbModel.cs" Link="Shared\OrbModel.cs" />
     <Compile Include="..\BuoyRuleCheck\OrbRenderer.cs" Link="Shared\OrbRenderer.cs" />
+    <Compile Include="..\BuoyRuleCheck\Guard.cs" Link="Shared\Guard.cs" />
     <Compile Include="..\BuoyRuleCheck\BuoyAnim.cs" Link="Shared\BuoyAnim.cs" />
     <Compile Include="..\BuoyRuleCheck\UiState.cs" Link="Shared\UiState.cs" />
     <Compile Include="..\BuoyRuleCheck\Dto.cs" Link="Shared\Dto.cs" />

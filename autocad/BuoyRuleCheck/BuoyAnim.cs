@@ -28,6 +28,18 @@ namespace BuoyRuleCheck
         private double _rippleClock;
         private double _recheckShown;    // 다시 검사를 보여 준 시간
         private string? _pendingStatus;  // 다시 검사 0.6 s를 채운 뒤 적용할 판정
+        private double _colorT = 1;      // 상태 색 바뀜 진행(0 → 1, 0.3 s — 디자인 전달 '색 바뀜')
+        /// 색이 바뀌는 중이면 바뀌기 전 상태(빨강 → 파랑을 0.3 s에 섞어 그린다)
+        public string? FromStatus { get; private set; }
+        /// 0 = 바뀌기 전 색, 1 = 지금 색(ease-out)
+        public double ColorK => FromStatus == null ? 1 : 1 - Math.Pow(1 - _colorT, 3);
+        public const double ColorSeconds = 0.3;
+
+        private void ChangeStatus(string next)
+        {
+            if (next != Status) { FromStatus = Status; _colorT = 0; }
+            Status = next;
+        }
 
         public BuoyAnim(string status, bool appear = true, double startTurn = 0)
         {
@@ -56,7 +68,7 @@ namespace BuoyRuleCheck
         /// 다시 그려야 하는 중인가(돌고 있거나, 등장·사라짐·호버 전환·물결 중). 아니면 그리기 갱신을 건너뛴다.
         public bool IsAnimating(bool reduced)
         {
-            if (Phase is BuoyPhase.Appear or BuoyPhase.Vanish || _hoverT < 1) return true;
+            if (Phase is BuoyPhase.Appear or BuoyPhase.Vanish || _hoverT < 1 || _colorT < 1) return true;
             if (_pendingStatus != null) return true;
             if (reduced) return false;
             return !Motion.Stopped || _rippleClock < OrbStates.RippleSeconds * OrbStates.RippleCount;
@@ -89,7 +101,7 @@ namespace BuoyRuleCheck
                 _pendingStatus = status;   // 색은 다시 검사를 다 보여 준 뒤에 바꾼다
                 return;
             }
-            Status = status;
+            ChangeStatus(status);
             Enter(Base(status));
             Motion.SetPeriod(PeriodFor(status));
         }
@@ -120,6 +132,7 @@ namespace BuoyRuleCheck
         {
             _t += dt;
             _rippleClock += dt;
+            if (_colorT < 1) { _colorT = reduced ? 1 : Math.Min(1, _colorT + dt / ColorSeconds); if (_colorT >= 1) FromStatus = null; }
             Motion.Step(dt, reduced);
             if (Phase == BuoyPhase.Appear && _t * 1000 >= OrbStates.AppearMs) Enter(Base(Status));
             if (Phase == BuoyPhase.Recheck)
@@ -128,7 +141,7 @@ namespace BuoyRuleCheck
                 if (_pendingStatus is string next && _recheckShown >= OrbStates.MinCheckSeconds)
                 {
                     _pendingStatus = null;
-                    Status = next;
+                    ChangeStatus(next);
                     Enter(Base(next));
                     Motion.SetPeriod(PeriodFor(next));
                 }
@@ -173,7 +186,7 @@ namespace BuoyRuleCheck
         /// 물결(처음 2번만): (배율, 투명도) 목록. 지름 24 px 고리 기준.
         public IEnumerable<(double scale, double alpha)> Ripples(bool reduced)
         {
-            if (reduced || Phase is BuoyPhase.Vanish or BuoyPhase.Editing) yield break;
+            if (reduced || Hover || Phase is BuoyPhase.Vanish or BuoyPhase.Editing) yield break;   // 호버·명령 중에는 물결 없음(디자인 전달 2장)
             double total = OrbStates.RippleSeconds * OrbStates.RippleCount;
             if (_rippleClock >= total) yield break;
             double p = (_rippleClock % OrbStates.RippleSeconds) / OrbStates.RippleSeconds;   // 0..1

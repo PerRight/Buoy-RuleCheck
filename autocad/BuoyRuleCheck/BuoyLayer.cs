@@ -102,8 +102,17 @@ namespace BuoyRuleCheck
                     Buoys[key] = nb;
                 }
             }
+            // 객체가 지워졌거나 규칙이 더는 그 객체를 보지 않음(디자인 전달 5장 표):
+            //   규칙을 판정할 수 있으면 파랑 '문제없음'(확인 대기 — 올렸다 떼거나 저장하면 사라짐, /v1/compare의 '해결'과 같은 기준)
+            //   판정할 수 없게 됐으면(입력 누락·검토 불가) 주황 '확인 필요', 적용 제외·규칙 없음이면 사라짐
             foreach (var b in Buoys.Values)
-                if (!now.ContainsKey(b.Key)) b.Anim.Vanish();   // 객체가 지워졌거나 규칙이 더는 보지 않음
+            {
+                if (now.ContainsKey(b.Key) || b.Anim.Phase is BuoyPhase.Vanish) continue;
+                var rs = resp.Results.FirstOrDefault(x => x.RuleId == b.RuleId)?.Status;
+                if (rs is "pass" or "fail") { if (b.Anim.Status != "pass") b.Anim.SetStatus("pass"); }
+                else if (rs is "na" or "review") { if (b.Anim.Status != "warn") b.Anim.SetStatus("warn"); }
+                else b.Anim.Vanish();
+            }
             Ensure();
             Redraw();
         }
@@ -217,10 +226,14 @@ namespace BuoyRuleCheck
             if (_doc == null || AcApp.DocumentManager.MdiActiveDocument != _doc) return;
             bool red = Motion.Reduced;
             bool animating = false;
-            foreach (var b in Buoys.Values)
+            // 자전은 급한 순서로 12개까지만(디자인 전달 2장 '부담') — 나머지는 멈춘 자세(등장·사라짐·색은 그대로 진행)
+            int n = 0;
+            foreach (var b in Buoys.Values.OrderBy(x => Rank(x.Anim.Status)).ThenBy(x => x.Key, StringComparer.Ordinal))
             {
-                b.Anim.Step(dt, red);
-                animating |= b.Anim.IsAnimating(red);
+                bool still = red || (b.Anim.Phase is not (BuoyPhase.Appear or BuoyPhase.Vanish) && n >= MaxSpinning);
+                if (!still && b.Anim.Phase is not BuoyPhase.Vanish) n++;
+                b.Anim.Step(dt, still);
+                animating |= b.Anim.IsAnimating(still);
             }
             var gone = Buoys.Values.Where(b => b.Anim.Done).Select(b => b.Key).ToList();
             foreach (var k in gone) Buoys.Remove(k);
@@ -234,9 +247,18 @@ namespace BuoyRuleCheck
         }
 
         /// 줌·팬: 화면 크기 고정 부표를 그 배율로 다시 그린다(멈춰 있는 부표도). 카드는 자리가 어긋나므로 닫는다.
-        private static void OnViewChanged(object? sender, EventArgs e)
+        private static void OnViewChanged(object? sender, EventArgs e) => Guard.Run("화면 이동", () =>
         {
             if (_card is { Pinned: false }) CloseCard(force: false);
+            Redraw();
+        });
+
+        /// 저장: 확인 대기 중인 문제없음 부표를 퍼지며 사라지게(디자인 전달 5장)
+        public static void ClearResolved(Document doc)
+        {
+            if (doc != _doc) return;
+            foreach (var b in Buoys.Values) if (b.Anim.Phase == BuoyPhase.Pass) b.Anim.Vanish();
+            Ensure();
             Redraw();
         }
 
@@ -308,6 +330,8 @@ namespace BuoyRuleCheck
             return _ptrUpp;
         }
 
+        private const int MaxSpinning = 12;
+
         private static int Rank(string status) => status switch { "fail" => 0, "warn" => 1, _ => 2 };
 
         private static EntityColor Ec(System.Drawing.Color c) => new(c.R, c.G, c.B);
@@ -316,7 +340,7 @@ namespace BuoyRuleCheck
         private static void DrawBuoy(ViewportDraw vd, Buoy b, double upp, bool red)
         {
             var a = b.Anim;
-            var col = BuoyPainter.ColorOf(a.Status);
+            var col = a.FromStatus is string from ? BuoyPainter.Mix(BuoyPainter.ColorOf(from), BuoyPainter.ColorOf(a.Status), a.ColorK) : BuoyPainter.ColorOf(a.Status);
             var ec = Ec(col);
             var tr = vd.SubEntityTraits;
             var geo = vd.Geometry;
@@ -334,7 +358,7 @@ namespace BuoyRuleCheck
             double d = OrbStates.LeaderLen / Math.Sqrt(2) * upp;
             geo.WorldLine(new Point3d(b.Anchor.X + upp, b.Anchor.Y + upp, 0), new Point3d(b.Anchor.X + d, b.Anchor.Y + d, 0));
 
-            double bob = a.Motion.Bob(red) * upp;
+            double bob = (a.Hover || a.Phase != BuoyPhase.Idle ? 0 : a.Motion.Bob(red)) * upp;   // 떠 있음은 수정 소요 대기 중에만, 호버하면 멈춤(디자인 전달 2장)
             var c = new Point3d(b.Center.X, b.Center.Y - bob, 0);
             // 물결(처음 2번)
             foreach (var (s, al) in a.Ripples(red))
@@ -394,9 +418,11 @@ namespace BuoyRuleCheck
                 if (dist <= r && dist < best) { best = dist; hit = b; }
             }
             if (hit == _hover) { if (hit != null) _card?.StayOpen(); return hit != null; }
+            if (hit == null && _hoverFromObject) return false;   // 객체 위 호버는 HoverObject가 끝낸다
             Leave();
             if (hit == null) return false;
             _hover = hit;
+            _hoverFromObject = false;
             hit.Anim.SetHover(true);
             EvidenceHover?.Invoke(hit.RuleId, hit.ElementId, true);
             ShowCard(hit);
@@ -404,8 +430,39 @@ namespace BuoyRuleCheck
             return true;
         }
 
+        /// 도면 객체 위 호버(디자인 전달 3장): 그 객체에 부표가 있으면 부표에 올린 것과 같은 카드·근거를 연다.
+        /// handle = 커서 아래 판정 대상 객체(없으면 null). 부표가 없는 객체(문제없음 등)는 카드 없음.
+        public static void HoverObject(Document doc, string? handle)
+        {
+            Buoy? hit = null;
+            if (doc == _doc && Visible && handle != null)
+            {
+                string bh = Extractor.BaseHandle(handle);
+                hit = Buoys.Values
+                    .Where(b => b.Anim.Phase != BuoyPhase.Vanish && (b.ElementId == handle || Extractor.BaseHandle(b.ElementId) == bh))
+                    .OrderBy(b => Rank(b.Anim.Status)).FirstOrDefault();
+                if (hit?.Leader != null) hit = hit.Leader;
+            }
+            if (hit == null)
+            {
+                if (_hoverFromObject) Leave();
+                return;
+            }
+            if (hit == _hover) { _card?.StayOpen(); return; }
+            Leave();
+            _hover = hit;
+            _hoverFromObject = true;
+            hit.Anim.SetHover(true);
+            EvidenceHover?.Invoke(hit.RuleId, hit.ElementId, true);
+            ShowCard(hit);
+            Ensure();
+        }
+
+        private static bool _hoverFromObject;
+
         private static void Leave()
         {
+            _hoverFromObject = false;
             if (_hover == null) return;
             var b = _hover;
             _hover = null;

@@ -35,11 +35,13 @@ namespace BuoyRuleCheck
         {
             AcApp.DocumentManager.MdiActiveDocument?.Editor.WriteMessage(
                 $"\n{Product.Tag} {Product.Name} 로드됨 — 리본 '{Product.Name}' 탭 또는 BRC 명령으로 시작하세요.\n");
-            AcApp.DocumentManager.DocumentToBeDestroyed += (_, e) => Commands.Forget(e.Document);
-            AcApp.DocumentManager.DocumentActivated += (_, e) => Commands.OnActivated(e.Document);
+            // 이벤트 처리기 예외는 AutoCAD 오류 창 대신 명령줄 한 줄 + %APPDATA%\BuoyRuleCheck\error.log
+            Guard.Sink = line => { try { AcApp.DocumentManager.MdiActiveDocument?.Editor.WriteMessage("\n" + line + "\n"); } catch { } };
+            AcApp.DocumentManager.DocumentToBeDestroyed += (_, e) => Guard.Run("도면 닫힘", () => Commands.Forget(e.Document));
+            AcApp.DocumentManager.DocumentActivated += (_, e) => Guard.Run("도면 탭 바꿈", () => Commands.OnActivated(e.Document));
             try { RibbonUi.Install(); } catch { /* 리본 없는 환경(콘솔 등) */ }
             StatusTray.Install();
-            StatusTray.Clicked += Commands.OpenFromTray;
+            StatusTray.Clicked += () => Guard.Run("상태 표시줄", Commands.OpenFromTray);
             Commands.HookBuoys();
             // 떠 있는 로고는 메인 창이 준비된 뒤(첫 Idle)에 만든다
             AcApp.Idle += InitFloatingOnce;
@@ -632,7 +634,7 @@ namespace BuoyRuleCheck
         internal static void InitFloating()
         {
             // 로고 목록 한 줄 → 그 고칠 자리로 이동 + 부표 카드 고정, '팔레트에서 자세히' → 팔레트
-            FloatingUi.RowPicked += r =>
+            FloatingUi.RowPicked += r => Guard.Run("목록 한 줄", () =>
             {
                 var d = Active;
                 if (d == null) return;
@@ -642,7 +644,7 @@ namespace BuoyRuleCheck
                     EnsurePalette();
                     ForPanels(p => p.FocusRule(r.RuleId));
                 }
-            };
+            });
             FloatingUi.PaletteRequested += ShowPaletteDetail;
             FloatingUi.Init();
         }
