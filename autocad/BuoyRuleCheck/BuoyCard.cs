@@ -130,12 +130,15 @@ namespace BuoyRuleCheck
             _items.AddRange(items);
             _hover = Rectangle.Empty;
             AccessibleName = Product.Name + " — " + Describe();
-            int bottom = Bottom, h = Measure();
+            int h = Measure();
             if (h != Height)
             {
+                // 아래 끝 고정. 페이드 중이면 올라오는 4 px를 빼고 잰다(자리 잡을 아래 끝 = _restTop + 옛 높이)
+                int bottom = (_fade.Enabled ? _restTop : Top) + Height;
                 Height = h;
                 UpdateRegion();
-                _restTop = bottom - h;
+                // 위로 늘 때 화면 위로 나가지 않게(제목줄·× 잘림 방지 — 검증 4차 N3)
+                _restTop = Math.Max(Screen.FromControl(this).WorkingArea.Top + 4, bottom - h);
                 Top = _restTop;
             }
             Invalidate();
@@ -145,7 +148,21 @@ namespace BuoyRuleCheck
             a.Status == b.Status && a.RuleId == b.RuleId && a.RuleCondition == b.RuleCondition
             && a.Element.ElementId == b.Element.ElementId && a.Element.Guide == b.Element.Guide && a.Element.Actual == b.Element.Actual
             && a.Element.Fix?.ActionKo == b.Element.Fix?.ActionKo && a.Element.Fix?.ConditionKo == b.Element.Fix?.ConditionKo
-            && a.Element.Fix?.Delta == b.Element.Fix?.Delta && a.Element.Fix?.Condition == b.Element.Fix?.Condition;
+            && a.Element.Fix?.Delta == b.Element.Fix?.Delta && a.Element.Fix?.Condition == b.Element.Fix?.Condition
+            && a.Element.Required == b.Element.Required && a.Element.RoleKo == b.Element.RoleKo
+            && a.Element.Fix?.Quantity == b.Element.Fix?.Quantity && a.Element.Fix?.Op == b.Element.Fix?.Op && a.Element.Fix?.Unit == b.Element.Fix?.Unit
+            && Raw(a.Element.Fix?.Current) == Raw(b.Element.Fix?.Current)
+            && Raw(a.Element.Fix?.Limit) == Raw(b.Element.Fix?.Limit)
+            && SameAnchor(a.Element.Anchor, b.Element.Anchor);
+
+        private static string? Raw(System.Text.Json.JsonElement? e)
+        {
+            if (e is not { } v || v.ValueKind == System.Text.Json.JsonValueKind.Undefined) return null;
+            try { return v.GetRawText(); } catch { return "?"; }
+        }
+
+        private static bool SameAnchor(double[]? a, double[]? b) =>
+            a == null ? b == null : b != null && a.AsSpan().SequenceEqual(b);
 
         /// 미리보기용: 처음부터 고정
         public void Pinned2() { _pinned = true; Invalidate(); }

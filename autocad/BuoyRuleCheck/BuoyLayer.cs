@@ -132,15 +132,23 @@ namespace BuoyRuleCheck
         ///   고정 카드: 항목마다 같은 규칙·객체의 새 판정으로. 새 판정이 하나도 없으면(객체·규칙이 빠짐) 닫는다 — 옛 파랑이 남지 않게.
         private static void RefreshCards(Dictionary<string, (RuleResultDto r, ElementCheckDto e)> now)
         {
-            if (_card is { IsDisposed: false, Pinned: false } hc && _hover != null) hc.Replace(CardItems(_hover));
             var pinned = Pinned.ToList();
-            if (_card is { IsDisposed: false, Pinned: true } pc) pinned.Add(pc);
+            if (_card is { IsDisposed: false } oc)
+            {
+                var hv = _hover;
+                if (!oc.Pinned && hv != null) Guard.Run("부표 카드", () => oc.Replace(CardItems(hv)));
+                else pinned.Add(oc);   // 고정했거나, 호버가 끝났지만 열려 있는(유예·카드 위 커서) 카드: 같은 규칙·객체의 새 판정으로
+            }
             foreach (var c in pinned)
             {
-                if (c.IsDisposed) continue;
-                var items = c.Items.Select(it => Latest(it, now)).Where(x => x != null).Select(x => x!).ToList();
-                if (items.Count == 0) c.Close();
-                else c.Replace(items);
+                var card = c;
+                Guard.Run("부표 카드", () =>
+                {
+                    if (card.IsDisposed) return;
+                    var items = card.Items.Select(it => Latest(it, now)).Where(x => x != null).Select(x => x!).ToList();
+                    if (items.Count == 0) card.Close();
+                    else card.Replace(items);
+                });
             }
         }
 
@@ -377,6 +385,7 @@ namespace BuoyRuleCheck
             if (doc != _doc) return;
             foreach (var b in Buoys.Values) if (b.Anim.Phase == BuoyPhase.Pass) b.Anim.Vanish();
             if (_hover is { } h && h.Anim.Phase == BuoyPhase.Vanish) Leave();   // 검증 F5
+            if (_card is { IsDisposed: false, Pinned: false } hc && _hover != null) Guard.Run("부표 카드", () => hc.Replace(CardItems(_hover!)));
             Ensure();
             Redraw();
         }
@@ -572,7 +581,7 @@ namespace BuoyRuleCheck
                 hit = Buoys.Values
                     .Where(b => b.Anim.Phase != BuoyPhase.Vanish && (b.ElementId == handle || Extractor.BaseHandle(b.ElementId) == bh))
                     .OrderBy(b => Rank(b.Anim.Status)).FirstOrDefault();
-                if (hit?.Leader != null) hit = hit.Leader;
+                if (hit?.Leader is { } ld && ld.Anim.Phase != BuoyPhase.Vanish && Buoys.ContainsValue(ld)) hit = ld;
             }
             if (hit == null)
             {
