@@ -366,7 +366,6 @@ namespace BuoyRuleCheck
             _confirmed = confirmed;
             SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
             BackColor = Theme.Bg;
-            Height = 28;
             _box = new TextBox
             {
                 BorderStyle = BorderStyle.None, BackColor = Theme.Input, ForeColor = Theme.Text, Font = Theme.Body,
@@ -384,6 +383,7 @@ namespace BuoyRuleCheck
             _edit.LinkClicked += (_, _) => { _confirmed = false; Sync(); _box.Focus(); _box.SelectAll(); };
             Controls.Add(_edit);
             AccessibleName = label;
+            Height = 28;   // 자식(_box·_edit)을 만든 뒤에 — 크기가 바뀌면 OnResize가 자식을 배치하므로(먼저 두면 NullReferenceException, 2026-10-26 사용자 PC)
             Sync();
         }
 
@@ -404,6 +404,7 @@ namespace BuoyRuleCheck
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
+            if (_box is null || _edit is null) return;   // 생성자 도중(자식을 만들기 전) 크기 변경
             int th = TextRenderer.MeasureText("가", Theme.Body).Height;
             _box.SetBounds(9, (Height - th) / 2 + 1, BoxW - 18, th);
             _edit.Location = new Point(Ink.Width("● 확인 " + Value, Theme.Body) + 14, (Height - _edit.Height) / 2);
@@ -485,6 +486,7 @@ namespace BuoyRuleCheck
 
         private void Place()
         {
+            if (_name is null || _aft is null || _fwd is null || _del is null) return;   // 생성자 도중 크기 변경
             int th = TextRenderer.MeasureText("가", Theme.Body).Height;
             int nameW = Width - DraftsW - 8 - (Empty ? Ink.Width("비어 있음", Ink.Micro) + 10 : 0);
             _name.SetBounds(0, (Height - th) / 2, Math.Max(nameW, 60), th);
