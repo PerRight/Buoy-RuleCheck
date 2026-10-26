@@ -120,12 +120,19 @@ namespace BuoyRuleCheck
                 else if (rs is "na" or "review") { b.Anim.SetStatus("warn"); b.El = Gone(b.El, "unknown"); }
                 else b.Anim.Vanish();
             }
+            // 커서를 올려 둔 채 새 판정이 오면 카드도 새 판정으로(고정한 카드는 그때 모습 그대로 둔다)
+            if (_hover != null && _card is { Pinned: false })
+            {
+                if (Buoys.ContainsValue(_hover) && _hover.Anim.Phase != BuoyPhase.Vanish) Guard.Run("부표 카드", () => ShowCard(_hover));
+                else Leave();
+            }
             Ensure();
             Redraw();
         }
 
         /// 없어진 객체의 카드 내용: 옛 '고칠 내용·현재·기준·차이'를 보이지 않게(그 판정은 더는 맞지 않음). 자리·이름만 남긴다.
-        private static ElementCheckDto Gone(ElementCheckDto e, string status) => e.Fix == null && e.Status == status ? e : new ElementCheckDto
+        private static ElementCheckDto Gone(ElementCheckDto e, string status) =>
+            (status == "pass" ? e.Guide == UiText.ElementGonePass : e.Fix == null && e.Status == status) ? e : new ElementCheckDto
         {
             ElementId = e.ElementId, RuleId = e.RuleId, RuleName = e.RuleName, Role = e.Role, RoleKo = e.RoleKo,
             Status = status, Required = e.Required, Actual = "", Anchor = e.Anchor, Fix = null,
@@ -144,16 +151,19 @@ namespace BuoyRuleCheck
         /// 검사 실패(엔진 연결 끊김 등): 판정하지 않으므로 부표를 모두 내린다(로고가 '연결 끊김'으로 알린다).
         public static void Clear()
         {
-            CloseCard(force: true);
-            foreach (var c in Pinned.ToList()) c.Close();
-            Pinned.Clear();
-            if (_doc != null) { try { _doc.ViewChanged -= OnViewChanged; } catch { } }
-            _doc = null;
-            if (_hover != null) EvidenceHover?.Invoke(_hover.RuleId, _hover.ElementId, false);
+            // 부표부터 내린다 — 카드·근거 정리가 던져도 부표가 화면에 남지 않게(2026-10-26 검증 N8)
+            var hover = _hover;
             _hover = null;
+            _hoverFromObject = false;
             Buoys.Clear();
             RemoveHost();
             StopTick();
+            if (_doc != null) { try { _doc.ViewChanged -= OnViewChanged; } catch { } }
+            _doc = null;
+            Guard.Run("부표 카드 닫기", () => CloseCard(force: true));
+            foreach (var c in Pinned.ToList()) Guard.Run("부표 카드 닫기", c.Close);
+            Pinned.Clear();
+            if (hover != null) Guard.Run("근거 선 끄기", () => EvidenceHover?.Invoke(hover.RuleId, hover.ElementId, false));
         }
 
         /// 부표 표시 켜기/끄기(판정은 계속)
@@ -236,12 +246,7 @@ namespace BuoyRuleCheck
                 host = new Xline { BasePoint = Point3d.Origin, UnitDir = Vector3d.XAxis };
                 BuoyOverrule.Host = host.UnmanagedObject;
                 bool ok = TransientManager.CurrentTransientManager.AddTransient(host, TransientDrawingMode.DirectTopmost, 140, new IntegerCollection());
-                if (!ok)
-                {
-                    BuoyOverrule.Host = IntPtr.Zero;
-                    host.Dispose();
-                    throw new InvalidOperationException("TransientManager.AddTransient가 false를 돌려줌");
-                }
+                if (!ok) throw new InvalidOperationException("TransientManager.AddTransient가 false를 돌려줌");   // catch가 포인터를 지우고 숨겨 둠
                 _host = host;
                 return true;
             }
@@ -286,6 +291,7 @@ namespace BuoyRuleCheck
         {
             Clear();
             if (_overrule == null) return;
+            if (Retired.Count > 0) return;   // 지우지 못한 무한선이 남아 있으면 오버룰을 떼는 순간 화면에 나타난다(검증 N7)
             try { Overrule.RemoveOverrule(RXObject.GetClass(typeof(Xline)), _overrule); } catch { }
             _overrule = null;
         }
@@ -370,7 +376,7 @@ namespace BuoyRuleCheck
                 var px = vd.Viewport.GetNumPixelsInUnitSquare(any);
                 upp = px.X > 1e-12 ? 1.0 / px.X : 0;
             }
-            catch { return; }
+            catch (Exception ex) { DrawFailed(ex); return; }
             if (upp <= 0 || double.IsNaN(upp)) return;
             LastUpp = upp;
             _drawn++;
@@ -587,8 +593,9 @@ namespace BuoyRuleCheck
 
         private static void ShowCard(Buoy b)
         {
-            var items = Members(b).OrderBy(x => Rank(x.Anim.Status))
-                .Select(x => new BuoyCardItem(x.Anim.Status, x.RuleId, x.RuleCondition, x.El)).ToList();
+            // 카드는 '최종' 판정(Target)으로 — 다시 검사 0.6 s 동안 부표 색은 옛 색이어도 카드 내용(El)은 이미 새 판정이다(검증 N1)
+            var items = Members(b).OrderBy(x => Rank(x.Anim.Target))
+                .Select(x => new BuoyCardItem(x.Anim.Target, x.RuleId, x.RuleCondition, x.El)).ToList();
             CloseCard(force: false);
             var card = new BuoyCard(items);
             card.EvidenceRequested += it => EvidenceRequested?.Invoke(it.RuleId, it.Element.ElementId);

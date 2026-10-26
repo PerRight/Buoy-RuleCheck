@@ -49,16 +49,7 @@ namespace BuoyRuleCheck
         /// 라벨 확대: 라벨·선 두께·표식 크기 배율 (프로젝터·화면 공유에서 잘 보이게). 표시만 바뀌고 판정·도면은 그대로
         public static double Scale { get; set; } = 1.0;
 
-        public static void Clear()
-        {
-            var tm = TransientManager.CurrentTransientManager;
-            foreach (var e in Items)
-            {
-                try { tm.EraseTransient(e, new IntegerCollection()); } catch { /* 다른 문서 뷰 */ }
-                e.Dispose();
-            }
-            Items.Clear();
-        }
+        public static void Clear() => ClearList(Items);
 
         private static CheckResponse? _resp;
         private static Document? _respDoc;
@@ -181,13 +172,7 @@ namespace BuoyRuleCheck
         /// 팔레트 카드에 마우스를 올린 동안 대상 객체를 흰 잉크로 강조한다.
         public static void Hover(Document doc, IEnumerable<string> handles, bool on)
         {
-            var tm = TransientManager.CurrentTransientManager;
-            foreach (var e in HoverItems)
-            {
-                try { tm.EraseTransient(e, new IntegerCollection()); } catch { }
-                e.Dispose();
-            }
-            HoverItems.Clear();
+            ClearList(HoverItems);
             if (!on) return;
             var db = doc.Database;
             using (doc.LockDocument())
@@ -200,8 +185,7 @@ namespace BuoyRuleCheck
                     if (tr.GetObject(id, OpenMode.ForRead) is not Entity ent) continue;
                     var clone = (Entity)ent.Clone();
                     clone.Color = Ac(Theme.Text);   // 흰 잉크(판정 색과 겹치지 않게)
-                    tm.AddTransient(clone, TransientDrawingMode.Highlight, 129, new IntegerCollection());
-                    HoverItems.Add(clone);
+                    Put(HoverItems, clone, TransientDrawingMode.Highlight, 129);
                 }
                 tr.Commit();
             }
@@ -219,21 +203,34 @@ namespace BuoyRuleCheck
             catch { return 1; }
         }
 
+        /// 임시 그래픽을 지운다. 지워진 것만 해제하고, 지우지 못한 것(다른 도면 탭이 현재일 때 등)은 해제하지 않고 남겨 다음에 다시 지운다
+        /// — 해제한 객체를 AutoCAD가 그 도면으로 돌아와 그리지 않게(2026-10-26 검증 N6).
+        private static readonly List<Entity> Stale = new();
         private static void ClearList(List<Entity> items)
         {
             var tm = TransientManager.CurrentTransientManager;
-            foreach (var e in items)
-            {
-                try { tm.EraseTransient(e, new IntegerCollection()); } catch { }
-                e.Dispose();
-            }
+            var all = new List<Entity>(Stale.Count + items.Count);
+            all.AddRange(Stale);
+            if (!ReferenceEquals(items, Stale)) all.AddRange(items);
+            Stale.Clear();
             items.Clear();
+            foreach (var e in all)
+            {
+                bool erased = false;
+                try { erased = tm.EraseTransient(e, new IntegerCollection()); } catch { }
+                if (erased) { try { e.Dispose(); } catch { } }
+                else if (Stale.Count < 5000) Stale.Add(e);   // 무한히 쌓이지 않게(넘치면 해제하지 않은 채 놓아 둠)
+            }
         }
 
-        private static void AddTo(List<Entity> items, Entity e, int order)
+        private static void AddTo(List<Entity> items, Entity e, int order) => Put(items, e, TransientDrawingMode.DirectTopmost, order);
+
+        /// 올라간 것만 목록에 넣는다(못 올린 것은 바로 해제) — 지우기 목록에 영영 못 지우는 객체가 쌓이지 않게
+        private static void Put(List<Entity> items, Entity e, TransientDrawingMode mode, int order)
         {
-            TransientManager.CurrentTransientManager.AddTransient(e, TransientDrawingMode.DirectTopmost, order, new IntegerCollection());
-            items.Add(e);
+            bool ok = false;
+            try { ok = TransientManager.CurrentTransientManager.AddTransient(e, mode, order, new IntegerCollection()); }
+            finally { if (ok) items.Add(e); else e.Dispose(); }
         }
 
         /// 요소 hover 강조: 상태 색(충족 파랑·미충족 빨강·확인 필요 주황)의 굵은 외곽선 + 닫힌 도형은 반투명 채우기.
@@ -482,11 +479,6 @@ namespace BuoyRuleCheck
             }
         }
 
-        private static void Add(Entity e)
-        {
-            TransientManager.CurrentTransientManager.AddTransient(
-                e, TransientDrawingMode.DirectTopmost, 128, new IntegerCollection());
-            Items.Add(e);
-        }
+        private static void Add(Entity e) => Put(Items, e, TransientDrawingMode.DirectTopmost, 128);
     }
 }

@@ -316,7 +316,8 @@ namespace BuoyRuleCheck
                     using (var b = new SolidBrush(BuoyPainter.ColorOf(it.Status))) g.FillEllipse(b, Pad, y + 6, 6, 6);
                     string name = $"{it.Element.RoleKo} ({it.Element.ElementId})";
                     TextRenderer.DrawText(g, name, Theme.Body, new Rectangle(Pad + 12, y, w - 90, 18), Theme.Text, TextFormatFlags.EndEllipsis);
-                    string d = it.Element.Fix != null ? UiText.Delta(it.Element.Fix) : "확인 필요";
+                    string d = it.Element.Fix != null ? UiText.Delta(it.Element.Fix)
+                        : it.Element.Guide == UiText.ElementGonePass ? "없어짐" : it.Status == "pass" ? "—" : "확인 필요";
                     var dsz = TextRenderer.MeasureText(d, Theme.Mono);
                     TextRenderer.DrawText(g, d, Theme.Mono, new Point(CardW - Pad - dsz.Width, y), it.Status == "fail" ? Theme.FailInk : Theme.Muted);
                 }

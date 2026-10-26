@@ -315,8 +315,9 @@ namespace BuoyRuleCheck
                 // 판정은 받았다 — 아래 화면 표시(툴팁·근거·부표)가 실패해도 판정을 버리지 않는다(팔레트·로고·명령줄은 그대로).
                 // 실패는 '표시 오류'로 따로 알린다(2026-10-26 사용자 PC: 한 도면에서 '연결 끊김'만 보이고 원인이 가려짐).
                 Display("툴팁", () => BuildTips(raw), onFail: ClearTips);   // 실패하면 이전 판정의 툴팁·강조를 남기지 않는다
-                Display("근거 표시", () => { using (Doc.LockDocument()) Overlay.Show(Doc, Last); });
-                if (AcApp.DocumentManager.MdiActiveDocument == Doc) Display("부표", () => BuoyLayer.Update(Doc, Last));
+                Display("근거 표시", () => { using (Doc.LockDocument()) Overlay.Show(Doc, Last); }, onFail: Overlay.Forget);
+                // 부표 갱신이 도중에 던지면 옛 색(파랑일 수 있음)이 남지 않게 내린다(검증 N4) — 판정은 팔레트·로고가 알림
+                if (AcApp.DocumentManager.MdiActiveDocument == Doc) Display("부표", () => BuoyLayer.Update(Doc, Last), onFail: BuoyLayer.Clear);
                 Display("팔레트·로고", () => Checked?.Invoke(this));   // 화면 쪽 예외를 '검사 실패'로 바꾸지 않게
             }
             catch (EngineException ex)
