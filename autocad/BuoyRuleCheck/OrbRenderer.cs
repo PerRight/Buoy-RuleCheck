@@ -109,6 +109,8 @@ namespace BuoyRuleCheck
         public static readonly LogoState Warn = new("warn", 8, Theme.Warn, false, true, 1, "확인 필요");
         public static readonly LogoState Pass = new("pass", 0, Theme.Pass, false, false, 1, "모두 충족");
         public static readonly LogoState Down = new("down", 0, Theme.Faint, true, false, 0.45, "연결 끊김");
+        /// 엔진은 있는데 플러그인이 검사를 끝내지 못함 — 모양은 연결 끊김과 같고(판정하지 않음) 이름만 다르다.
+        public static readonly LogoState Error = new("error", 0, Theme.Faint, true, false, 0.45, "검사하지 못함");
         /// 검사 중 표시는 최소 0.6 s 보여 준다
         public const double MinCheckSeconds = 0.6;
 
@@ -119,6 +121,7 @@ namespace BuoyRuleCheck
             "warn" => Warn,
             "pass" => Pass,
             "down" => Down,
+            "error" => Error,
             "check" => Checking,
             _ => Watching,
         };

@@ -33,6 +33,8 @@ namespace BuoyRuleCheck
         public CheckResponse? Last { get; private set; }
         public event Action<DocWatcher>? Checked;
         public event Action<DocWatcher, string>? Failed;
+        /// 판정은 받았지만 화면 표시 한 부분이 실패(부표·근거·툴팁) — 판정은 그대로 쓴다.
+        public event Action<DocWatcher, string>? DisplayFailed;
         /// 도면이 저장된 뒤(다음 Idle) — 버전 기록 창을 띄우라는 신호
         public event Action<DocWatcher>? VersionRequested;
 
@@ -300,14 +302,13 @@ namespace BuoyRuleCheck
                 LastRaw = raw;
                 Last = EngineClient.Check(Extractor.DocId(Doc), raw);
                 LastSeconds = clock.Elapsed.TotalSeconds;
-                BuildTips(raw);
-                using (Doc.LockDocument())
-                {
-                    Overlay.Show(Doc, Last);
-                }
-                if (AcApp.DocumentManager.MdiActiveDocument == Doc) BuoyLayer.Update(Doc, Last);
                 LastFailed = false;
-                Checked?.Invoke(this);
+                // 판정은 받았다 — 아래 화면 표시(툴팁·근거·부표)가 실패해도 판정을 버리지 않는다(팔레트·로고·명령줄은 그대로).
+                // 실패는 '표시 오류'로 따로 알린다(2026-10-26 사용자 PC: 한 도면에서 '연결 끊김'만 보이고 원인이 가려짐).
+                Display("툴팁", () => BuildTips(raw));
+                Display("근거 표시", () => { using (Doc.LockDocument()) Overlay.Show(Doc, Last); });
+                if (AcApp.DocumentManager.MdiActiveDocument == Doc) Display("부표", () => BuoyLayer.Update(Doc, Last));
+                Display("팔레트·로고", () => Checked?.Invoke(this));   // 화면 쪽 예외를 '검사 실패'로 바꾸지 않게
             }
             catch (EngineException ex)
             {
@@ -325,12 +326,25 @@ namespace BuoyRuleCheck
                 ClearTips();   // 이전 결과의 툴팁·강조가 남지 않게
                 Overlay.Forget();
                 BuoyLayer.Clear();
-                Failed?.Invoke(this, "플러그인 오류: " + ex.Message);
+                Failed?.Invoke(this, "검사하지 못함(플러그인 오류) — " + Describe(ex));
             }
             finally
             {
                 _busy = false;
             }
+        }
+
+        private void Display(string what, Action step)
+        {
+            try { step(); }
+            catch (Exception ex) { DisplayFailed?.Invoke(this, $"{what} 표시 오류 — {Describe(ex)}"); }
+        }
+
+        /// 예외 한 줄 요약 + 어디서(첫 스택 줄) — 사용자가 명령줄을 그대로 붙여 주면 원인을 찾을 수 있게.
+        internal static string Describe(Exception ex)
+        {
+            var at = (ex.StackTrace ?? "").Split('\n').Select(l => l.Trim()).FirstOrDefault(l => l.Length > 0) ?? "";
+            return $"{ex.GetType().Name}: {ex.Message}" + (at.Length > 0 ? $" [{at}]" : "");
         }
     }
 }

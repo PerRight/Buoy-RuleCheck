@@ -186,6 +186,19 @@ namespace BuoyRuleCheck
             FitCards();
         }
 
+        /// 엔진은 응답했지만 플러그인 쪽에서 검사를 끝내지 못함(추출 등) — 판정하지 않는다. 원인은 명령줄 [BRC] 줄에도.
+        public void ShowCheckError(string message)
+        {
+            _last = null;
+            _header.Set("down", "검사하지 못함", "판정하지 않음", "");
+            ClearCards();
+            var card = new InfoCard("검사하지 못했어요 — 판정하지 않습니다",
+                message + "\n\n명령줄의 [BRC] 줄을 그대로 알려 주시면 원인을 찾을 수 있어요.", "down");
+            card.Add(Theme.RingButton("다시 검사")).Click += (_, _) => RecheckRequested?.Invoke();
+            _cards.Controls.Add(card);
+            FitCards();
+        }
+
         public void ShowEngineDown(string message)
         {
             _last = null;

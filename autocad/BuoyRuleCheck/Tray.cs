@@ -104,7 +104,7 @@ namespace BuoyRuleCheck
             {
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.Clear(Color.Transparent);
-                if (state is "down" or "idle")
+                if (state is "down" or "error" or "idle")
                     using (var p = new Pen(color, 1.5f)) g.DrawEllipse(p, 3, 3, 10, 10);   // 판정 없음: 빈 고리
                 else
                     using (var b = new SolidBrush(color)) g.FillEllipse(b, 2.5f, 2.5f, 11, 11);

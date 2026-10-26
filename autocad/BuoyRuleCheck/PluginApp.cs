@@ -65,6 +65,8 @@ namespace BuoyRuleCheck
         private static readonly Dictionary<Document, DocWatcher> Watchers = new();
         private static readonly Dictionary<Document, CompareForm> CompareForms = new();
         private static PaletteSet? _palette;
+        /// BRC(검사 시작)를 한 번이라도 했는지 — 그 뒤로는 설정된 도면을 열면 자동 감시
+        private static bool _started;
         private static ResultPanel? _panel;
 
         /// 열려 있는 결과 패널(도킹 팔레트). 떠 있는 로고의 목록은 FloatingUi가 따로 갱신한다.
@@ -88,6 +90,7 @@ namespace BuoyRuleCheck
         {
             var doc = Active;
             if (doc == null) return;
+            _started = true;
             EnsurePalette();
             // 검사 시작은 도면을 바꾸지 않는다(레이어·문자 스타일을 만들지 않음 — 명세 완료 기준 'DB 변경 없음').
             // GA_ 레이어가 필요하면 BRCSETUP(리본 '초기 설정'), 라벨은 MText 글꼴 코드로 그려 문자 스타일이 없어도 된다.
@@ -465,10 +468,18 @@ namespace BuoyRuleCheck
             };
             w.Failed += (_, msg) =>
             {
-                ForPanels(p => p.ShowEngineDown(msg));
-                if (doc == Active) FloatingUi.SetState("down");
-                StatusTray.Set("down", "연결 끊김 — 판정하지 않음");
-                doc.Editor.WriteMessage($"\n{Product.Tag} 연결 끊김 — 판정하지 않음: {msg}\n");
+                // 엔진 연결 문제와 플러그인 오류를 나눠 알린다(둘 다 판정하지 않음)
+                bool plugin = msg.StartsWith("검사하지 못함", StringComparison.Ordinal);
+                if (plugin) ForPanels(p => p.ShowCheckError(msg)); else ForPanels(p => p.ShowEngineDown(msg));
+                if (doc == Active) FloatingUi.SetState(plugin ? "error" : "down");
+                StatusTray.Set(plugin ? "error" : "down", plugin ? "검사하지 못함 — 판정하지 않음" : "연결 끊김 — 판정하지 않음");
+                doc.Editor.WriteMessage(plugin ? $"\n{Product.Tag} {msg}\n" : $"\n{Product.Tag} 연결 끊김 — 판정하지 않음: {msg}\n");
+            };
+            var shownErrors = new HashSet<string>();
+            w.DisplayFailed += (_, msg) =>
+            {
+                if (!shownErrors.Add(msg)) return;   // 같은 오류는 도면마다 한 번만
+                try { doc.Editor.WriteMessage($"\n{Product.Tag} {msg} — 판정은 그대로입니다(팔레트·로고 참고)\n"); } catch { }
             };
             w.VersionRequested += x => RecordVersion(x.Doc, fromSave: true);
             Watchers[doc] = w;
@@ -502,6 +513,10 @@ namespace BuoyRuleCheck
         internal static void OnActivated(Document? doc)
         {
             if (doc == null) return;
+            // 이 세션에서 검사를 한 번이라도 시작했으면, 선박 정보가 있는 도면은 팔레트가 닫혀 있어도 감시한다
+            // (로고·부표가 주 화면이므로 — 전에는 팔레트가 닫혀 있으면 새로 연 도면을 감시하지 않았다)
+            if (_started && !Watchers.ContainsKey(doc) && DrawingProps.IsConfigured(doc.Database))
+                Attach(doc).MarkDirty();
             // 부표·근거는 지금 도면의 마지막 판정으로(팔레트가 닫혀 있어도)
             BuoyLayer.Clear();
             if (Watchers.TryGetValue(doc, out var wb) && wb.Last != null)
@@ -512,7 +527,7 @@ namespace BuoyRuleCheck
             else Overlay.Forget();
             // 로고는 팔레트가 닫혀 있어도 보이므로, 팔레트 표시 여부와 상관없이 그 도면의 상태로 바꾼다
             if (Watchers.TryGetValue(doc, out var w0) && w0.Last != null) FloatingUi.SetResult(w0.Last);
-            else FloatingUi.SetState(w0 is { LastFailed: true } ? "down" : "idle");
+            else FloatingUi.SetState(w0 is { LastFailed: true } ? "down" : "idle");   // 실패 원인은 그 도면의 명령줄 [BRC] 줄
             bool shown = _palette != null && _palette.Visible;
             if (!Panels().Any() || !shown)
             {
@@ -628,8 +643,29 @@ namespace BuoyRuleCheck
                     ForPanels(p => p.FocusRule(r.RuleId));
                 }
             };
-            FloatingUi.PaletteRequested += EnsurePalette;
+            FloatingUi.PaletteRequested += ShowPaletteDetail;
             FloatingUi.Init();
+        }
+
+        /// 로고 목록 '팔레트에서 자세히': 팔레트를 보이게(자동 숨김이면 펼침) + 검토 탭 + 가장 급한 항목 카드로 스크롤·깜빡임.
+        /// 팔레트가 이미 열려 있으면 아무 변화가 없어 보이던 것(2026-10-26 사용자 PC)을 고침.
+        private static void ShowPaletteDetail()
+        {
+            EnsurePalette();
+            try
+            {
+                if (_palette != null)
+                {
+                    _palette.Visible = true;
+                    _palette.RolledUp = false;   // 자동 숨김으로 접혀 있으면 펼친다
+                    _palette.Activate(0);
+                }
+            }
+            catch { /* 팔레트 상태 API 실패는 무시 — 아래 카드 이동은 한다 */ }
+            var d = Active;
+            var r = d != null && Watchers.TryGetValue(d, out var w) ? w.Last : null;
+            var first = r?.Results.OrderBy(x => Theme.StatusRank(x.Status)).FirstOrDefault();
+            ForPanels(p => { if (first != null) p.FocusRule(first.RuleId); else p.ShowTab("review"); });
         }
 
         private static void EnsurePalette()
@@ -641,8 +677,11 @@ namespace BuoyRuleCheck
             }
             _panel = CreatePanel();
 
-            _palette = new PaletteSet(Product.Name, new Guid("3f6c2a71-5b8e-4d0a-9c1e-7a2b4d6e8f10"))
+            // GUID를 새로: AutoCAD는 팔레트 세트 제목·위치를 GUID별로 프로필에 저장해 두고 다시 쓴다 — 옛 GUID면 옛 이름
+            // 'GA RuleCheck'이 계속 보인다(2026-10-26 사용자 PC). 새 GUID는 처음 한 번 오른쪽에 새로 붙는다.
+            _palette = new PaletteSet(Product.Name, new Guid("b7d3e4a2-6c19-4f58-8e0b-2a9d71c5f3e6"))
             {
+                Name = Product.Name,
                 Style = PaletteSetStyles.ShowCloseButton | PaletteSetStyles.ShowAutoHideButton | PaletteSetStyles.ShowPropertiesMenu,
                 MinimumSize = new System.Drawing.Size(380, 480),
             };

@@ -287,6 +287,7 @@ namespace BuoyRuleCheck
                 "warn" => $"확인 필요 {c.Warn}",
                 "pass" => "모두 기준 충족",
                 "down" => "연결 끊김 — 판정하지 않음",
+                "error" => "검사하지 못함 — 판정하지 않음",
                 _ => r == null ? "검사 전" : "판정한 항목 없음",
             };
             _rev = r != null ? $"rev {r.Revision}" : "";
@@ -307,6 +308,8 @@ namespace BuoyRuleCheck
                     _rows.Controls.Add(new ListRowButton(c.Warn > 0 ? $"확인 필요 {c.Warn}건을 숨겼어요" : "수정 소요가 없어요",
                         "'수정 소요만'을 끄면 모두 보여요", c.Warn > 0 ? "warn" : null) { Enabled = false });
             }
+            else if (state == "error")
+                _rows.Controls.Add(new ListRowButton("검사하지 못했어요", "명령줄의 [BRC] 오류 줄을 확인하세요", "down") { Enabled = false });
             else if (state == "down")
                 _rows.Controls.Add(new ListRowButton("검사 엔진에 연결할 수 없어요", "'python -m brc serve' 실행 후 다시 검사", "down") { Enabled = false });
             Relayout();

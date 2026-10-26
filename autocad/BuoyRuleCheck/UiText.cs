@@ -112,6 +112,7 @@ namespace BuoyRuleCheck
             "pass" => $"{Product.Name} — 모두 기준 충족, 목록 열기",
             "check" => $"{Product.Name} — 검사 중, 목록 열기",
             "down" => $"{Product.Name} — 연결 끊김, 판정하지 않음",
+            "error" => $"{Product.Name} — 검사하지 못함, 판정하지 않음",
             _ => $"{Product.Name} — 감시 중, 목록 열기",
         };
 
