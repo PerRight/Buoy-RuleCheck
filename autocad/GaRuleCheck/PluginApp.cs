@@ -6,7 +6,7 @@
 //   GARCTOGGLE  도면 표시 켜기/끄기                        GARCREPORT HTML 검토 리포트 저장·열기
 //   GARCLARGE   라벨 확대(라벨 글자·선 두께·표식 크기 2.5배 — 판정·도면은 그대로)
 //   GARCVERSION 지금 상태를 버전으로 기록(저장할 때도 자동으로 묻는다)   GARCCOMPARE 버전 비교 창
-//   GARCPANEL   떠 있는 로고 패널 열기/닫기(Ctrl+.)                     GARCLOGO   로고 보이기/숨기기
+//   GARCPANEL   떠 있는 로고의 수정 소요 목록 열기/닫기(Ctrl+.)         GARCLOGO   로고 보이기/숨기기
 //   GARCLINK    실도면 연결 마법사(치수표·축척 → 측면도 영역 → AP/FP/기선 → 역할 지정 → 조종위치)   [LinkWizard.cs]
 //   GARCROLE    고른 객체에 역할(선체·장애물·충돌격벽·구상선수·조종위치) 붙이기/해제   GARCROLESHOW 판정에 쓰인 객체 역할별 색 표시
 using System;
@@ -65,11 +65,10 @@ namespace GaRuleCheck
         private static PaletteSet? _palette;
         private static ResultPanel? _panel;
 
-        /// 열려 있는 결과 패널 전부(도킹 팔레트 + 떠 있는 로고 패널) — 같은 내용으로 함께 갱신한다.
+        /// 열려 있는 결과 패널(도킹 팔레트). 떠 있는 로고의 목록은 FloatingUi가 따로 갱신한다.
         private static IEnumerable<ResultPanel> Panels()
         {
             if (_panel != null && !_panel.IsDisposed) yield return _panel;
-            if (FloatingUi.Panel is { IsDisposed: false } fp) yield return fp;
         }
 
         private static void ForPanels(Action<ResultPanel> act)
@@ -117,7 +116,7 @@ namespace GaRuleCheck
             var doc = Active;
             if (doc != null) Detach(doc);
             ForPanels(p => p.SetIdle("감시 중지됨", doc != null ? DocName(doc) : null));
-            FloatingUi.SetStatus("idle", 0, 0);   // 로고 배지에 이전 개수가 남지 않게
+            FloatingUi.SetState("idle");   // 로고 칩에 이전 개수가 남지 않게
         }
 
         [CommandMethod("GARCHEALTH")]
@@ -410,15 +409,17 @@ namespace GaRuleCheck
                 if (x.Doc == Active)
                 {
                     ForPanels(p => p.ShowResult(x.Last, DocName(x.Doc), seconds: x.LastSeconds));
-                    var (fail, unknown) = x.ElementCounts();
-                    FloatingUi.SetStatus(x.Last.Overall, fail, unknown);
+                    FloatingUi.SetResult(x.Last);
+                    // 해결이 생기면 로고 옆 토스트(명세 6-4) — 같은 입력으로 되돌린 경우(Undo)도 해결로 센다
+                    int solved = x.Last.Transitions.Count(t => t.Kind == "resolved");
+                    if (solved > 0) FloatingUi.Toast(UiText.ToastResolved(solved));
                 }
                 StatusTray.Update(x.Last, DocName(x.Doc));
             };
             w.Failed += (_, msg) =>
             {
                 ForPanels(p => p.ShowEngineDown(msg));
-                if (doc == Active) FloatingUi.SetStatus("down", 0, 0);
+                if (doc == Active) FloatingUi.SetState("down");
                 StatusTray.Set("down", "검토 불가 — 엔진 연결 안 됨");
                 doc.Editor.WriteMessage("\nGA-RuleCheck: " + msg + "\n");
             };
@@ -462,14 +463,10 @@ namespace GaRuleCheck
                 BuoyLayer.Update(doc, wb.Last);
             }
             else Overlay.Forget();
-            // 로고 배지는 패널이 접혀 있어도 보이므로, 패널 표시 여부와 상관없이 그 도면의 상태로 바꾼다
-            if (Watchers.TryGetValue(doc, out var w0) && w0.Last != null)
-            {
-                var (f0, u0) = w0.ElementCounts();
-                FloatingUi.SetStatus(w0.Last.Overall, f0, u0);
-            }
-            else FloatingUi.SetStatus(w0 is { LastFailed: true } ? "down" : "idle", 0, 0);
-            bool shown = (_palette != null && _palette.Visible) || FloatingUi.PanelOpen;
+            // 로고는 팔레트가 닫혀 있어도 보이므로, 팔레트 표시 여부와 상관없이 그 도면의 상태로 바꾼다
+            if (Watchers.TryGetValue(doc, out var w0) && w0.Last != null) FloatingUi.SetResult(w0.Last);
+            else FloatingUi.SetState(w0 is { LastFailed: true } ? "down" : "idle");
+            bool shown = _palette != null && _palette.Visible;
             if (!Panels().Any() || !shown)
             {
                 Overlay.ClearDiff();      // 다른 도면의 비교 표시가 남지 않게
@@ -482,9 +479,7 @@ namespace GaRuleCheck
             ForPanels(p => { p.Ship.Load(props); p.ClearHistory(); });
             if (Watchers.TryGetValue(doc, out var w) && w.Last != null)
             {
-                ForPanels(p => p.ShowResult(w.Last, DocName(doc), record: false));
-                var (fail, unknown) = w.ElementCounts();
-                FloatingUi.SetStatus(w.Last.Overall, fail, unknown);
+                ForPanels(p => p.ShowResult(w.Last, DocName(doc), record: false, seconds: w.LastSeconds));
                 Redraw(doc);
             }
             else if (DrawingProps.IsConfigured(doc.Database))
@@ -574,8 +569,20 @@ namespace GaRuleCheck
 
         internal static void InitFloating()
         {
-            FloatingUi.CollapseAllRequested += () => { if (_palette != null) _palette.Visible = false; };
-            FloatingUi.Init(CreatePanel);
+            // 로고 목록 한 줄 → 그 고칠 자리로 이동 + 부표 카드 고정, '팔레트에서 자세히' → 팔레트
+            FloatingUi.RowPicked += r =>
+            {
+                var d = Active;
+                if (d == null) return;
+                double sc = Watchers.TryGetValue(d, out var ww) ? ww.Last?.UnitsScale ?? 0 : 0;
+                if (!BuoyLayer.OpenFromList(d, sc, r, null))
+                {
+                    EnsurePalette();
+                    ForPanels(p => p.FocusRule(r.RuleId));
+                }
+            };
+            FloatingUi.PaletteRequested += EnsurePalette;
+            FloatingUi.Init();
         }
 
         private static void EnsurePalette()

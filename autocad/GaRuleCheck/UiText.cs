@@ -114,6 +114,19 @@ namespace GaRuleCheck
             _ => $"{Product.Name} — 감시 중, 목록 열기",
         };
 
+        /// 로고 칩: 수정 소요면 남은 개수, 확인 필요면 '!', 그 밖은 없음. n = 레이블에 넣을 개수.
+        public static (string? Chip, int N) LogoChip(CheckResponse? r, string state)
+        {
+            var c = r != null ? Count(r) : default;
+            int n = state == "fail" ? c.Fail : state == "warn" ? c.Warn : 0;
+            string? chip = state == "fail" ? (n > 99 ? "99+" : n.ToString(CultureInfo.InvariantCulture)) : state == "warn" ? "!" : null;
+            return (chip, n);
+        }
+
+        /// 로고 상태 키: 판정이 있으면 fail/warn/pass(판정한 항목 없음은 idle), 없으면 idle/down
+        public static string LogoState(CheckResponse? r, string fallback) =>
+            r == null ? fallback : StateKey(r) switch { "none" => "idle", var k => k };
+
         // ── 항목 카드 ────────────────────────────────────────────────────────────
 
         /// 카드 제목을 정하는 객체: 수정 소요면 가장 많이 고쳐야 하는 것, 문제없음이면 여유가 가장 적은 것.

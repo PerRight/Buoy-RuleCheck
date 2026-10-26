@@ -30,6 +30,7 @@
     <Compile Include="..\GaRuleCheck\ResultPanel.cs" Link="Shared\ResultPanel.cs" />
     <Compile Include="..\GaRuleCheck\ShipInfoView.cs" Link="Shared\ShipInfoView.cs" />
     <Compile Include="..\GaRuleCheck\DrawingPropsText.cs" Link="Shared\DrawingPropsText.cs" />
+    <Compile Include="..\GaRuleCheck\FloatingParts.cs" Link="Shared\FloatingParts.cs" />
     <EmbeddedResource Include="samples.json" LogicalName="BuoyPreview.samples.json" />
   </ItemGroup>
 </Project>

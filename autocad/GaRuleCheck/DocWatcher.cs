@@ -281,6 +281,7 @@ namespace GaRuleCheck
             _busy = true;
             _dirty = false;
             BuoyLayer.CheckStarting(Doc);
+            if (AcApp.DocumentManager.MdiActiveDocument == Doc) FloatingUi.BeginCheck();
             var clock = Stopwatch.StartNew();
             try
             {

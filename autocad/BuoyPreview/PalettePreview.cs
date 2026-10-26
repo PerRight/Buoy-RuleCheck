@@ -1,5 +1,6 @@
 // 팔레트 미리보기: 플러그인과 같은 ResultPanel에 합성 샘플(S140)의 엔진 응답을 차례로 넣어 본다(AutoCAD 없이).
 // 응답은 samples.json(make_samples.py로 만듦). 도면 쪽 동작(근거 표시·부표 이동)은 여기서는 글로만 알린다.
+// 팔레트 왼쪽 아래에 떠 있는 로고(같은 LogoButton)가 뜨고, 누르면 수정 소요 목록, 해결이 생기면 토스트.
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -16,6 +17,11 @@ namespace GaRuleCheck
         private readonly ResultPanel _panel = new() { Dock = DockStyle.Fill };
         private readonly Label _log = new() { Dock = DockStyle.Bottom, Height = 40, ForeColor = Theme.Faint, BackColor = Theme.Bg, Font = Theme.MonoSmall, Padding = new Padding(8, 4, 8, 4) };
         private readonly List<(string Name, CheckResponse Resp)> _samples = new();
+        // 떠 있는 로고·목록·토스트(플러그인과 같은 부품)
+        private readonly LogoButton _logo = new();
+        private readonly LogoListPopup _list = new();
+        private CheckResponse? _cur;
+        private string _state = "idle";
 
         public PalettePreview()
         {
@@ -35,13 +41,13 @@ namespace GaRuleCheck
             {
                 var b = Theme.RingButton(name);
                 b.Margin = new Padding(0, 6, 0, 0);
-                b.Click += (_, _) => _panel.ShowResult(resp, "S140_" + name.Split(' ')[0] + ".dwg", record: true, seconds: 0.3);
+                b.Click += (_, _) => Feed(resp, name);
                 list.Controls.Add(b);
             }
             var idle = Theme.TextButton("검사 전 화면");
-            idle.Click += (_, _) => _panel.SetIdle("검사 전", "S140.dwg");
+            idle.Click += (_, _) => { _panel.SetIdle("검사 전", "S140.dwg"); SetLogo(null, "idle"); };
             var down = Theme.TextButton("연결 끊김 화면");
-            down.Click += (_, _) => _panel.ShowEngineDown("엔진 서버(127.0.0.1:8765)에 연결할 수 없습니다.");
+            down.Click += (_, _) => { _panel.ShowEngineDown("엔진 서버(127.0.0.1:8765)에 연결할 수 없습니다."); SetLogo(null, "down"); };
             list.Controls.Add(idle);
             list.Controls.Add(down);
 
@@ -59,7 +65,44 @@ namespace GaRuleCheck
             _panel.ToggleOverlayRequested += () => Log("부표 표시 켜기/끄기");
             _panel.LargeLabelsRequested += () => Log("라벨 확대");
             _panel.ReportRequested += () => Log("리포트");
-            if (_samples.Count > 2) _panel.ShowResult(_samples[2].Resp, "S140_rev2.dwg", seconds: 0.3);
+            if (_samples.Count > 2) Feed(_samples[2].Resp, _samples[2].Name);
+
+            _logo.ToggleRequested += kb =>
+            {
+                if (_list.Visible) { _list.Hide(); _logo.SetExpanded(false); return; }
+                _list.SetResult(_cur, _state);
+                _list.PlaceNear(_logo.PlateBounds);
+                _list.Open(this, kb);
+                _logo.SetExpanded(true);
+            };
+            _list.RowPicked += r => { _list.Hide(); _logo.SetExpanded(false); Log($"목록 → 고칠 자리로: {r.RuleId}"); };
+            _list.PaletteRequested += () => { _list.Hide(); _logo.SetExpanded(false); Log("팔레트에서 자세히"); };
+            _list.CloseRequested += () => { _list.Hide(); _logo.SetExpanded(false); };
+            Shown += (_, _) =>
+            {
+                _logo.Location = new Point(Left + 380 - LogoButton.W - 16, Bottom - LogoButton.H - 70);
+                _logo.Show(this);
+            };
+            FormClosed += (_, _) => { _list.Dispose(); _logo.Dispose(); };
+        }
+
+        /// 샘플 하나를 검사 결과처럼 넣는다: 로고는 검사 중(최소 0.6 s) → 결과 상태, 해결이 있으면 토스트.
+        private void Feed(CheckResponse resp, string name)
+        {
+            _logo.BeginCheck();
+            _panel.ShowResult(resp, "S140_" + name.Split(' ')[0] + ".dwg", record: true, seconds: 0.3);
+            SetLogo(resp, "idle");
+            int solved = resp.Transitions.Count(t => t.Kind == "resolved");
+            if (solved > 0 && _logo.Visible) new ToastForm(UiText.ToastResolved(solved), "pass").ShowNear(_logo.PlateBounds, this);
+        }
+
+        private void SetLogo(CheckResponse? r, string fallback)
+        {
+            _cur = r;
+            _state = UiText.LogoState(r, fallback);
+            var (chip, n) = UiText.LogoChip(r, _state);
+            _logo.SetState(OrbStates.ForState(_state), chip, UiText.LogoLabel(_state, n));
+            if (_list.Visible) _list.SetResult(_cur, _state);
         }
 
         private void Log(string s) => _log.Text = s;

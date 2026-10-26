@@ -251,13 +251,20 @@ namespace GaRuleCheck
             return Geo[st.Key] = new OrbGeometry(spec);
         }
 
+        /// 숫자 칩 자리(판 오른쪽 위, 높이 18, 최소 폭 18) — 창 모양(Region)도 이 값으로 만든다.
+        public static RectangleF ChipRect(Point plate, string chip)
+        {
+            int w = Math.Max(18, TextRenderer.MeasureText(chip, ChipFont).Width + 6);
+            return new RectangleF(plate.X + 38, plate.Y - 6, w, 18);
+        }
+
         /// plate = 판 왼쪽 위. chip: 수정 소요 개수 또는 "!"(확인 필요), 없으면 null.
-        public static void Paint(Graphics g, Point plate, OrbStates.LogoState st, double turn, string? chip, double bob = 0, bool focused = false)
+        public static void Paint(Graphics g, Point plate, OrbStates.LogoState st, double turn, string? chip, double bob = 0, bool focused = false, bool hover = false)
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
             var pr = new Rectangle(plate.X, plate.Y, Plate, Plate);
             using (var b = new SolidBrush(Theme.Bg)) g.FillEllipse(b, pr);
-            using (var p = new Pen(Theme.Over(Color.FromArgb(23, 255, 255, 255), Theme.Bg), 1f)) g.DrawEllipse(p, pr.X + 0.5f, pr.Y + 0.5f, pr.Width - 1, pr.Height - 1);
+            using (var p = new Pen(Theme.Over(Color.FromArgb(hover ? 52 : 26, 255, 255, 255), Theme.Bg), 1f)) g.DrawEllipse(p, pr.X + 0.5f, pr.Y + 0.5f, pr.Width - 1, pr.Height - 1);
             var look = new OrbLook { Dots = OrbLook.Ink, Lamp = st.Lamp, LampHollow = st.Hollow, Opacity = st.Opacity };
             float off = (Plate - OrbSize) / 2f;
             OrbRenderer.Draw(g, GeometryFor(st), turn, new PointF(plate.X + off, plate.Y + off + (float)bob), look);
@@ -266,9 +273,7 @@ namespace GaRuleCheck
             if (!string.IsNullOrEmpty(chip))
             {
                 var col = chip == "!" ? Theme.Warn : Theme.Fail;
-                var sz = TextRenderer.MeasureText(chip, ChipFont);
-                int w = Math.Max(18, sz.Width + 6);
-                var cr = new RectangleF(plate.X + 38, plate.Y - 6, w, 18);
+                var cr = ChipRect(plate, chip);
                 using (var ring = new SolidBrush(Theme.Bg)) using (var rp = Theme.RoundRect(RectangleF.Inflate(cr, 2, 2), 11)) g.FillPath(ring, rp);
                 using (var b = new SolidBrush(col)) using (var path = Theme.RoundRect(cr, 9)) g.FillPath(b, path);
                 TextRenderer.DrawText(g, chip, ChipFont, Rectangle.Round(cr), Theme.Bg,
