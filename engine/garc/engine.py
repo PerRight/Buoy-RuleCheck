@@ -34,13 +34,20 @@ ELEMENT_STATUSES = ("pass", "fail", "unknown")
 
 
 def element(r: "Rule", obj: dict[str, Any], status: str, required: str, actual: str,
-            diff: str | None = None, guide: str | None = None, margin: float | None = None) -> dict[str, Any]:
-    """요소 판정 한 건. status는 pass/fail/unknown만 — '판정 못 함'은 unknown(⚠ 확인 필요)으로 통일."""
+            diff: str | None = None, guide: str | None = None, margin: float | None = None,
+            anchor: list[float] | None = None, fix: dict[str, Any] | None = None) -> dict[str, Any]:
+    """요소 판정 한 건. status는 pass/fail/unknown만 — '판정 못 함'은 unknown(⚠ 확인 필요)으로 통일.
+
+    표시용(판정에 쓰지 않음, 2026-10-26 Buoy UI):
+      anchor  고칠 자리 [x, z] m — 플러그인이 이 점에 부표를 띄운다(없으면 부표 없음).
+      fix     카드 숫자: quantity(z·d), current, limit(수 또는 [lo, hi]), op(≤·≥·range), delta(+면 초과·고칠 양),
+              unit, action_ko(카드 제목), condition_ko(조건 줄), condition(그 수치를 정한 흘수 조건 이름)."""
     assert status in ELEMENT_STATUSES, status
     return {"element_id": obj["handle"], "rule_id": r.id, "rule_name": r.title_ko, "role": obj["role"],
             "role_ko": ROLE_KO.get(obj["role"], obj["role"]), "status": status, "required": required,
             "actual": actual, "diff": diff, "guide": guide,
-            "margin": None if margin is None else round(margin, 3)}
+            "margin": None if margin is None else round(margin, 3),
+            "anchor": anchor, "fix": fix}
 
 
 @dataclass

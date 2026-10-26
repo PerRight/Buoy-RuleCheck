@@ -114,6 +114,11 @@ def _handle_list(model: dict[str, Any], handles: list[str], cap: int = 6) -> str
     return "handle " + ", ".join(shown) + more
 
 
+def _ceil_cm(v: float) -> float:
+    """'… m 낮추세요'의 양은 올림(그만큼 낮추면 기준 안에 들게). 1e-7 cm는 부동소수점 잡음 흡수용."""
+    return math.ceil(v * 100 - 1e-7) / 100
+
+
 def _floor_cm(v: float) -> float:
     """'이하로' 제안값은 내림(그대로 적용해도 기준을 넘지 않게). 1e-7 cm 여유는 부동소수점 잡음 흡수용."""
     return math.floor(v * 100 + 1e-7) / 100
@@ -139,13 +144,27 @@ def _element_checks(r: Rule, objs: list[dict[str, Any]], eye_obj: dict[str, Any]
         margin, px, pz = min((min(max_height_at(eye, x, x_target, *c["_ab"]) for c in per_cond) - z, x, z) for x, z in fwd)
         z_lim = min(pz + margin, ez - 0.01)
         req = f"상단 z ≤ {_floor_cm(z_lim):.2f} m (x={px:.2f} m 지점, 입력된 모든 흘수 조건)"
+        # 표시용: 고칠 자리(그 꼭짓점)와 카드 숫자. 허용 상단을 정한 흘수 조건 = 그 x에서 허용 높이가 가장 낮은 조건
+        zf = _floor_cm(z_lim)
+        gov = min(per_cond, key=lambda c: max_height_at(eye, px, x_target, *c["_ab"]))["condition"]
+        anchor = [round(px, 3), round(pz, 3)]
         if bad:
             exceed = "눈높이 이상 — 시선이 수면에 닿지 않음" if math.isinf(d_o) else f"이 객체만으로 사각 {d_o:.2f} m > 허용 {limit:g} m"
+            lower_by = _ceil_cm(pz - zf)
+            fix = {"quantity": "z", "current": round(pz, 3), "limit": zf, "op": "≤", "delta": lower_by, "unit": "m",
+                   "action_ko": f"상단을 {lower_by:.2f} m 낮추세요", "condition_ko": f"z ≤ {zf:.2f} m 이면 기준 충족",
+                   "condition": gov}
             out.append(element(r, o, "fail", req, f"z = {pz:.2f} m ({exceed})",
                                diff=f"{max(-margin, 0.0):.2f} m 초과",
-                               guide=f"x={px:.2f} m 지점 상단을 z={_floor_cm(z_lim):.2f} m 이하로 낮추세요", margin=margin))
+                               guide=f"x={px:.2f} m 지점 상단을 z={zf:.2f} m 이하로 낮추세요", margin=margin,
+                               anchor=anchor, fix=fix))
         else:
-            out.append(element(r, o, "pass", req, f"z = {pz:.2f} m (여유 {max(margin, 0.0):.2f} m)", margin=margin))
+            room = max(margin, 0.0)
+            fix = {"quantity": "z", "current": round(pz, 3), "limit": zf, "op": "≤", "delta": -round(room, 3), "unit": "m",
+                   "action_ko": f"상단 z {pz:.2f} m — 기준 안쪽", "condition_ko": f"여유 {room:.2f} m · 기준 z ≤ {zf:.2f} m",
+                   "condition": gov}
+            out.append(element(r, o, "pass", req, f"z = {pz:.2f} m (여유 {room:.2f} m)", margin=margin,
+                               anchor=anchor, fix=fix))
     # 조종위치는 '판정의 기준점'이지 위반 대상이 아니다 — 입력이 유효하면(여기까지 왔으면) 충족으로 두고,
     # 이 눈높이에서의 사각 거리를 참고로 보여 준다. 위반 개수는 장애물·선체·격벽 요소로만 센다.
     seen = "시선이 수면에 닿지 않음" if math.isinf(d) else f"사각 {d:.2f} m / 허용 {limit:g} m (최악: {worst_cond})"

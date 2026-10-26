@@ -99,25 +99,43 @@ def check_collision_bulkhead(model: dict[str, Any], r: Rule) -> RuleResult:
                   targets=[bhds[0]["handle"]], evidence=evidence, overlays=overlays)
     req = f"기준점({ref_name})에서 {lower:.2f}~{upper:.2f} m"
 
-    def el(status: str, diff: str | None = None, guide: str | None = None, margin: float | None = None):
-        return [element(r, bhds[0], status, req, f"{rng}", diff=diff, guide=guide, margin=margin)]
+    # 표시용: 고칠 자리 = 격벽 윗끝(가장 높은 꼭짓점), 카드 숫자 = 기준점에서의 거리와 허용 구간
+    top = max(bhds[0]["points"], key=lambda p: p[1])
+    anchor = [round(top[0], 3), round(top[1], 3)]
+    cur = round(d_min, 3) if abs(d_max - d_min) < 1e-3 else [round(d_min, 3), round(d_max, 3)]
+    cond_ok = f"기준점({ref_name})에서 {lower:.2f}~{upper:.2f} m 이면 기준 충족"
+
+    def fix(delta: float, action: str, condition: str = cond_ok) -> dict[str, Any]:
+        return {"quantity": "d", "current": cur, "limit": [round(lower, 3), round(upper, 3)], "op": "range",
+                "delta": round(delta, 3), "unit": "m", "action_ko": action, "condition_ko": condition, "condition": None}
+
+    def el(status: str, diff: str | None = None, guide: str | None = None, margin: float | None = None,
+           fx: dict[str, Any] | None = None):
+        return [element(r, bhds[0], status, req, f"{rng}", diff=diff, guide=guide, margin=margin, anchor=anchor, fix=fx)]
 
     if ok:   # 통과는 '위반 조건이 아님'이 아니라 '범위 안임'이 참일 때만 (NaN 비교는 항상 거짓)
         common["targets"] = []
-        return r.result("pass", base, elements=el("pass", margin=min(d_min - lower, upper - d_max)), **common)
+        room = min(d_min - lower, upper - d_max)
+        return r.result("pass", base, elements=el("pass", margin=room,
+                                                   fx=fix(-room, f"기준점에서 {rng} — 기준 안쪽",
+                                                          f"여유 {max(room, 0.0):.2f} m · 기준 {lower:.2f}~{upper:.2f} m")), **common)
     if (d_max - d_min) > (upper - lower) + EPS:
         # 계단·리세스 폭이 허용 구간보다 넓으면 어느 쪽으로 옮겨도 한쪽이 벗어난다
         sugg = (f"격벽 계단 폭 {d_max - d_min:.2f} m가 허용 구간 폭 {upper - lower:.2f} m보다 넓어 "
                 "이동만으로는 해결되지 않습니다. 계단·리세스 폭을 줄이세요.")
         return r.result("fail", base + " — 계단 폭이 허용 구간보다 넓음", suggestion_ko=sugg,
-                        elements=el("fail", f"계단 폭 {d_max - d_min:.2f} m > 허용 구간 폭 {upper - lower:.2f} m", sugg),
+                        elements=el("fail", f"계단 폭 {d_max - d_min:.2f} m > 허용 구간 폭 {upper - lower:.2f} m", sugg,
+                                    fx=fix(_ceil_cm((d_max - d_min) - (upper - lower)),
+                                           f"계단 폭을 {_ceil_cm((d_max - d_min) - (upper - lower)):.2f} m 줄이세요")),
                         **common)
     if d_min < lower - EPS:
         need = _ceil_cm(lower - d_min)
         sugg = f"격벽을 선미 쪽으로 {need:.2f} m 이상 옮기세요."
         return r.result("fail", base + " — 하한 미달", suggestion_ko=sugg,
-                        elements=el("fail", f"하한보다 {lower - d_min:.2f} m 짧음", sugg, d_min - lower), **common)
+                        elements=el("fail", f"하한보다 {lower - d_min:.2f} m 짧음", sugg, d_min - lower,
+                                    fx=fix(need, f"격벽을 선미 쪽으로 {need:.2f} m 옮기세요")), **common)
     need = _ceil_cm(d_max - upper)
     sugg = f"격벽을 선수 쪽으로 {need:.2f} m 이상 옮기세요."
     return r.result("fail", base + " — 상한 초과 (주관청 허용 시 예외 가능 → 사람 확인)", suggestion_ko=sugg,
-                    elements=el("fail", f"상한보다 {d_max - upper:.2f} m 김", sugg, upper - d_max), **common)
+                    elements=el("fail", f"상한보다 {d_max - upper:.2f} m 김", sugg, upper - d_max,
+                                fx=fix(need, f"격벽을 선수 쪽으로 {need:.2f} m 옮기세요")), **common)
