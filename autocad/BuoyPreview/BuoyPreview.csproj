@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Buoy-RuleCheck 단독 미리보기(AutoCAD 없이 실행): 오브·떠 있는 로고·도면 위 부표 상태 흐름·크기별 점 수·동작 줄이기.
+    실행(Windows):  cd autocad\BuoyPreview  →  dotnet run
+    플러그인과 같은 소스 파일(Theme·OrbModel·OrbRenderer·BuoyAnim)을 링크해서 그리므로, 여기서 보이는 모습이 플러그인 모습이다.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>GaRuleCheck</RootNamespace>
+    <AssemblyName>BuoyPreview</AssemblyName>
+    <NoWarn>$(NoWarn);WFO1000</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\GaRuleCheck\Theme.cs" Link="Shared\Theme.cs" />
+    <Compile Include="..\GaRuleCheck\OrbModel.cs" Link="Shared\OrbModel.cs" />
+    <Compile Include="..\GaRuleCheck\OrbRenderer.cs" Link="Shared\OrbRenderer.cs" />
+    <Compile Include="..\GaRuleCheck\BuoyAnim.cs" Link="Shared\BuoyAnim.cs" />
+    <Compile Include="..\GaRuleCheck\UiState.cs" Link="Shared\UiState.cs" />
+    <Compile Include="..\GaRuleCheck\Dto.cs" Link="Shared\Dto.cs" />
+  </ItemGroup>
+</Project>
