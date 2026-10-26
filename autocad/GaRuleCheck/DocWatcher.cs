@@ -54,6 +54,8 @@ namespace GaRuleCheck
         private string? _hoverHandle;
         private bool _versionPending;
         public RawDrawing? LastRaw { get; private set; }
+        /// 마지막 검사에 걸린 시간(추출 + 엔진, 초) — 팔레트 머리·명령줄 '다시 계산 0.3 s'
+        public double? LastSeconds { get; private set; }
 
         public DocWatcher(Document doc)
         {
@@ -279,6 +281,7 @@ namespace GaRuleCheck
             _busy = true;
             _dirty = false;
             BuoyLayer.CheckStarting(Doc);
+            var clock = Stopwatch.StartNew();
             try
             {
                 RawDrawing raw;
@@ -291,6 +294,7 @@ namespace GaRuleCheck
                 _mappedLayers = Contract.LayerRoleNames(raw.Props);
                 LastRaw = raw;
                 Last = EngineClient.Check(Extractor.DocId(Doc), raw);
+                LastSeconds = clock.Elapsed.TotalSeconds;
                 BuildTips(raw);
                 using (Doc.LockDocument())
                 {

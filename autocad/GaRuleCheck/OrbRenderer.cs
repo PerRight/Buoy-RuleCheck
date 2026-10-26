@@ -112,6 +112,17 @@ namespace GaRuleCheck
         /// 검사 중 표시는 최소 0.6 s 보여 준다
         public const double MinCheckSeconds = 0.6;
 
+        /// 상태 키(fail / warn / pass / down / check / 그 밖 = 감시 중) → 로고·머리 오브 모습
+        public static LogoState ForState(string key) => key switch
+        {
+            "fail" => Fail,
+            "warn" => Warn,
+            "pass" => Pass,
+            "down" => Down,
+            "check" => Checking,
+            _ => Watching,
+        };
+
         // ── 도면 위 부표(30 px · 점 36 · 판정 색 점) ──
         public const int BuoySize = 30;
         public const double BuoyIdle = 5, BuoyRecheck = 1.2, BuoyWarn = 8;
@@ -177,11 +188,39 @@ namespace GaRuleCheck
             SetStyle(ControlStyles.SupportsTransparentBackColor | ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint, true);
             BackColor = Color.Transparent;
             Size = new Size((int)Math.Ceiling(spec.Size), (int)Math.Ceiling(spec.Size));
-            _tick = dt => { _motion.Step(dt, Motion.Reduced); if (!_motion.Stopped || dt > 0) Invalidate(); };
+            // 돌거나 떠 있을 때만 다시 그린다(멈춘 오브가 30 fps로 그려지지 않게). 동작 줄이기면 멈춘 자세.
+            _tick = dt =>
+            {
+                bool reduced = Motion.Reduced;
+                _motion.Step(dt, reduced);
+                if (!reduced && (!_motion.Stopped || Bob > 0)) Invalidate();
+            };
+            UiState.MotionChanged += OnMotionChanged;
         }
 
+        private void OnMotionChanged() { if (!IsDisposed) Invalidate(); }
+
         public void SetSpec(OrbSpec spec) { _geo = new OrbGeometry(spec); Invalidate(); }
-        public void SetPeriod(double period, bool immediate = false) => _motion.SetPeriod(period, immediate);
+        public void SetPeriod(double period, bool immediate = false) { _motion.SetPeriod(period, immediate); Invalidate(); }
+
+        /// 로고·팔레트 머리 오브: 잉크 점 + 부표 등(상태 색), 확인 필요는 빈 조각, 연결 끊김은 흐리게 멈춤.
+        public void SetState(OrbStates.LogoState st)
+        {
+            var spec = new OrbSpec { Size = _geo.Size, Lamp = st.Lamp != null };
+            if (st.Gap) { spec.GapFrom = OrbStates.GapFrom; spec.GapTo = OrbStates.GapTo; }
+            _geo = new OrbGeometry(spec);
+            Look.Dots = OrbLook.Ink;
+            Look.Lamp = st.Lamp;
+            Look.LampHollow = st.Hollow;
+            Look.Opacity = st.Opacity;
+            SetPeriod(st.Period);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) UiState.MotionChanged -= OnMotionChanged;
+            base.Dispose(disposing);
+        }
 
         protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); OrbClock.Add(_tick); }
         protected override void OnHandleDestroyed(EventArgs e) { OrbClock.Remove(_tick); base.OnHandleDestroyed(e); }

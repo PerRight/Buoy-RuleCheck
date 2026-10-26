@@ -83,10 +83,10 @@ namespace GaRuleCheck
 
         // ── 역할 보기(BRCROLESHOW) 색 — 판정 색(빨강·주황·파랑)과 겹치지 않게 ────────
         public static readonly Color RoleHull = Hex(0xEDEFF3);       // 선체: 흰 잉크
-        public static readonly Color RoleObstruction = Hex(0xC79BFF); // 장애물: 연보라
-        public static readonly Color RoleBulkhead = Hex(0x2ED3B7);   // 충돌격벽: 청록
-        public static readonly Color RoleBulb = Hex(0xA3AAB5);       // 구상선수: 회색
-        public static readonly Color RoleEye = Hex(0xF2E85C);        // 조종위치: 레몬
+        public static readonly Color RoleObstruction = Hex(0xB392F0); // 장애물: 연보라
+        public static readonly Color RoleBulkhead = Hex(0x4FD1C5);   // 충돌격벽: 청록
+        public static readonly Color RoleBulb = Hex(0xA3AAB5);       // 구상선수: 회색(디자인 보드에 없음 — 잉크)
+        public static readonly Color RoleEye = Hex(0xC3E88D);        // 조종위치: 연두
 
         // ── 글자 ────────────────────────────────────────────────────────────────
         public const string FontName = "Malgun Gothic";

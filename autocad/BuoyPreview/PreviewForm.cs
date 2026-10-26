@@ -44,8 +44,11 @@ namespace GaRuleCheck
             restart.Click += (_, _) => Restart();
             var cards = Theme.PrimaryButton("부표 카드 보기");
             cards.Click += (_, _) => ShowSampleCards();
+            var palette = Theme.RingButton("팔레트 보기");
+            palette.Click += (_, _) => new PalettePreview().Show(this);
             top.Controls.Add(_reduce);
             top.Controls.Add(restart);
+            top.Controls.Add(palette);
             top.Controls.Add(cards);
             Controls.Add(_canvas);
             Controls.Add(top);

@@ -444,6 +444,38 @@ namespace GaRuleCheck
             try { using (_doc.LockDocument()) Overlay.FocusBox(_doc, box, _scale); } catch { }
         }
 
+        /// 팔레트·로고 목록에서 연다(명세 6-1): 그 항목의 고칠 자리로 화면을 옮기고 부표 카드를 고정해 띄운다.
+        /// 자리(anchor)가 없으면 false — 호출 쪽이 대상 객체로 이동한다.
+        public static bool OpenFromList(Document doc, double scale, RuleResultDto r, ElementCheckDto? e)
+        {
+            e ??= UiText.Decisive(r);
+            if (e?.Anchor is not { Length: >= 2 } a || scale <= 0) return false;
+            const double pad = 8;   // m — 고칠 자리 주변이 함께 보이게
+            try { using (doc.LockDocument()) Overlay.FocusBox(doc, new[] { a[0] - pad, a[1] - pad, a[0] + pad, a[1] + pad }, scale); } catch { }
+            string st = e.Status == "fail" ? "fail" : e.Status == "unknown" ? "warn" : "pass";
+            var card = new BuoyCard(new List<BuoyCardItem> { new(st, r.RuleId, r.Condition, e) });
+            card.EvidenceRequested += it => EvidenceRequested?.Invoke(it.RuleId, it.Element.ElementId);
+            card.ZoomRequested += list => ZoomTo(list);
+            card.Closed2 += c => { Pinned.Remove(c); if (_card == c) _card = null; };
+            card.Pinned2();
+            Pinned.Add(card);
+            try { card.ShowNear(System.Windows.Forms.Cursor.Position, new Owner(AcApp.MainWindow.Handle)); } catch { }
+            return true;
+        }
+
+        /// 팔레트 카드에 커서를 올린 동안 그 항목의 부표를 키운다(×1.25, 카드는 띄우지 않음).
+        public static void Highlight(string ruleId, bool on)
+        {
+            bool any = false;
+            foreach (var b in Buoys.Values)
+            {
+                if (b.RuleId != ruleId || b == _hover || b.Anim.Phase == BuoyPhase.Vanish) continue;
+                b.Anim.SetHover(on);
+                any = true;
+            }
+            if (any) Ensure();
+        }
+
         [StructLayout(LayoutKind.Sequential)]
         private struct RECT { public int Left, Top, Right, Bottom; }
 

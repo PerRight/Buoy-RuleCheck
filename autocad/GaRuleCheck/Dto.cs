@@ -22,6 +22,13 @@ namespace GaRuleCheck
 
         public static bool IsWatchedLayer(string layer) => LayerRoles.ContainsKey(layer.Trim().ToUpperInvariant());
 
+        /// 펼친 블록 하위 객체 handle('1F3.12') → 원래 블록 handle('1F3'). 그 밖은 그대로.
+        public static string BaseHandle(string handle)
+        {
+            int dot = handle.IndexOf('.');
+            return dot > 0 ? handle[..dot] : handle;
+        }
+
         /// 실도면 역할 이름(엔진 contract.py ROLE_ALIASES와 같은 뜻). 마법사·명령에서 쓰는 한글 이름 → 엔진 이름.
         public static readonly (string Role, string Ko)[] Roles =
         {

@@ -409,7 +409,7 @@ namespace GaRuleCheck
                 if (x.Last == null) return;
                 if (x.Doc == Active)
                 {
-                    ForPanels(p => p.ShowResult(x.Last, DocName(x.Doc)));
+                    ForPanels(p => p.ShowResult(x.Last, DocName(x.Doc), seconds: x.LastSeconds));
                     var (fail, unknown) = x.ElementCounts();
                     FloatingUi.SetStatus(x.Last.Overall, fail, unknown);
                 }
@@ -522,12 +522,21 @@ namespace GaRuleCheck
             panel.LinkRequested += () => Send("_GARCLINK ");
             panel.ToggleOverlayRequested += () => Send("_GARCTOGGLE ");
             panel.ReportRequested += () => Send("_GARCREPORT ");
-            panel.FocusRequested += FocusTargets;
-            panel.HoverRequested += (h, on) => { var d = Active; if (d != null && Overlay.Enabled) Overlay.Hover(d, h, on); };
-            panel.FitRequested += rr =>
+            // 항목 카드 hover → 도면에 근거(시선·허용선·대상)와 그 항목 부표 키우기, [부표로 이동] → 고칠 자리 + 카드 고정
+            panel.RuleHoverRequested += (rr, el, on) =>
             {
                 var d = Active;
-                if (d != null && Watchers.TryGetValue(d, out var ww) && ww.Last?.UnitsScale is double sc) Overlay.Fit(d, rr, sc);
+                if (d == null) return;
+                BuoyLayer.Highlight(rr.RuleId, on);
+                try { if (on) Overlay.ShowEvidence(d, rr.RuleId, el); else Overlay.ClearEvidence(); } catch { }
+            };
+            panel.BuoyRequested += (rr, el) =>
+            {
+                var d = Active;
+                if (d == null) return;
+                double sc = Watchers.TryGetValue(d, out var ww) ? ww.Last?.UnitsScale ?? 0 : 0;
+                if (!BuoyLayer.OpenFromList(d, sc, rr, el))
+                    FocusTargets(el != null ? new List<string> { el.ElementId } : rr.Targets);
             };
             panel.LargeLabelsRequested += () => Send("_GARCLARGE ");
             // 점검 항목 hover → 도면에서 그 객체를 상태 색으로 강조, 클릭 → 그 객체로 확대·이동

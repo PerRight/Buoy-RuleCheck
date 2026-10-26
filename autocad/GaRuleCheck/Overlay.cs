@@ -288,7 +288,7 @@ namespace GaRuleCheck
         public static void ClearRoles() => ClearList(RoleItems);
 
         /// 엔진이 판정에 쓴 객체(요소 판정의 element_id·role)를 역할별 색으로 표시한다. 좌표는 추출 스냅샷(도면 단위).
-        /// 역할 색은 판정 색(빨강·주황·파랑)과 겹치지 않게: 선체 흰 잉크 · 장애물 연보라 · 충돌격벽 청록 · 구상선수 회색 · 조종위치 레몬. 반환: 역할별 개수.
+        /// 역할 색은 판정 색(빨강·주황·파랑)과 겹치지 않게: 선체 흰 잉크 · 장애물 연보라 · 충돌격벽 청록 · 구상선수 회색 · 조종위치 연두. 반환: 역할별 개수.
         public static Dictionary<string, int> ShowRoles(Document doc, RawDrawing raw, CheckResponse resp)
         {
             ClearRoles();

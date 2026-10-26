@@ -385,11 +385,7 @@ namespace GaRuleCheck
         }
 
         /// 펼친 블록 하위 객체 handle('1F3.2')은 원래 블록 handle로 바꾼다.
-        public static string BaseHandle(string handle)
-        {
-            int dot = handle.IndexOf('.');
-            return dot > 0 ? handle[..dot] : handle;
-        }
+        public static string BaseHandle(string handle) => Contract.BaseHandle(handle);
 
         public static ObjectId HandleToId(Database db, string handle)
         {
