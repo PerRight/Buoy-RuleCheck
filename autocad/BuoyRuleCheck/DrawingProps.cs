@@ -26,7 +26,12 @@ namespace BuoyRuleCheck
             var d = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             IDictionaryEnumerator en = db.SummaryInfo.CustomProperties;
             while (en.MoveNext())
-                if (en.Key is string k) d[k] = en.Value?.ToString() ?? "";
+            {
+                if (en.Key is not string k) continue;
+                var v = en.Value?.ToString() ?? "";
+                // 대소문자만 다른 같은 키(BRC_LOA·brc_loa): 빈 값은 '없음'이라 다른 값을 덮지 않는다(엔진과 같게)
+                if (!d.TryGetValue(k, out var cur) || string.IsNullOrWhiteSpace(cur) || !string.IsNullOrWhiteSpace(v)) d[k] = v;
+            }
             return d;
         }
 

@@ -145,13 +145,14 @@ namespace BuoyRuleCheck
                 {
                     if (p.Product?.Name is not ("brc" or "garc")) continue;
                     name = p.Product.Name;
-                    ver = Version.TryParse(p.Product.Version, out var v) ? v : null;
+                    ver = ParseVersion(p.Product.Version);
                     break;
                 }
             }
             catch (FormatException) { /* 헤더를 읽을 수 없음 = 엔진 표시 없음 */ }
             if (name == "brc" && ver != null && ver >= Version.Parse(MinEngineVersion)) return;
-            if (name == null && _compatible) return;   // health로 이미 확인한 엔진(헤더만 빠짐)
+            // 엔진(파이썬 http.server)은 늘 Server 헤더를 보낸다 — 헤더가 없거나 읽을 수 없으면 앞서 health로 확인했어도
+            // 같은 포트의 다른 프로그램일 수 있으므로 판정을 쓰지 않는다(2026-10-26 3차 검증 A).
             _compatible = false;
             if (name == null)
                 throw new EngineException($"엔진 주소({BaseUrl})에서 응답한 프로그램이 검사 엔진인지 확인할 수 없어 판정하지 않습니다 — 엔진 창을 닫고 다시 검사하세요.");
@@ -166,12 +167,18 @@ namespace BuoyRuleCheck
                 using var d = JsonDocument.Parse(healthJson);
                 if (d.RootElement.ValueKind != JsonValueKind.Object) return null;   // null·[]·숫자 등 — 엔진 응답 아님
                 if (!d.RootElement.TryGetProperty("version", out var v) || v.ValueKind != JsonValueKind.String) return null;
-                var s = v.GetString() ?? "";
-                int end = 0;
-                while (end < s.Length && (char.IsDigit(s[end]) || s[end] == '.')) end++;   // "0.5.0rc1" → "0.5.0"
-                return Version.TryParse(s[..end].TrimEnd('.'), out var got) ? got : null;
+                return ParseVersion(v.GetString());
             }
             catch (JsonException) { return null; }
+        }
+
+        /// "0.5.0", "0.5.0rc1" → 0.5.0 (앞의 숫자·점만). health 본문과 Server 헤더가 같은 규칙을 쓴다.
+        private static Version? ParseVersion(string? text)
+        {
+            var s = text ?? "";
+            int end = 0;
+            while (end < s.Length && (s[end] is >= '0' and <= '9' || s[end] == '.')) end++;
+            return Version.TryParse(s[..end].TrimEnd('.'), out var got) ? got : null;
         }
 
         private static string Post(string path, string json, TimeSpan? timeout = null)
