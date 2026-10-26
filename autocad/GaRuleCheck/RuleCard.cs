@@ -44,7 +44,7 @@ namespace GaRuleCheck
 
             // 1행: 제목 + 배지
             var head = new Panel { Height = 24, BackColor = Color.Transparent, Margin = Padding.Empty };
-            var badge = new Badge(r.StatusKo, Theme.Status(r.Status)) { Dock = DockStyle.Right };
+            var badge = new StatusTag(r.Status) { Dock = DockStyle.Right };
             var title = new Label
             {
                 Text = r.TitleKo, Font = Theme.Bold, ForeColor = Theme.Text, Dock = DockStyle.Fill,
@@ -69,7 +69,7 @@ namespace GaRuleCheck
             if (!string.IsNullOrEmpty(r.SuggestionKo))
             {
                 var s = Wrap("제안  " + r.SuggestionKo, Theme.Body, Theme.Text, new Padding(0, 6, 0, 2));
-                s.BackColor = Color.FromArgb(40, Theme.Info);
+                s.BackColor = Theme.CardHover;
                 s.Padding = new Padding(6, 4, 6, 4);
                 flow.Controls.Add(s);
             }
@@ -186,8 +186,9 @@ namespace GaRuleCheck
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
-            using var b = new SolidBrush(Theme.Status(_r.Status));
-            e.Graphics.FillRectangle(b, 0, 0, 4, Height);
+            // 카드 위 색 띠는 없앴다(명세 4절) — 상태는 머리의 점 + 글자로만. 1px 링으로 카드 경계.
+            using var p = new Pen(Theme.RingOnCard, 1f);
+            e.Graphics.DrawRectangle(p, 0, 0, Width - 1, Height - 1);
         }
 
         private static Label Wrap(string text, Font font, Color color, Padding margin) => new()

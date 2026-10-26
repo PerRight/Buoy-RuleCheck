@@ -404,7 +404,7 @@ namespace GaRuleCheck
 
         private static void Mark(Button b, bool on)
         {
-            b.BackColor = on ? Theme.Info : Theme.Card;
+            if (b is PillButton pb) pb.Selected = on;
             b.Font = on ? Theme.Bold : Theme.Body;
         }
 

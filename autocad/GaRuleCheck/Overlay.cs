@@ -35,9 +35,11 @@ namespace GaRuleCheck
         private static readonly List<Entity> ElemItems = new();   // 요소 hover 강조
         private static readonly List<Entity> DiffItems = new();   // 버전 비교 표시
 
-        private static readonly AcColor PassColor = AcColor.FromRgb(59, 130, 246);
-        private static readonly AcColor FailColor = AcColor.FromRgb(229, 72, 77);
-        private static readonly AcColor UnknownColor = AcColor.FromRgb(240, 140, 40);
+        // 판정 색은 Theme v2 토큰 하나에서(도면 위 = 다크 값)
+        internal static AcColor Ac(System.Drawing.Color c) => AcColor.FromRgb(c.R, c.G, c.B);
+        private static readonly AcColor PassColor = Ac(Theme.Pass);
+        private static readonly AcColor FailColor = Ac(Theme.Fail);
+        private static readonly AcColor UnknownColor = Ac(Theme.Warn);
         public static AcColor StatusColor(string? s) => s switch { "pass" => PassColor, "fail" => FailColor, _ => UnknownColor };
 
         public static bool Enabled { get; set; } = true;
@@ -255,7 +257,7 @@ namespace GaRuleCheck
         public static void ClearRoles() => ClearList(RoleItems);
 
         /// 엔진이 판정에 쓴 객체(요소 판정의 element_id·role)를 역할별 색으로 표시한다. 좌표는 추출 스냅샷(도면 단위).
-        /// 선체 하늘 · 장애물 주황 · 충돌격벽 빨강 · 구상선수 파랑 · 조종위치 초록. 반환: 역할별 개수.
+        /// 역할 색은 판정 색(빨강·주황·파랑)과 겹치지 않게: 선체 흰 잉크 · 장애물 연보라 · 충돌격벽 청록 · 구상선수 회색 · 조종위치 레몬. 반환: 역할별 개수.
         public static Dictionary<string, int> ShowRoles(Document doc, RawDrawing raw, CheckResponse resp)
         {
             ClearRoles();
@@ -272,8 +274,11 @@ namespace GaRuleCheck
                        : en.Role ?? (Contract.LayerRoles.TryGetValue(en.Layer, out var lr) ? lr : null);
                 if (ro == null || en.Points.Count == 0) continue;
                 counts[ro] = counts.TryGetValue(ro, out var n) ? n + 1 : 1;
-                short aci = ro switch { "hull" => Cyan, "obstruction" => Orange, "collision_bhd" => Red, "bulb" => 5, "eye" => Green, _ => Gray };
-                var col = AcColor.FromColorIndex(ColorMethod.ByAci, aci);
+                var col = Ac(ro switch
+                {
+                    "hull" => Theme.RoleHull, "obstruction" => Theme.RoleObstruction, "collision_bhd" => Theme.RoleBulkhead,
+                    "bulb" => Theme.RoleBulb, "eye" => Theme.RoleEye, _ => Theme.Faint,
+                });
                 if (en.Points.Count == 1)
                 {
                     AddTo(RoleItems, new Circle(new Point3d(en.Points[0][0], en.Points[0][1], 0), Vector3d.ZAxis, 8 * upp) { Color = col }, 125);
@@ -296,9 +301,9 @@ namespace GaRuleCheck
             ClearList(DiffItems);
             if (d == null || d.UnitsScale is not double scale || scale <= 0) return;
             double upp = UnitsPerPixel(doc);
-            var green = AcColor.FromRgb(46, 170, 90);
-            var red = AcColor.FromRgb(220, 60, 60);
-            var yellow = AcColor.FromRgb(230, 190, 40);
+            var green = Ac(Theme.DiffAdded);
+            var red = Ac(Theme.DiffRemoved);
+            var yellow = Ac(Theme.DiffModified);
             var a = new Dictionary<string, GeomDto>();
             foreach (var g in d.Geometry.A) a[g.Handle] = g;
             var b = new Dictionary<string, GeomDto>();

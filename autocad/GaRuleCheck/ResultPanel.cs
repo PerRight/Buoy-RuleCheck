@@ -107,13 +107,9 @@ namespace GaRuleCheck
                 _tabs.Controls.Add(b);
             }
 
-            _failOnly = new Button
-            {
-                Text = "미충족만 보기", FlatStyle = FlatStyle.Flat, AutoSize = true, Font = Theme.Small, ForeColor = Theme.Muted,
-                BackColor = Theme.Bg, Margin = new Padding(12, 3, 0, 0), Cursor = Cursors.Hand, UseVisualStyleBackColor = false,
-                AccessibleRole = AccessibleRole.CheckButton,
-            };
-            _failOnly.FlatAppearance.BorderColor = Theme.Line;
+            _failOnly = Theme.RingButton("수정 소요만");
+            _failOnly.Margin = new Padding(12, 2, 0, 0);
+            _failOnly.AccessibleRole = AccessibleRole.CheckButton;
             _failOnly.Click += (_, _) => UiState.SetFailOnly(!UiState.Current.FailOnly);
             tip.SetToolTip(_failOnly, "미충족(빨강) 규칙·객체만 보여 줍니다. 확인 필요 항목은 숨긴 개수를 표시합니다.");
             _tabs.Controls.Add(_failOnly);
@@ -155,10 +151,9 @@ namespace GaRuleCheck
         private void SyncFailOnlyButton()
         {
             bool on = UiState.Current.FailOnly;
-            _failOnly.Text = on ? "미충족만 보기 ●" : "미충족만 보기";
-            _failOnly.ForeColor = on ? Theme.Text : Theme.Muted;
-            _failOnly.BackColor = on ? Theme.Fail : Theme.Bg;
-            _failOnly.AccessibleName = "미충족만 보기 " + (on ? "켜짐" : "꺼짐");
+            _failOnly.Text = on ? "수정 소요만 ●" : "수정 소요만";
+            if (_failOnly is PillButton pb) pb.Selected = on;
+            _failOnly.AccessibleName = "수정 소요만 보기 " + (on ? "켜짐" : "꺼짐");
         }
 
         private void SetOverall(string text)
@@ -176,7 +171,7 @@ namespace GaRuleCheck
 
         public void SetLargeLabelsState(bool on)
         {
-            _largeBtn.BackColor = on ? Theme.Info : Theme.Card;
+            if (_largeBtn is PillButton pb) pb.Selected = on;
             _largeBtn.Text = on ? "라벨 확대 ●" : "라벨 확대";
         }
 

@@ -159,17 +159,17 @@ namespace GaRuleCheck
                 {
                     // '1/1000'·'1:1000'·'1000' — 해석·범위 검사는 엔진이 한다(여기서는 형식만)
                     if (t.Length > 0 && !System.Text.RegularExpressions.Regex.IsMatch(t.Replace(" ", ""), @"^(1[/:])?\d+(\.\d+)?$"))
-                    { errors.Add("도면 축척은 1/N 형식"); tb.BackColor = Color.FromArgb(90, Theme.Fail); }
+                    { errors.Add("도면 축척은 1/N 형식"); tb.BackColor = Theme.Over(Color.FromArgb(70, Theme.Warn), Theme.Input); }
                 }
                 else if (key == "GARC_KEEL_LAID")
                 {
                     if (t.Length > 0 && !DateTime.TryParseExact(t, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
-                    { errors.Add("용골 거치일은 YYYY-MM-DD"); tb.BackColor = Color.FromArgb(90, Theme.Fail); }
+                    { errors.Add("용골 거치일은 YYYY-MM-DD"); tb.BackColor = Theme.Over(Color.FromArgb(70, Theme.Warn), Theme.Input); }
                 }
                 else if (t.Length > 0 && !IsFiniteNumber(t))
                 {
                     errors.Add($"{key} 숫자 아님");
-                    tb.BackColor = Color.FromArgb(90, Theme.Fail);
+                    tb.BackColor = Theme.Over(Color.FromArgb(70, Theme.Warn), Theme.Input);
                 }
                 values[key] = t;
             }
