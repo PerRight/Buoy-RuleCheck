@@ -78,6 +78,20 @@ class LegacyProps(unittest.TestCase):
                 self.assertIn("BRC_LOA", msgs)                                       # 두 이름을 모두 알려 준다
                 self.assertIn("GARC_LOA", msgs)
 
+    def test_same_number_written_differently_is_not_a_conflict(self):
+        # 2026-10-26 Sonnet 검증 지적(낮음): "140"과 "140.0"은 같은 값 — 숫자로 같으면 멈추지 않는다
+        both = {**NEW, "GARC_LOA": "140.0"}
+        self.assertEqual(judge(raw(both, stack=False))[0]["overall"], "pass")
+        for blank in ({**NEW, "GARC_LOA": ""}, {"BRC_LOA": "", **{k: v for k, v in NEW.items() if k != "BRC_LOA"}, "GARC_LOA": "140"}):
+            with self.subTest(blank=blank):                                    # 빈 값은 '없음'과 같다 — 다른 쪽 값으로 판정
+                self.assertEqual(judge(raw(blank, stack=False))[0]["overall"], "pass")
+        for other in ("140.5", "1,40", "nan", "inf", "140m"):
+            with self.subTest(other=other):
+                props = {**NEW, "GARC_LOA": other}
+                rep, res = judge(raw(props, stack=False))
+                self.assertEqual(res[VIS]["status"], "review", other)
+                self.assertIn("PROP_DUPLICATE", res[VIS]["evidence"]["issues"])
+
     def test_messages_use_new_names(self):
         rep, res = judge(raw({k: v for k, v in NEW.items() if k != "BRC_LOA"}, stack=False))
         self.assertEqual(res[VIS]["status"], "na")
@@ -116,6 +130,37 @@ class LegacyRolesXrecord(unittest.TestCase):
         self.assertEqual(self.roles([("GARC_ROLES", "hull"), ("BRC_ROLES", "obstruction")]), ("hull", "obstruction"))
 
 
+@unittest.skipUnless(HAVE_EZDXF, "ezdxf 없음")
+class LegacyLayerRolesDxf(unittest.TestCase):
+    """2026-10-26 Sonnet 검증 지적(중간): DXF 어댑터가 옛 GARC_LAYER_ROLES의 레이어를 펼치지 않아
+    '형상 객체가 없습니다'(LAYER_ROLES_EMPTY)로 잘못 안내하던 문제."""
+
+    def judge_dxf(self, prefix):
+        import ezdxf
+        from brc.adapters.dxf import read_dxf
+        doc = ezdxf.new("R2018")
+        doc.header["$INSUNITS"] = 6
+        msp = doc.modelspace()
+        msp.add_lwpolyline([(x, z) for x, z in [(-3, 4), (-3, 13), (0, 12), (120, 12), (120, 14.5), (137, 14.5), (134, 8), (132, 0), (0, 0)]],
+                           dxfattribs={"layer": "GA_HULL"})
+        msp.add_point((18, 28), dxfattribs={"layer": "GA_EYE"})
+        msp.add_line((124.5, 0), (124.5, 14.5), dxfattribs={"layer": "GA_BHD_COLL"})
+        msp.add_lwpolyline([(100, 13.5), (100, 24), (112, 24), (112, 13.5)], close=True, dxfattribs={"layer": "컨테이너"})
+        props = {**{prefix + k[4:]: v for k, v in NEW.items()}, prefix + "LAYER_ROLES": "컨테이너=장애물", prefix + "REGION": "-10,-5,150,40"}
+        for k, v in props.items():
+            doc.header.custom_vars.append(k, v)
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "lr.dxf"
+            doc.saveas(f)
+            return judge(read_dxf(f))
+
+    def test_old_layer_roles_name_is_expanded(self):
+        new, old = self.judge_dxf("BRC_"), self.judge_dxf("GARC_")
+        self.assertEqual(new[1][VIS]["status"], "fail")                    # 컨테이너가 장애물로 들어가 위반
+        self.assertEqual(old[1][VIS]["status"], new[1][VIS]["status"])
+        self.assertEqual(old[1][VIS]["actual"], new[1][VIS]["actual"])
+
+
 class LegacyPackageAndSchema(unittest.TestCase):
     def test_import_alias_is_same_module(self):
         import brc.contract
@@ -124,6 +169,14 @@ class LegacyPackageAndSchema(unittest.TestCase):
         import brc.compare
         self.assertIs(garc.contract, brc.contract)
         self.assertIs(garc.compare.compare_raws, brc.compare.compare_raws)
+        self.assertEqual(brc.contract.__spec__.name, "brc.contract")      # 별칭 import가 원래 모듈의 spec을 바꾸지 않는다
+        import importlib
+        import garc.adapters.dxf
+        import brc.adapters.dxf
+        self.assertIs(garc.adapters.dxf, brc.adapters.dxf)
+        with self.assertRaises(ModuleNotFoundError) as cm:
+            importlib.import_module("garc.nope")
+        self.assertIn("garc.nope", str(cm.exception))
 
     def test_cli_old_and_new_and_old_schema(self):
         old_raw = {**raw(OLD, stack=True), "schema": "garc.raw/1"}

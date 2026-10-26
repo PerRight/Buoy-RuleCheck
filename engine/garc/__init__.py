@@ -15,15 +15,27 @@ from brc import __all__, __version__  # noqa: F401
 
 class _Alias(importlib.abc.MetaPathFinder, importlib.abc.Loader):
     def find_spec(self, fullname, path=None, target=None):
-        if fullname.startswith("garc.") and fullname != "garc.__main__":   # `python -m garc`는 이 폴더의 __main__.py
-            return importlib.util.spec_from_loader(fullname, self)
-        return None
+        if not fullname.startswith("garc.") or fullname == "garc.__main__":   # `python -m garc`는 이 폴더의 __main__.py
+            return None
+        target_name = "brc." + fullname[len("garc."):]
+        try:
+            if importlib.util.find_spec(target_name) is None:   # 없는 모듈은 옛 이름 그대로 'No module named garc.…'
+                return None
+        except ModuleNotFoundError:
+            return None
+        return importlib.util.spec_from_loader(fullname, self)
 
     def create_module(self, spec):
-        return importlib.import_module("brc." + spec.name[len("garc."):])
+        module = importlib.import_module("brc." + spec.name[len("garc."):])
+        spec.loader_state = module.__spec__   # import 장치가 __spec__을 garc.X로 덮어쓰므로 원래 것을 기억했다가 되돌린다
+        return module
 
     def exec_module(self, module):
-        sys.modules[module.__spec__.name if module.__spec__ else module.__name__] = module
+        # 같은 모듈 객체를 garc.X 이름으로도 등록만 한다(import 장치가 sys.modules에 넣는다). brc.X의 __spec__은 그대로 둔다
+        # — 그래야 importlib.reload(brc.X)·pickle 등이 원래 이름으로 동작한다(2026-10-26 Sonnet 검증 지적).
+        alias = module.__spec__
+        if alias is not None and getattr(alias, "loader_state", None) is not None:
+            module.__spec__ = alias.loader_state
 
 
 if not any(isinstance(f, _Alias) for f in sys.meta_path):

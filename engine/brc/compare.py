@@ -249,13 +249,13 @@ def compare_models(ma: dict[str, Any], mb: dict[str, Any], labels: tuple[str, st
             if sa == "fail" and removed:
                 # 삭제로 해결 — 단, 삭제 뒤 그 규칙을 판정할 수 있을 때만(입력 누락·검토 불가·적용 제외면 '확인 필요')
                 if rule_status_b.get(rule.id) in ("pass", "fail"):
-                    res.append(ref(rule.id, f"{rule.title_ko} 위반 해결 (객체 삭제로)"))
+                    res.append(ref(rule.id, f"{rule.title_ko} 수정 소요 해결 (객체 삭제로)"))
                 else:
-                    check.append(ref(rule.id, f"{rule.title_ko} 위반 객체가 삭제됐지만 규칙을 판정할 수 없음 — 확인 필요"))
+                    check.append(ref(rule.id, f"{rule.title_ko} 수정 소요 객체가 삭제됐지만 규칙을 판정할 수 없음 — 확인 필요"))
             elif sa == "fail" and sb == "pass":
-                res.append(ref(rule.id, f"{rule.title_ko} 위반 해결 (기준 충족으로)"))
+                res.append(ref(rule.id, f"{rule.title_ko} 수정 소요 해결 (기준 충족으로)"))
             elif sb == "fail" and sa != "fail":
-                intro.append(ref(rule.id, f"{rule.title_ko} 새 위반"))
+                intro.append(ref(rule.id, f"{rule.title_ko} 새 수정 소요"))
             elif not removed and sa != sb and sb in ("unknown", None) and sa is not None:
                 why = "판정 못 함으로 바뀜" if sb == "unknown" else "판정 대상에서 빠짐(적용 제외 등)"
                 check.append(ref(rule.id, f"{rule.title_ko} {why} — 확인 필요"))
@@ -268,9 +268,9 @@ def compare_models(ma: dict[str, Any], mb: dict[str, Any], labels: tuple[str, st
             if sa == sb:
                 continue
             if sa == "fail" and sb == "pass":
-                res.append(ref(rid, f"{title[rid]} 위반 해결"))
+                res.append(ref(rid, f"{title[rid]} 수정 소요 해결"))
             elif sb == "fail":
-                intro.append(ref(rid, f"{title[rid]} 새 위반"))
+                intro.append(ref(rid, f"{title[rid]} 새 수정 소요"))
             elif sb in ("na", "review"):
                 check.append(ref(rid, f"{title[rid]} {'입력 누락으로' if sb == 'na' else '검토 불가로'} 바뀜 — 확인 필요"))
             elif sb == "skip":
@@ -383,7 +383,7 @@ def compare_models(ma: dict[str, Any], mb: dict[str, Any], labels: tuple[str, st
             if sb in ("unknown", None):
                 lost.setdefault((rule.id, sb), []).append(h)
                 continue
-            what = "위반 해결" if sa == "fail" and sb == "pass" else "새 위반" if sb == "fail" else "판정 가능해짐"
+            what = "수정 소요 해결" if sa == "fail" and sb == "pass" else "새 수정 소요" if sb == "fail" else "판정 가능해짐"
             indirect.append({"element_id": h, "element_ids": [h], "count": 1, "role_ko": ROLE_KO.get(ob[h]["role"], ob[h]["role"]),
                              "rule_id": rule.id, "rule_name": rule.title_ko, "from": sa, "to": sb,
                              "text": f"{ROLE_KO.get(ob[h]['role'], '객체')}(handle {h}) {rule.title_ko}: {what} (다른 변경의 영향)"})

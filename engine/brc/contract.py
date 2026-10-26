@@ -365,6 +365,18 @@ def parse_conditions(text: str) -> list[dict[str, Any]]:
     return out
 
 
+def _same_prop_value(a: str, b: str) -> bool:
+    """같은 특성이 두 번 들어 있을 때 같은 값으로 볼지: 글자가 같거나, 한쪽이 비었거나(= 없음),
+    둘 다 유한한 숫자로 읽혀 값이 같을 때("140"과 "140.0"). 그 밖(1,40 · nan · 다른 숫자 · 다른 글)은 다른 값."""
+    if a == b or a == "" or b == "":
+        return True
+    try:
+        fa, fb = float(a), float(b)
+    except ValueError:
+        return False
+    return math.isfinite(fa) and math.isfinite(fb) and fa == fb
+
+
 def raw_to_model(raw: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(raw, dict) or not isinstance(raw.get("entities", []), list):
         raise ContractError("raw는 entities 리스트를 가진 객체여야 합니다.")
@@ -382,10 +394,11 @@ def raw_to_model(raw: dict[str, Any]) -> dict[str, Any]:
         canon = PROP_PREFIX + key[len(LEGACY_PROP_PREFIX):] if old_name else key
         fam = "old" if old_name else "new"
         val = str(v).strip()
-        if canon in props and props[canon] != val and canon.startswith(PROP_PREFIX):
+        if canon in props and canon.startswith(PROP_PREFIX) and not _same_prop_value(props[canon], val):
             # 같은 특성이 두 번(대소문자만 다르거나, 새 이름과 옛 이름)인데 값이 다르면 어느 쪽인지 고르지 않는다
             (dup if fam in seen.get(canon, set()) else legacy_dup).add(canon)
-        if canon not in props or not old_name:   # 둘 다 있으면 새 이름 값(값이 다르면 위 issue로 판정을 멈춘다)
+        # 둘 다 있으면 새 이름 값(값이 다르면 위 issue로 판정을 멈춘다). 빈 값은 '없음'과 같아서 다른 쪽 값을 덮지 않는다.
+        if canon not in props or (val != "" and (not old_name or props[canon] == "")):
             props[canon] = val
         seen.setdefault(canon, set()).add(fam)
     for key in sorted(dup):

@@ -244,12 +244,16 @@ def read_roles(doc) -> dict[str, str]:
 
 
 def _layer_role_names(props: dict[str, str]) -> set[str]:
-    """BRC_LAYER_ROLES의 레이어 이름만(어떤 역할인지·형식 검사는 엔진이 한다)."""
-    text = next((v for k, v in props.items() if str(k).strip().upper() == "BRC_LAYER_ROLES"), "")
+    """BRC_LAYER_ROLES(옛 이름 GARC_LAYER_ROLES도)의 레이어 이름만 — 어떤 역할인지·형식 검사·두 이름의 값 충돌은 엔진이 한다.
+    추출은 두 값의 레이어를 모두 펼친다(빠뜨리면 엔진이 '형상 없음'으로 잘못 안내하므로)."""
+    keys = {"BRC_LAYER_ROLES", "GARC_LAYER_ROLES"}
     names = set()
-    for chunk in str(text or "").replace("\n", ";").split(";"):
-        if "=" in chunk:
-            names.add(chunk.rsplit("=", 1)[0].strip().upper())
+    for k, text in props.items():
+        if str(k).strip().upper() not in keys:
+            continue
+        for chunk in str(text or "").replace("\n", ";").split(";"):
+            if "=" in chunk:
+                names.add(chunk.rsplit("=", 1)[0].strip().upper())
     return names
 
 
