@@ -1,12 +1,13 @@
-# CLAUDE.md — GA-RuleCheck (2026 K-조선 해커톤 · 홍대도면반)
+# CLAUDE.md — Buoy-RuleCheck (2026 K-조선 해커톤 · 홍대도면반)
 
 > Claude Code / Cowork가 이 폴더에서 작업할 때 가장 먼저 읽는 문서.
 > 결정이 바뀌면 코드보다 이 문서를 먼저 고친다.
-> `GA-RuleCheck` / `garc` / `GARC_` 는 **작업명**이다. 정식 이름이 정해지면 일괄 변경(§9).
+> 정식 이름 **Buoy-RuleCheck**(2026-10-26 확정, 워드마크 **Buoy** RuleCheck). 옛 작업명 `GA-RuleCheck` / `garc` / `GARC_`는 호환용 별칭으로만 남는다(§9).
+> 저장소 이름(PerRight/GA-RuleCheck)과 `docs/review`·`docs/mentoring`의 지난 기록은 당시 이름 그대로 둔다.
 
 ---
 
-## 0. 현재 상태 (2026-10-18)
+## 0. 현재 상태 (2026-10-26)
 
 - **방향 전환**: FreeCAD 3D 복원성 검사(상위 폴더의 이전 저장소) → **AutoCAD GA 도면 변경 검토 플러그인**. 계획서(③ 2026 K-조선 해커톤 계획서_홍대도면반) 기준.
 - **멘토링 1차 준비 피드백 반영**: 엔진과 24건 기대값 테스트를 먼저 고정, 플러그인은 어댑터. 정리: `docs/mentoring/2026-10-12_1차-준비-피드백.md`
@@ -16,6 +17,7 @@
 - **GitHub 공개 준비 (10-13)**: 공개(Public) 저장소로 준비 → 10-14 업로드(PerRight/GA-RuleCheck). `.gitignore`가 실도면(`*.dwg`, `*.dxf` — 합성 샘플 `samples/S140_*.dxf`만 예외)과 플러그인 검토 리포트(`*_GA검토_*.html`)를 막는다. `.gitattributes`(ps1은 CRLF, DXF는 바이트 그대로), GitHub Actions 엔진 테스트(`.github/workflows/engine-tests.yml`, Python 3.10~3.14 + 24건 표 일치 확인), `CONTRIBUTING.md`(브랜치·커밋·보안 규칙), PR 체크리스트. **라이선스는 미정** — 정하기 전까지 공개돼도 재사용 권한은 없다.
 - **기능 3종 (10-18, 플러그인 v0.4.0 / 엔진 0.3.0)**: ① 버전 기록(저장 시 작성자·사유·관련 규정) + 비교 창(나란히·겹쳐·차이만, 번호 표식, 변경 내역) + 생산팀 전달 PDF/PNG ② 떠 있는 로고 패널(Ctrl+., 배지, 접근성) ③ 마우스 오버 하이라이트·툴팁·점검 항목 연동·'미충족만 보기'. 판정 색 변경: **충족 파랑** · 미충족 빨강 · 확인 필요 주황(버전 비교 추가 초록과 구분). 엔진: 요소별 판정(elements)·`/v1/compare`. 데모 샘플 S140_v1_review → S140_v2_fixed(+ .garc 버전 기록). 테스트 91개. Sonnet 검증 3차까지(비교의 '해결'은 이후 충족·삭제일 때만, 판정 못 함은 '확인 필요') — `docs/review/2026-10-18_기능3종_검증기록.md`. **C# 컴파일 확인**: Claude 작업 환경에서 사용자 PC의 AutoCAD 2027 DLL·.NET 10 WindowsDesktop 참조로 빌드(오류·경고 0, 커밋마다) — 방법은 §6 '실행'. AutoCAD 안 실행은 미확인(확인표 15~25).
 - **실도면 연결 (10-18, 엔진 0.4.0 / 플러그인 0.5.0)**: GA_ 레이어가 없는 실제 GA를 레이어를 바꾸지 않고 검사. 엔진: `GARC_SCALE`(1/N)·`GARC_REGION`(측면도 영역)·객체별 `role`·`GARC_LAYER_ROLES`·`GARC_LBP` 대조·기선 대조(입력값도)·ARC/CIRCLE/ELLIPSE/SPLINE·준비 상태 `readiness`·치수표 읽기 `/v1/particulars`·블록 하위 객체 묶음(제안 문구·버전 비교). DXF 어댑터: 블록 펼침·역할 XRecord. 플러그인: `GARCLINK` 마법사·`GARCROLE`·`GARCROLESHOW`·준비 상태 카드·`RoleMap`(도면 사전 XRecord `GARC_ROLES`). 테스트 140개. Sonnet 검증 7차까지(블록 안 형상이 조용히 사라지는 경로 — 솔리드·해치·360° 호·프록시·OLE·모르는 타입·중첩 평탄화·중첩 XREF/MINSERT, 못 펼친 블록은 영역 밖이어도 멈춤, NaN 좌표) — `docs/review/2026-10-18_실도면연결_검증기록.md`. 실도면 5건(저장소 밖)에서 치수표·축척 5/5 추출, 탱커 GA는 역할 지정 후 판정까지(장애물 7천~1만여 객체, 계약+판정 0.3~1.1 초). **쟁점**: 마스트·크레인 지브 같은 좁은 구조물을 22.1.1 장애물로 넣으면 '위반', 빼면 '충족' → `docs/rule-definitions.md`에 '확인 필요'로 기록. 계약 §11.
+- **UI/UX v2 + 이름 변경 (10-26, 플러그인 0.6.0 / 엔진 0.5.0)**: 디자인 번들(서용언 시안)과 `Bouy-RuleCheck_UI_prompt.md` 기준. 원칙 "고칠 곳에 떠오르는 부표" — 위반 후보 위치에 점으로 된 구(부표·오브)가 떠서 천천히 돌고, 고치면 사라진다(Transient, 화면 크기 고정). 잉크는 진하기로·색은 판정에만(문제없음 파랑 #5A9CFF · 수정 소요 빨강 #FF5F57 · 확인 필요 주황 #FFB340, 비교 전용 추가 초록·변경 노랑). 화면: 테마 v2(`Theme.cs`), 오브(`OrbRenderer.cs`, 동작 줄이기 `BRCMOTION`), 도면 부표·카드(`BuoyLayer`·`RuleCard`), 떠 있는 로고·목록·토스트(`FloatingUi`·`FloatingParts`), 팔레트(`ResultPanel`·`PaletteParts`), 리본(4패널+슬라이드아웃, 그린 아이콘), 명령줄 출력, 연결 마법사 5단계(`LinkWizard`·`LinkProgress`·`ParticularsDialog`), 버전 비교(`CompareForm`·`CompareParts`·`CompareCanvas`), A4 전달 시트(`ExportSheet`). 문구는 `UiText.cs` 한곳에서 — "적합"·"승인" 쓰지 않음(고지 문구 안의 "선급 승인이 아니며"만 예외), 통과는 "문제없음". 이름: 명령 `BRC*`(옛 `GARC*` 별칭), 특성 `BRC_*`(옛 `GARC_*`도 읽음, 둘 다 있고 값이 다르면 `PROP_DUPLICATE`로 전 규칙 검토 불가), 역할 XRecord `BRC_ROLES`(옛 `GARC_ROLES` 읽음), 버전 폴더 `<도면>.brc\`(옛 `.garc\` 자동 이동), 환경변수 `BRC_*`, 엔진 `engine/brc`(`python -m garc`도 동작), 응답 스키마 `brc.*`(옛 `garc.raw/1` 읽음). 판정은 바뀌지 않음 — 이름 변경 전후 응답을 정규화해 비교(합성 샘플·실도면 모두 동일). 미리보기 `autocad/BuoyPreview`(AutoCAD 없이 WinForms 화면 확인). 테스트 158개. 검증 기록 `docs/review/2026-10-26_BuoyUI_검증기록.md`. **AutoCAD 안 실행은 미확인**(확인표).
 - **본선**: 2026-11-09(월) 양재 엘타워 — 본선에서 실제 동작 시연.
 
 ## 1. 팀 (계획서 기준)
@@ -32,18 +34,20 @@ AI가 설계하는 게 아니라 변경 이후 검토를 보조한다. 판정은
 
 ## 3. 아키텍처
 ```
-AutoCAD 2027 ─ autocad/GaRuleCheck (C#, 어댑터: 판단 안 함)
+AutoCAD 2027 ─ autocad/BuoyRuleCheck (C#, 어댑터: 판단 안 함)
   DocWatcher : DB 이벤트 → dirty → 300ms 디바운스 → Idle에서 검사
   Extractor  : 모델 공간 GA_ 레이어 → raw JSON (도면 단위 그대로, handle 포함)
   Overlay    : 위반 객체·시선·허용선을 Transient로 표시 (DB 무수정 → Undo 안전)
-  ResultPanel: 팔레트 (규칙 카드·게이지·점검 항목, 선박 정보 탭, 이력 탭, 면책 문구)  ← Theme.cs·RuleCard·ShipInfoView
-  FloatingUi : 떠 있는 로고 + 펼침 패널(같은 ResultPanel), Ctrl+.  / UiState: ui.json
-  VersionStore·VersionDialog: 저장 시 버전 기록(<도면>.garc\)  CompareForm·CompareCanvas·ExportSheet: 비교 창·내보내기
-  LinkWizard(GARCLINK·GARCROLE·GARCROLESHOW)·ParticularsDialog·RoleMap: 실도면 연결(축척·영역·기준점·역할, 레이어 안 바꿈)
-  Ribbon     : 리본 'GA RuleCheck' 탭 / DrawingProps: GARC_* 특성·레이어·라벨 스타일
+  BuoyLayer  : 위반 후보 위치의 부표(오브, 화면 픽셀 고정) + 호버/고정 카드(RuleCard)  ← OrbRenderer
+  ResultPanel: 팔레트 (규칙 카드·게이지·점검 항목, 선박 정보 탭, 이력 탭, 고지 문구)  ← Theme.cs·PaletteParts·UiText(문구)
+  FloatingUi : 떠 있는 로고(오브) + 부표 목록·토스트, Ctrl+.  / UiState: ui.json
+  VersionStore·VersionDialog: 저장 시 버전 기록(<도면>.brc\)  CompareForm·CompareParts·CompareCanvas·ExportSheet: 비교 창·A4 내보내기
+  LinkWizard(BRCLINK·BRCROLE·BRCROLESHOW)·LinkProgress·ParticularsDialog·RoleMap: 실도면 연결 5단계(축척·영역·기준점·역할, 레이어 안 바꿈)
+  Ribbon     : 리본 'Buoy-RuleCheck' 탭 / DrawingProps: BRC_* 특성(옛 GARC_* 읽음)·레이어·라벨 스타일
+  LegacyCommands: 옛 GARC* 명령 별칭
         │ POST http://127.0.0.1:8765/v1/check {doc_id, raw}   /v1/compare {a, b}
         ▼
-engine/garc (Python 표준 라이브러리만)          DXF 경로: adapters/dxf.py (ezdxf)
+engine/brc (Python 표준 라이브러리만, engine/garc = 옛 이름 별칭)          DXF 경로: adapters/dxf.py (ezdxf)
   contract : raw → model (단위·좌표·레이어·조건, 계약 위반은 issues)  ← 같은 raw 계약
   rules/   : visibility (SOLAS V/22.1.1), collision_bulkhead (SOLAS II-1/12)
   engine   : 상태 pass/fail/na/review/skip, overall, 요소별 판정(elements: pass/fail/unknown)
@@ -68,15 +72,17 @@ docs/
   rule-definitions.md          L·관측점·수선·흘수 정의, 원문, 판본, 미검토 범위
   test-cases.md                24건 기대 결과표 (자동 생성 — 직접 고치지 말 것)
 engine/
-  garc/                        엔진 패키지
+  brc/                         엔진 패키지
+  garc/                        옛 이름 별칭(같은 모듈을 가리킴)
   tests/                       unittest (24건 + 계약·revision·서버·DXF + 오류 회귀 + 요소 판정·버전 비교·데모 샘플)
   tests/cases/expected_24.json 24건 원본 (hand_calc, verified_by)
   scripts/make_samples.py      합성 GA revision DXF 생성
   scripts/render_cases.py      expected_24.json → docs/test-cases.md
-samples/                       S140_rev0~4 *.dxf (mm, AP·기선 원점), S140_v1_review → S140_v2_fixed (+ S140_v2_fixed.garc 버전 기록)
+samples/                       S140_rev0~4 *.dxf (mm, AP·기선 원점), S140_v1_review → S140_v2_fixed (+ S140_v2_fixed.brc 버전 기록)
 autocad/
   README.md                    빌드·NETLOAD·첫 실행 확인표
-  GaRuleCheck/                 C# 플러그인 (.NET 10)
+  BuoyRuleCheck/               C# 플러그인 (.NET 10)
+  BuoyPreview/                 AutoCAD 없이 화면 미리보기(WinForms, 같은 소스를 링크)
 ```
 
 ## 5. 규칙 (MVP 2개)
@@ -96,8 +102,8 @@ autocad/
 - **표시는 Transient만.** 위반 표시를 위해 도면 객체 색·레이어를 바꾸지 않는다(Undo·저장 오염).
 - **수치 제안은 계산으로.** "얼마나 낮추면/옮기면 통과"는 엔진이 계산. LLM은 인용만.
 - **버전 비교도 엔진.** 무엇이 바뀌었고 어떤 위반이 해결·발생했는지는 `/v1/compare`. 비교 창·내보내기는 그리기만.
-- **판정 색**: 충족 파랑 · 미충족 빨강 · 확인 필요 주황. 버전 비교는 추가 초록 · 삭제 빨강(파선) · 변경 노랑 + 표식 모양(○ □ ◇) — 흑백 인쇄에서도 구분.
-- **승인처럼 보이지 않게.** "적합/승인/통과 확정" 금지. "규칙 후보 기준 충족 — 최종 판단은 설계자 검토". 면책 문구 항상 표시.
+- **판정 색**: 문제없음 파랑 · 수정 소요 빨강 · 확인 필요 주황(입력 없음·판정 멈춤·엔진 연결 안 됨). **색은 판정에만** — UI 크롬은 흑백 잉크 단계로. 버전 비교는 추가 초록 · 삭제 빨강(파선) · 변경 노랑 + 표식 모양(○ □ ◇) — 흑백 인쇄에서도 구분.
+- **승인처럼 보이지 않게.** 화면 문구에 "적합"·"승인"·"통과 확정"을 쓰지 않는다. 통과는 "문제없음". 판정이 나오는 화면에는 고지 문구를 항상 둔다: "규칙 엔진의 후보 판정입니다. 선급 승인이 아니며 최종 판단은 설계자 검토로 합니다." 문구는 `UiText.cs`(플러그인)·`engine.py`의 `STATUS_KO`·`DISCLAIMER_KO`(엔진)에서만 고친다.
 - **규칙 추가 = `rules/` 모듈 1개 + 기대값 케이스(정상·경계·위반·누락).** 케이스 없이 규칙을 넣지 않는다.
 
 **모델 사용 규칙 (사용자 지정, 2026-10-12)**
@@ -121,9 +127,9 @@ autocad/
 cd engine
 python -m unittest discover -s tests      # 전체 테스트
 python scripts/make_samples.py            # 샘플 DXF 재생성 (pip install ezdxf)
-python -m garc revs ../samples/S140_rev*.dxf   # 변경 감지 데모 (CLI)
-python -m garc serve                      # 플러그인용 서버
-python -m garc compare ../samples/S140_v1_review.dxf ../samples/S140_v2_fixed.dxf   # 버전 비교 (CLI)
+python -m brc revs ../samples/S140_rev*.dxf    # 변경 감지 데모 (CLI, 옛 python -m garc 도 동작)
+python -m brc serve                       # 플러그인용 서버
+python -m brc compare ../samples/S140_v1_review.dxf ../samples/S140_v2_fixed.dxf    # 버전 비교 (CLI)
 python scripts/make_samples.py --compare-demo   # 버전 비교 데모 샘플 재생성
 ```
 
@@ -142,8 +148,8 @@ python scripts/make_samples.py --compare-demo   # 버전 비교 데모 샘플 �
 
 ## 8. 미결 사항
 - [ ] C# 플러그인 v0.4.0 다시 빌드(`install.ps1`) + 첫 실행 확인표 1~25 (손종민) — 15~25가 10-18 기능 3종
-- [ ] 로고 그림 `garc_logo.png`(정사각형, DLL 옆) — 없으면 코드로 그린 'GA' 표식 (서용언)
-- [x] 실도면 축척(1/N) 입력·측면도 영역 지정 — 10-18 `GARCLINK`(엔진 0.4.0·플러그인 0.5.0). AutoCAD 안 실행은 확인표 26~35 (손종민)
+- [x] 로고 — 10-26 코드로 그린 오브(점으로 된 구)로 대체. 그림 파일 불필요
+- [x] 실도면 축척(1/N) 입력·측면도 영역 지정 — 10-18 `GARCLINK`(현 `BRCLINK`, 엔진 0.4.0·플러그인 0.5.0). AutoCAD 안 실행은 확인표 26~35 (손종민)
 - [ ] **마스트·크레인 지브 같은 좁은 구조물을 V/22.1.1 장애물로 볼지**(아니면 V/22.1.2 사각 섹터로 따로) — 선급·MSC/Circ.982·현업 관행 확인. 실도면 시험에서 판정이 갈림 (표인범)
 - [ ] 실도면 역할 지정 보조(선체 외곽선·충돌격벽 후보 자동 제시) — 지금은 사람이 고름. AI 사용 시 실행 위치(로컬만) 결정 후 (손종민·표인범)
 - [x] GitHub 공개 저장소 업로드 (PerRight/GA-RuleCheck) — Actions 결과 확인, README 배지는 남음 (전원)
@@ -156,13 +162,24 @@ python scripts/make_samples.py --compare-demo   # 버전 비교 데모 샘플 �
 - [ ] 멘토 질문 3개 확정 (전원) — 초안은 멘토링 문서 4장
 - [ ] 실제 GA에 가까운 샘플(DWG) 1건 — 저장소가 공개이므로 공개해도 되는 도면만. `*.dwg`는 기본 차단이라 `.gitignore`에 그 파일 예외 줄 추가 (CONTRIBUTING §5)
 - [ ] 평면도 ±10° 검토를 범위에 넣을지 결정 (멘토 답 후)
-- [ ] 정식 이름
+- [x] 정식 이름 — Buoy-RuleCheck (10-26)
+- [ ] Buoy UI(플러그인 0.6.0) AutoCAD 실기 확인 — `autocad/README.md` 확인표의 v0.6 항목 (손종민·서용언)
 
-## 9. 이름 변경 체크리스트
-- `engine/garc/` 패키지명, `python -m garc`
-- 레이어 접두어 `GA_`는 유지 가능, 도면 특성 `GARC_*`, 환경변수 `GARC_ENGINE_URL`/`GARC_ENGINE_DIR`
-- C# 네임스페이스·어셈블리 `GaRuleCheck`, 명령 `GARC*`, 팔레트 제목·GUID
-- README, 이 문서, 발표자료
+## 9. 이름 변경 (2026-10-26 완료)
+| 무엇 | 새 이름 | 옛 이름 처리 |
+|---|---|---|
+| 화면·리포트·A4·README | Buoy-RuleCheck (워드마크 **Buoy** RuleCheck) | 남기지 않음 |
+| 엔진 패키지 | `engine/brc`, `python -m brc` | `engine/garc` 별칭(같은 모듈), `python -m garc` 동작 |
+| 도면 특성 | `BRC_*` | `GARC_*`도 읽음. 플러그인이 쓸 때 `BRC_`로 옮기고 옛 키 지움. 둘 다 있고 값이 다르면 `PROP_DUPLICATE` |
+| 역할 XRecord·레이어 역할 | `BRC_ROLES`·`BRC_LAYER_ROLES` | `GARC_ROLES`·`GARC_LAYER_ROLES` 읽음 |
+| 명령 | `BRC*` | `GARC*` 별칭(처음 한 번 안내) |
+| 버전 기록 폴더 | `<도면>.brc\` | `.garc\`가 있으면 자동 이동 |
+| 환경변수 | `BRC_ENGINE_URL`·`BRC_ENGINE_DIR`·`BRC_PYTHON` | `GARC_*` 읽음 |
+| 스키마 | `brc.raw/1`·`brc.versions/1` | `garc.raw/1` 읽음 |
+| C# | `BuoyRuleCheck` 네임스페이스·어셈블리, `BuoyRuleCheck.bundle` | 설치 스크립트가 옛 `GaRuleCheck.bundle` 제거 |
+| 레이어 접두어 | `GA_` 유지 (GA = General Arrangement) | — |
+
+남은 것: GitHub 저장소 이름(PerRight/GA-RuleCheck) — 바꾸면 기존 링크가 리다이렉트되지만 팀 결정 후. 발표자료.
 
 ## 10. 참고
 - 이전 저장소(FreeCAD, 상위 폴더 `core/ server/ freecad/`): IS Code 복원성·KG 역산·설명 서버. 설명 서버(`server/explain.py`)와 Guider식 UX는 3주차에 재사용 후보.

@@ -1,6 +1,6 @@
 # 기여 안내 (팀 작업 규칙)
 
-GA-RuleCheck는 2026 K-조선 해커톤 홍대도면반의 저장소입니다. 팀원이 같은 방식으로 고치고 확인할 수 있게 최소한의 규칙만 적습니다.
+Buoy-RuleCheck(저장소 이름 GA-RuleCheck)는 2026 K-조선 해커톤 홍대도면반의 저장소입니다. 팀원이 같은 방식으로 고치고 확인할 수 있게 최소한의 규칙만 적습니다.
 구조·원칙의 원본은 [CLAUDE.md](CLAUDE.md)입니다. 이 문서와 어긋나면 CLAUDE.md가 우선입니다.
 
 ## 1. 처음 받았을 때
@@ -21,11 +21,11 @@ AutoCAD 플러그인은 Windows에서 `autocad/install.ps1`로 빌드·설치합
 ## 3. 무엇을 어디서 고치나
 | 바꾸려는 것 | 고칠 곳 | 같이 할 일 |
 |---|---|---|
-| 규칙 판정·수치 제안 | `engine/garc/rules/` | 기대값 케이스(정상·경계·위반·누락) 추가 — 케이스 없이 규칙을 넣지 않는다 |
+| 규칙 판정·수치 제안 | `engine/brc/rules/` | 기대값 케이스(정상·경계·위반·누락) 추가 — 케이스 없이 규칙을 넣지 않는다 |
 | 24건 기대값 | `engine/tests/cases/expected_24.json`만 | `python scripts/render_cases.py`로 `docs/test-cases.md` 재생성 (표를 직접 고치지 않는다 — CI가 어긋남을 잡는다) |
-| 단위·좌표·레이어·도면 특성 | `engine/garc/contract.py` | `docs/input-contract.md` 같이 수정 |
+| 단위·좌표·레이어·도면 특성 | `engine/brc/contract.py` | `docs/input-contract.md` 같이 수정 |
 | 규정 정의·원문 근거 | `docs/rule-definitions.md` | 근거가 불확실하면 '확인 필요'로 남긴다 (기억으로 단정하지 않기) |
-| 팔레트·리본·도면 위 표시 | `autocad/GaRuleCheck/*.cs` | 판정 로직은 넣지 않는다. 빌드 후 첫 실행 확인표의 관련 번호를 PR에 적는다 |
+| 팔레트·리본·도면 위 표시 | `autocad/BuoyRuleCheck/*.cs` | 판정 로직은 넣지 않는다. 빌드 후 첫 실행 확인표의 관련 번호를 PR에 적는다 |
 | 샘플 도면 | `engine/scripts/make_samples.py` | `python scripts/make_samples.py`로 `samples/S140_*.dxf` 재생성 |
 
 ## 4. 꼭 지킬 원칙 (요약 — 전체는 CLAUDE.md §6)
