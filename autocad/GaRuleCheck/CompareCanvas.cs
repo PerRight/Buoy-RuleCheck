@@ -1,8 +1,9 @@
 // 버전 비교 그림: 엔진 /v1/compare가 준 두 버전 형상(m 좌표)을 그린다. 판단·diff 계산은 하지 않는다.
 //   Before/After : 나란히 보기의 왼쪽(이전)·오른쪽(이후) — 두 칸이 같은 ViewState를 공유해 같이 확대·이동
 //   Overlay      : 이전 위에 이후를 슬라이더 투명도로 겹쳐 보기
-//   Diff         : 차이만 강조 — 추가 초록(빗금), 삭제 빨강(파선), 변경 노랑(이전 점선 + 이후 실선)
+//   Diff         : 차이만 — 추가 초록(빗금), 삭제 빨강(파선), 변경 노랑(이전 점선 + 이후 실선), 바뀌지 않은 형상은 회색 잉크
 // 흑백 인쇄에서도 구분되게 색과 함께 선 모양·빗금·표식 모양(추가 ○, 삭제 □, 변경 ◇)과 기호(+ − ~)를 쓴다.
+// 모양은 디자인 보드 07(화면)·08(A4 종이) 토큰을 따른다.
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -33,27 +34,37 @@ namespace GaRuleCheck
         }
     }
 
+    /// 그림 잉크(화면 = 다크, 종이 = 라이트 토큰). 판정 색이 아니라 비교 색(추가·삭제·변경)과 흑백 잉크만.
     public sealed class PaintStyle
     {
         public bool Print;
-        public Color Back, Base, Text, Faint;
+        public Color Back, Base, Text, Faint, MarkerFill, Added, Removed, Modified, RemovedNumber, Focus;
         public float Px = 1f;   // 선 두께 배율(인쇄 해상도)
 
+        /// 디자인 보드 07: 그림 바탕 #212830, 바뀌지 않은 형상 #7D8796, 표식 속 #17191D
         public static PaintStyle Screen => new()
         {
-            Back = Color.FromArgb(24, 27, 32), Base = Color.FromArgb(150, 160, 172), Text = Theme.Text,
-            Faint = Color.FromArgb(70, 78, 90),
+            Back = Color.FromArgb(0x21, 0x28, 0x30), Base = Color.FromArgb(0x7D, 0x87, 0x96), Text = Theme.Text,
+            Faint = Color.FromArgb(0x4A, 0x53, 0x61), MarkerFill = Theme.Bg,
+            Added = Theme.DiffAdded, Removed = Theme.DiffRemoved, Modified = Theme.DiffModified, RemovedNumber = Theme.FailInk,
+            Focus = Color.FromArgb(140, Theme.Text),
         };
 
+        /// 디자인 보드 08(A4 흰 종이): 바뀌지 않은 형상 mid, 가이드 lo, 표식·글자 hi. 비교 색은 종이용으로 짙게.
         public static PaintStyle Paper(float px) => new()
         {
-            Print = true, Back = Color.White, Base = Color.FromArgb(80, 80, 80), Text = Color.Black,
-            Faint = Color.FromArgb(185, 185, 185), Px = px,
+            Print = true, Back = Theme.Paper.Plate, Base = Theme.Paper.Mid, Text = Theme.Paper.Hi, Faint = Theme.Paper.Lo,
+            MarkerFill = Theme.Paper.Plate,
+            Added = Color.FromArgb(0x1F, 0x8A, 0x4C), Removed = Theme.Paper.Fail, Modified = Color.FromArgb(0xA0, 0x7A, 0x00),
+            RemovedNumber = Theme.Paper.Hi, Focus = Theme.Paper.Edge, Px = px,
         };
+
+        public Color Kind(string kind) => kind switch { "added" => Added, "removed" => Removed, _ => Modified };
     }
 
     public static class CanvasPainter
     {
+        /// 화면 변경 색(목록·표식 공용)
         public static Color KindColor(string kind) => kind switch
         {
             "added" => Theme.DiffAdded,
@@ -91,7 +102,7 @@ namespace GaRuleCheck
                     foreach (var gm in geo)
                     {
                         if (changed.TryGetValue(gm.Handle, out var c) && (before ? c.Kind != "added" : c.Kind != "removed"))
-                            DrawChanged(g, area, v, st, gm, c.Kind, before ? "before" : "after", c.Number == highlight);
+                            DrawChanged(g, area, v, st, gm, c.Kind, before ? "before" : "after");
                         else
                             DrawBase(g, area, v, st, gm, st.Base);
                     }
@@ -99,27 +110,27 @@ namespace GaRuleCheck
                 }
                 case CanvasMode.Overlay:
                 {
-                    var colA = st.Print ? Color.FromArgb(60, 60, 60) : Color.FromArgb(170, 178, 190);
-                    var colB = Color.FromArgb((int)Math.Round(255 * Math.Clamp(overlayOpacity, 0f, 1f)), st.Print ? Color.FromArgb(0, 110, 200) : Color.FromArgb(80, 200, 255));
+                    // 이전 = 흐린 잉크, 이후 = 밝은 잉크(투명도 막대) — 판정 색을 쓰지 않는다
+                    var colA = st.Print ? st.Base : Color.FromArgb(0x5C, 0x66, 0x75);
+                    var colB = Color.FromArgb((int)Math.Round(255 * Math.Clamp(overlayOpacity, 0f, 1f)), st.Print ? st.Text : Theme.Text);
                     foreach (var gm in d.Geometry.A) DrawBase(g, area, v, st, gm, colA);
-                    foreach (var gm in d.Geometry.B) DrawBase(g, area, v, st, gm, colB, 1.6f);
+                    foreach (var gm in d.Geometry.B) DrawBase(g, area, v, st, gm, colB, 1.4f);
                     break;
                 }
                 default:   // Diff
                 {
                     foreach (var gm in d.Geometry.B)
-                        if (!changed.ContainsKey(gm.Handle)) DrawBase(g, area, v, st, gm, st.Faint);
+                        if (!changed.ContainsKey(gm.Handle)) DrawBase(g, area, v, st, gm, st.Base);
                     foreach (var c in d.Changes)
                     {
-                        bool hl = c.Number == highlight;
                         foreach (var h in c.Handles)   // 묶인 블록이면 하위 객체 전부
                         {
-                            if (c.Kind == "added" && b.TryGetValue(h, out var gb)) DrawChanged(g, area, v, st, gb, "added", "after", hl);
-                            else if (c.Kind == "removed" && a.TryGetValue(h, out var ga)) DrawChanged(g, area, v, st, ga, "removed", "before", hl);
+                            if (c.Kind == "added" && b.TryGetValue(h, out var gb)) DrawChanged(g, area, v, st, gb, "added", "after");
+                            else if (c.Kind == "removed" && a.TryGetValue(h, out var ga)) DrawChanged(g, area, v, st, ga, "removed", "before");
                             else if (c.Kind == "modified")
                             {
-                                if (a.TryGetValue(h, out var g0)) DrawChanged(g, area, v, st, g0, "modified", "before", hl);
-                                if (b.TryGetValue(h, out var g1)) DrawChanged(g, area, v, st, g1, "modified", "after", hl);
+                                if (a.TryGetValue(h, out var g0)) DrawChanged(g, area, v, st, g0, "modified", "before");
+                                if (b.TryGetValue(h, out var g1)) DrawChanged(g, area, v, st, g1, "modified", "after");
                             }
                         }
                     }
@@ -127,22 +138,39 @@ namespace GaRuleCheck
                 }
             }
 
-            // 번호 표식: 겹치면 위로 비켜 놓고 가는 지시선으로 위치를 잇는다
+            // 고른 변경: 범위 둘레에 점선 둥근 틀(디자인 보드 07)
+            var hlc = highlight is int hn ? d.Changes.FirstOrDefault(c => c.Number == hn) : null;
+            if (hlc?.Bbox is double[] hb)
+            {
+                var p0 = ToScreen(v, area, hb[0], hb[3]);
+                var p1 = ToScreen(v, area, hb[2], hb[1]);
+                float pad = 12 * st.Px;
+                var fr = RectangleF.FromLTRB(Math.Min(p0.X, p1.X) - pad, Math.Min(p0.Y, p1.Y) - pad, Math.Max(p0.X, p1.X) + pad, Math.Max(p0.Y, p1.Y) + pad);
+                using var path = Theme.RoundRect(fr, 6 * st.Px);
+                using var fp = new Pen(st.Focus, 1f * st.Px) { DashStyle = DashStyle.Custom, DashPattern = new[] { 4f, 3f } };
+                g.DrawPath(fp, path);
+            }
+
+            // 번호 표식: 형상 위에. 겹치면 위로 비켜 놓고, 비켰을 때만 가는 지시선으로 잇는다
             var placed = new List<RectangleF>();
             float r = 11 * st.Px;
-            using var font = new Font(Theme.FontName, 8.5f * st.Px, FontStyle.Bold, GraphicsUnit.Pixel);
+            using var font = new Font(Theme.MonoName, 11f * st.Px, FontStyle.Bold, GraphicsUnit.Pixel);   // 번호 11 px(디자인 보드 07)
             foreach (var c in d.Changes.Where(x => x.Bbox != null && x.Center != null))
             {
                 if (mode == CanvasMode.Before && c.Kind == "added") continue;
                 if (mode == CanvasMode.After && c.Kind == "removed") continue;
                 var top = ToScreen(v, area, c.Center![0], c.Bbox![3]);
-                var anchor = ToScreen(v, area, c.Center[0], c.Center[1]);
-                var rect = new RectangleF(top.X - r, top.Y - 2 * r - 8 * st.Px, 2 * r, 2 * r);
+                var anchor = ToScreen(v, area, c.Center[0], c.Bbox[3]);
+                var rect = new RectangleF(top.X - r, top.Y - 2 * r - 10 * st.Px, 2 * r, 2 * r);
+                bool moved = false;
                 for (int guard = 0; guard < 20 && placed.Any(p => p.IntersectsWith(RectangleF.Inflate(rect, 2, 2))); guard++)
-                    rect.Y -= 2 * r + 2;
+                {
+                    rect.Y -= 2 * r + 4;
+                    moved = true;
+                }
                 placed.Add(rect);
                 markersOut?.Add((c, rect));
-                DrawMarker(g, st, c, rect, anchor, font, c.Number == highlight);
+                DrawMarker(g, st, c, rect, moved ? anchor : null, font, c.Number == highlight);
             }
             g.Clip = clip;
         }
@@ -154,55 +182,76 @@ namespace GaRuleCheck
             return pts.ToArray();
         }
 
-        private static void DrawBase(Graphics g, RectangleF area, ViewState v, PaintStyle st, GeomDto gm, Color col, float width = 1f)
+        private static void DrawBase(Graphics g, RectangleF area, ViewState v, PaintStyle st, GeomDto gm, Color col, float width = 1.2f)
         {
             var pts = Pts(gm, area, v);
-            using var pen = new Pen(col, width * st.Px);
+            using var pen = new Pen(col, width * st.Px * (st.Print ? 0.75f : 1f));
             if (pts.Length == 1) { float s = 3 * st.Px; g.DrawEllipse(pen, pts[0].X - s, pts[0].Y - s, 2 * s, 2 * s); return; }
             if (pts.Length >= 2) g.DrawLines(pen, pts);
         }
 
-        /// stage: before(이전 형상) / after(이후 형상). 변경은 이전을 점선, 이후를 실선으로.
-        private static void DrawChanged(Graphics g, RectangleF area, ViewState v, PaintStyle st, GeomDto gm, string kind, string stage, bool hl)
+        /// stage: before(이전 형상) / after(이후 형상). 변경은 이전 점선(흐리게) · 이후 실선(옅은 채움), 삭제는 파선, 추가는 빗금 + 실선.
+        private static void DrawChanged(Graphics g, RectangleF area, ViewState v, PaintStyle st, GeomDto gm, string kind, string stage)
         {
             var pts = Pts(gm, area, v);
-            var col = KindColor(kind);
-            float w = (hl ? 4f : 2.6f) * st.Px;
-            using var pen = new Pen(col, w);
-            if (kind == "removed") pen.DashStyle = DashStyle.Dash;
-            else if (kind == "modified" && stage == "before") { pen.DashStyle = DashStyle.Dot; pen.Width = 1.8f * st.Px; pen.Color = Color.FromArgb(200, col); }
+            var col = st.Kind(kind);
             bool closed = pts.Length > 3 && pts[0] == pts[^1];
-            if (closed && (kind == "added" || kind == "removed" || stage == "after"))
+            if (kind == "modified" && stage == "before")
             {
-                var hatch = kind switch { "added" => HatchStyle.ForwardDiagonal, "removed" => HatchStyle.DiagonalCross, _ => HatchStyle.Percent20 };
-                using var hb = new HatchBrush(hatch, Color.FromArgb(st.Print ? 200 : 150, col), Color.Transparent);
-                g.FillPolygon(hb, pts);
+                using var dot = new Pen(Color.FromArgb(180, col), 1.4f * st.Px) { DashStyle = DashStyle.Custom, DashPattern = new[] { 1.4f, 2.2f } };
+                Stroke(g, dot, pts, st);
+                return;
             }
-            if (hl)
+            if (kind == "removed")
             {
-                using var glow = new Pen(Color.FromArgb(90, col), w + 8 * st.Px) { LineJoin = LineJoin.Round };
-                if (pts.Length >= 2) g.DrawLines(glow, pts);
+                using var dash = new Pen(col, 1.8f * st.Px) { DashStyle = DashStyle.Custom, DashPattern = new[] { 3.3f, 2.2f } };
+                Stroke(g, dash, pts, st);
+                return;
             }
+            if (closed)
+            {
+                if (kind == "added") Hatch(g, pts, col, st);
+                else using (var fill = new SolidBrush(Color.FromArgb(26, col))) g.FillPolygon(fill, pts);
+            }
+            using var pen = new Pen(col, (kind == "added" ? 1.8f : 2f) * st.Px);
+            Stroke(g, pen, pts, st);
+        }
+
+        private static void Stroke(Graphics g, Pen pen, PointF[] pts, PaintStyle st)
+        {
             if (pts.Length == 1) { float s = 5 * st.Px; g.DrawEllipse(pen, pts[0].X - s, pts[0].Y - s, 2 * s, 2 * s); return; }
             if (pts.Length >= 2) g.DrawLines(pen, pts);
         }
 
+        /// 45° 빗금(간격 7 px) — 흑백 인쇄에서도 '추가'로 읽히게
+        private static void Hatch(Graphics g, PointF[] pts, Color col, PaintStyle st)
+        {
+            using var path = new GraphicsPath();
+            path.AddPolygon(pts);
+            var bb = path.GetBounds();
+            var old = g.Clip;
+            g.SetClip(path, CombineMode.Intersect);
+            using var hp = new Pen(col, 1.6f * st.Px);
+            float step = 7 * st.Px;
+            for (float x = bb.Left - bb.Height; x < bb.Right; x += step)
+                g.DrawLine(hp, x, bb.Bottom, x + bb.Height, bb.Top);
+            g.Clip = old;
+        }
+
+        /// 번호 표식: ○ 추가 · □ 삭제 · ◇ 변경. 속은 바탕색, 테·번호는 비교 색(종이는 검정).
         public static void DrawMarker(Graphics g, PaintStyle st, ChangeDto c, RectangleF rect, PointF? anchor, Font font, bool hl)
         {
-            var col = KindColor(c.Kind);
+            var col = st.Print ? st.Text : st.Kind(c.Kind);
             if (anchor is PointF an)
-                using (var lead = new Pen(Color.FromArgb(160, col), 1f * st.Px)) g.DrawLine(lead, rect.X + rect.Width / 2, rect.Bottom, an.X, an.Y);
+                using (var lead = new Pen(Color.FromArgb(120, col), 1f * st.Px)) g.DrawLine(lead, rect.X + rect.Width / 2, rect.Bottom, an.X, an.Y);
             using var path = MarkerPath(c.Kind, rect);
-            using (var fill = new SolidBrush(st.Print ? Color.White : Color.FromArgb(30, 34, 40))) g.FillPath(fill, path);
-            using (var pen = new Pen(col, (hl ? 3f : 2f) * st.Px)) g.DrawPath(pen, path);
+            using (var fill = new SolidBrush(st.MarkerFill)) g.FillPath(fill, path);
+            using (var pen = new Pen(col, (hl ? 2.4f : 1.6f) * st.Px)) g.DrawPath(pen, path);
             var txt = c.Number.ToString();
-            var tc = st.Print ? Color.Black : Color.White;
-            var sz = g.MeasureString(txt, font);
-            using (var tb = new SolidBrush(tc)) g.DrawString(txt, font, tb, rect.X + (rect.Width - sz.Width) / 2, rect.Y + (rect.Height - sz.Height) / 2);
-            // 흑백에서도 종류가 보이게 기호를 표식 오른쪽 위에
-            using var gf = new Font(Theme.FontName, 8f * st.Px, FontStyle.Bold, GraphicsUnit.Pixel);
-            using var gb = new SolidBrush(st.Print ? Color.Black : col);
-            g.DrawString(KindGlyph(c.Kind), gf, gb, rect.Right - 2 * st.Px, rect.Y - 6 * st.Px);
+            var tc = st.Print ? st.Text : c.Kind == "removed" ? st.RemovedNumber : col;
+            using var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+            using var tb = new SolidBrush(tc);
+            g.DrawString(txt, font, tb, new RectangleF(rect.X, rect.Y + 0.5f * st.Px, rect.Width, rect.Height), sf);
         }
 
         public static GraphicsPath MarkerPath(string kind, RectangleF r)
@@ -210,43 +259,56 @@ namespace GaRuleCheck
             var p = new GraphicsPath();
             switch (kind)
             {
-                case "removed": p.AddRectangle(r); break;
+                case "removed": p.AddRectangle(RectangleF.Inflate(r, -1, -1)); break;
                 case "modified":
-                    p.AddPolygon(new[] { new PointF(r.X + r.Width / 2, r.Y - 2), new PointF(r.Right + 2, r.Y + r.Height / 2),
-                                         new PointF(r.X + r.Width / 2, r.Bottom + 2), new PointF(r.X - 2, r.Y + r.Height / 2) });
+                    p.AddPolygon(new[] { new PointF(r.X + r.Width / 2, r.Y - 1), new PointF(r.Right + 1, r.Y + r.Height / 2),
+                                         new PointF(r.X + r.Width / 2, r.Bottom + 1), new PointF(r.X - 1, r.Y + r.Height / 2) });
                     break;
                 default: p.AddEllipse(r); break;
             }
             return p;
         }
 
-        /// 범례(화면 하단·내보내기 공용): 색 + 선 모양 + 표식 모양 + 기호
+        /// 범례(그림 알약·A4 공용): 견본 + 표식 모양 + 기호. 화면 '○ 추가 +' · 종이 '○ 추가 (+) 실선·빗금'
         public static void PaintLegend(Graphics g, RectangleF area, PaintStyle st)
         {
-            using var font = new Font(Theme.FontName, 9f * st.Px, GraphicsUnit.Pixel);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            float s = st.Px;
+            using var font = new Font(Theme.FontName, 11f * s, GraphicsUnit.Pixel);   // 범례 글자 11 px
             float x = area.X, y = area.Y + area.Height / 2;
             foreach (var kind in new[] { "added", "removed", "modified" })
             {
-                var col = KindColor(kind);
-                using (var pen = new Pen(col, 2.6f * st.Px) { DashStyle = kind == "removed" ? DashStyle.Dash : DashStyle.Solid })
-                    g.DrawLine(pen, x, y, x + 26 * st.Px, y);
-                if (kind == "modified")
-                    using (var dot = new Pen(Color.FromArgb(200, col), 1.8f * st.Px) { DashStyle = DashStyle.Dot })
-                        g.DrawLine(dot, x, y + 5 * st.Px, x + 26 * st.Px, y + 5 * st.Px);
-                x += 30 * st.Px;
-                var mr = new RectangleF(x, y - 8 * st.Px, 16 * st.Px, 16 * st.Px);
-                using (var path = MarkerPath(kind, mr))
-                using (var pen = new Pen(col, 1.8f * st.Px)) g.DrawPath(pen, path);
-                x += 22 * st.Px;
-                var label = kind switch
+                var col = st.Kind(kind);
+                var sw = new RectangleF(x, y - 6 * s, 22 * s, 12 * s);
+                switch (kind)
                 {
-                    "added" => "+ 추가 (초록·빗금·○)",
-                    "removed" => "− 삭제 (빨강·파선·□)",
-                    _ => "~ 변경 (노랑·이전 점선/이후 실선·◇)",
+                    case "added":
+                        Hatch(g, new[] { new PointF(sw.Left, sw.Top), new PointF(sw.Right, sw.Top), new PointF(sw.Right, sw.Bottom), new PointF(sw.Left, sw.Bottom), new PointF(sw.Left, sw.Top) }, col, st.Print ? st : PaintStyle.Screen);
+                        using (var p = new Pen(col, 1.4f * s)) g.DrawRectangle(p, sw.X, sw.Y, sw.Width, sw.Height);
+                        break;
+                    case "removed":
+                        using (var p = new Pen(col, 1.4f * s) { DashStyle = DashStyle.Custom, DashPattern = new[] { 3f, 2f } }) g.DrawRectangle(p, sw.X, sw.Y, sw.Width, sw.Height);
+                        break;
+                    default:
+                        using (var p = new Pen(Color.FromArgb(180, col), 1.2f * s) { DashStyle = DashStyle.Custom, DashPattern = new[] { 1.4f, 2f } }) g.DrawLine(p, x, y, x + 16 * s, y);
+                        using (var p = new Pen(col, 2.4f * s)) g.DrawLine(p, x + 20 * s, y, x + 34 * s, y);
+                        sw.Width = 34 * s;
+                        break;
+                }
+                x = sw.Right + 7 * s;
+                string label = (kind, st.Print) switch
+                {
+                    ("added", false) => "○ 추가 +",
+                    ("removed", false) => "□ 삭제 −",
+                    (_, false) => "◇ 변경 ~ (이전 점선 · 이후 실선)",
+                    ("added", true) => "○ 추가 (+) 실선·빗금",
+                    ("removed", true) => "□ 삭제 (−) 파선",
+                    _ => "◇ 변경 (~) 이전 점선 · 이후 굵은 실선",
                 };
-                using var tb = new SolidBrush(st.Text);
-                g.DrawString(label, font, tb, x, y - font.Height / 2f);
-                x += g.MeasureString(label, font).Width + 18 * st.Px;
+                using var tb = new SolidBrush(st.Print ? st.Text : Theme.Muted);
+                var sz = g.MeasureString(label, font);
+                g.DrawString(label, font, tb, x, y - sz.Height / 2f);
+                x += sz.Width + 16 * s;
             }
         }
     }
@@ -335,10 +397,11 @@ namespace GaRuleCheck
             }
             if (!string.IsNullOrEmpty(Caption))
             {
-                var sz = TextRenderer.MeasureText(Caption, Theme.Bold);
-                using var bb = new SolidBrush(Color.FromArgb(200, Theme.Card));
-                e.Graphics.FillRectangle(bb, 8, 8, sz.Width + 12, sz.Height + 6);
-                TextRenderer.DrawText(e.Graphics, Caption, Theme.Bold, new Point(14, 11), Theme.Text);
+                var sz = TextRenderer.MeasureText(Caption, Theme.Small);
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                using var path = Theme.RoundRect(new RectangleF(12, 12, sz.Width + 18, sz.Height + 8), (sz.Height + 8) / 2f);
+                using (var bb = new SolidBrush(Theme.Bg)) e.Graphics.FillPath(bb, path);
+                TextRenderer.DrawText(e.Graphics, Caption, Theme.Small, new Point(21, 16), Theme.Muted);
             }
         }
 
@@ -397,9 +460,8 @@ namespace GaRuleCheck
             {
                 _hover = hit;
                 ChangeHovered?.Invoke(hit);
-                _tip.SetToolTip(this, hit == null ? "" : $"{hit.Number}. {hit.DescKo}\n이전: {hit.BeforeKo}\n이후: {hit.AfterKo}"
-                    + string.Concat(hit.Resolved.Select(x => "\n✔ " + x.Text)) + string.Concat(hit.Introduced.Select(x => "\n✖ " + x.Text))
-                    + string.Concat(hit.NeedsCheck.Select(x => "\n⚠ " + x.Text)));
+                _tip.SetToolTip(this, hit == null ? "" : $"{hit.Number}. {UiText.ChangeTitle(hit)}\n이전: {hit.BeforeKo}\n이후: {hit.AfterKo}"
+                    + (UiText.ChangeNote(hit) is { Length: > 0 } note ? "\n" + note : ""));
             }
         }
 

@@ -59,6 +59,12 @@ namespace GaRuleCheck
             list.Controls.Add(link);
             list.Controls.Add(strip);
             list.Controls.Add(roles);
+            var cmp = Theme.TextButton("버전 비교 창");
+            cmp.Click += (_, _) => ShowCompare();
+            var a4 = Theme.TextButton("A4 전달 시트");
+            a4.Click += (_, _) => ShowSheet();
+            list.Controls.Add(cmp);
+            list.Controls.Add(a4);
 
             var host = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Bg };
             host.Controls.Add(_panel);
@@ -136,6 +142,50 @@ namespace GaRuleCheck
             using var dlg = new ParticularsDialog(found, new Dictionary<string, string>(), unitless: true, "S140_sample.dwg");
             var r = dlg.ShowDialog(this);
             Log($"실도면 연결 1단계: {r} — " + string.Join(", ", dlg.Result.Select(kv => $"{kv.Key}={kv.Value}")));
+        }
+
+        /// 비교 응답(samples_compare.json): 0 = v1 → v2, 1 = rev0 → rev2
+        private static List<CompareResponse> CompareSamples()
+        {
+            var list = new List<CompareResponse>();
+            using var s = Assembly.GetExecutingAssembly().GetManifestResourceStream("BuoyPreview.samples_compare.json");
+            if (s == null) return list;
+            foreach (var o in JsonDocument.Parse(s).RootElement.EnumerateArray())
+                list.Add(o.GetProperty("resp").Deserialize<CompareResponse>(Contract.Json)!);
+            return list;
+        }
+
+        private static readonly VersionEntry V1 = new() { Version = 1, Created = "2026-10-18T14:32:00", Author = "설계자", Reason = "rule_violation", Reference = "SOLAS V/22.1.1, II-1/12" };
+        private static readonly VersionEntry V2 = new() { Version = 2, Created = "2026-10-18T16:05:00", Author = "설계자", Reason = "rule_violation", Reference = "SOLAS V/22.1.1, II-1/12" };
+
+        /// 버전 비교 창: 플러그인과 같은 CompareForm, 도면·엔진 대신 합성 샘플 비교 응답
+        private void ShowCompare()
+        {
+            var samples = CompareSamples();
+            if (samples.Count == 0) return;
+            var src = new CompareSource
+            {
+                DrawingName = "S140_v2_fixed.dwg",
+                LoadIndex = () => new VersionIndex { Versions = new() { V1, V2 } },
+                Compare = (a, b, la, lb) => lb == "현재" && samples.Count > 1 ? samples[1] : samples[0],
+                DwgNumber = () => "S140-GA-001",
+            };
+            var f = new CompareForm(src, d => { Log(d == null ? "도면 표시 지움" : $"도면에 표시: 변경 {d.Changes.Count}건"); return true; },
+                                    (c, sc) => Log($"도면에서 {c.Number}번으로 이동"));
+            f.Show(this);
+        }
+
+        /// A4 전달 시트: 플러그인과 같은 ExportSheet로 그린 그림을 창에 띄운다
+        private void ShowSheet()
+        {
+            var samples = CompareSamples();
+            if (samples.Count == 0) return;
+            var bmp = ExportSheet.Render(samples[0], V1, V2, "v1", "v2", "S140-GA-001", "S140_v2_fixed.dwg");
+            var f = new Form { Text = "A4 전달 시트 — 미리보기", ClientSize = new Size(1123, 794), BackColor = Color.White, StartPosition = FormStartPosition.CenterScreen };
+            var pb = new PictureBox { Dock = DockStyle.Fill, Image = bmp, SizeMode = PictureBoxSizeMode.Zoom };
+            f.Controls.Add(pb);
+            f.FormClosed += (_, _) => bmp.Dispose();
+            f.Show(this);
         }
 
         private LinkProgress? _strip;

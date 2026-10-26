@@ -256,6 +256,86 @@ namespace GaRuleCheck
 
         public static string ToastResolved(int n) => $"해결 {n}건 · 저장하면 버전 기록에 남아요";
 
+        // ── 버전 비교(명세 6-6) ──────────────────────────────────────────────────
+
+        /// 변경 한 칸 제목(엔진 표시용 title_ko, 옛 엔진이면 desc_ko)
+        public static string ChangeTitle(ChangeDto c) => string.IsNullOrEmpty(c.TitleKo) ? c.DescKo : c.TitleKo!;
+
+        /// 수치 변화(앞, 뒤): 옛 엔진이면 before_ko/after_ko
+        public static (string? From, string To) ChangeValue(ChangeDto c) =>
+            c.TitleKo != null ? (c.ValueFromKo, c.ValueToKo ?? "") : (c.Kind == "added" ? null : c.BeforeKo, c.AfterKo);
+
+        /// 덧붙임 줄(예: 4단 → 3단 · 선교 가시거리 수정 소요 해결 · 기준점 거리 11.00 → 9.00 m)
+        public static string ChangeNote(ChangeDto c)
+        {
+            var parts = new List<string>();
+            parts.AddRange(c.Resolved.Select(x => $"{Short(x.RuleId)} 수정 소요 해결"));
+            parts.AddRange(c.Introduced.Select(x => $"{Short(x.RuleId)} 새 수정 소요"));
+            parts.AddRange(c.NeedsCheck.Select(x => $"{Short(x.RuleId)} 확인 필요"));
+            if (!string.IsNullOrEmpty(c.DetailKo)) parts.Add(c.DetailKo!);
+            return string.Join(" · ", parts);
+        }
+
+        /// A4 전달 시트 덧붙임(짧게): 선교 가시거리 해결 · 기준점 거리 11.00 → 9.00 m / 기준 충족
+        public static string ChangeNoteShort(ChangeDto c)
+        {
+            var parts = new List<string>();
+            parts.AddRange(c.Resolved.Select(x => $"{Short(x.RuleId)} 해결"));
+            parts.AddRange(c.Introduced.Select(x => $"{Short(x.RuleId)} 새 수정 소요"));
+            parts.AddRange(c.NeedsCheck.Select(x => $"{Short(x.RuleId)} 확인 필요"));
+            if (!string.IsNullOrEmpty(c.DetailKo)) parts.Add(c.DetailKo!);
+            if (parts.Count == 0)
+            {
+                var s = c.StatusAfter switch { "pass" => "기준 충족", "fail" => "수정 소요", "unknown" => "확인 필요", _ => "" };
+                if (s.Length > 0) parts.Add(s);
+            }
+            return string.Join(" · ", parts);
+        }
+
+        /// 변경 한 칸 오른쪽 상태: (글자, 상태 키 fail/warn/pass/muted). 해결은 이후가 충족이거나 판정할 수 있는 상태에서 지워진 경우만(엔진 계산).
+        public static (string Text, string Key) ChangeStatus(ChangeDto c)
+        {
+            if (c.Introduced.Count > 0) return ("새 수정 소요", "fail");
+            if (c.NeedsCheck.Count > 0) return ("확인 필요", "warn");
+            if (c.Resolved.Count > 0) return ("해결", "pass");
+            return c.StatusAfter switch
+            {
+                "fail" => ("수정 소요", "fail"),
+                "unknown" => ("확인 필요", "warn"),
+                "pass" => ("기준 충족", "muted"),
+                _ => ("", "muted"),
+            };
+        }
+
+        /// 요약 줄 개수: (수정 소요 이전, 이후, 변경 수, 확인 필요 이후)
+        public static (int FailBefore, int FailAfter, int Changes, int WarnAfter) CompareCounts(CompareResponse d) =>
+            (d.Violations.Before, d.Violations.After, d.Changes.Count, d.Unknown.After + d.NeedsCheckRules.Count);
+
+        /// 전체 판정 키(엔진 overall → fail/warn/pass/none)
+        public static string OverallKey(string overall) => overall switch
+        {
+            "fail" => "fail",
+            "pass" => "pass",
+            "incomplete" or "na" => "warn",
+            _ => "none",
+        };
+
+        public static string OverallName(string overall) => OverallKey(overall) switch
+        {
+            "fail" => "수정 소요",
+            "warn" => "확인 필요",
+            "pass" => "문제없음",
+            _ => "판정 없음",
+        };
+
+        /// 변경 내역 머리 아래(예: 사유 · 규정 위반 — SOLAS V/22.1.1, II-1/12)
+        public static string ReasonLine(string? reasonKo, string? reference) =>
+            reasonKo == null ? "사유 · 저장 전 변경" : "사유 · " + reasonKo + (string.IsNullOrWhiteSpace(reference) ? "" : " — " + OneLine(reference!));
+
+        public static string OneLine(string s) => string.Join(" / ", s.Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.RemoveEmptyEntries));
+
+        public const string ResolvedRule = "'해결'은 이후가 충족이거나, 판정할 수 있는 상태에서 객체가 지워진 경우만입니다. 판정 못 함으로 바뀌면 확인 필요(주황)로 따로 적습니다.";
+
         // ── 명령줄(명세 6-4) ────────────────────────────────────────────────────
 
         private static string Names(IEnumerable<string> ruleIds) => string.Join(", ", ruleIds.Select(Short));

@@ -33,6 +33,15 @@
     <Compile Include="..\GaRuleCheck\FloatingParts.cs" Link="Shared\FloatingParts.cs" />
     <Compile Include="..\GaRuleCheck\ParticularsDialog.cs" Link="Shared\ParticularsDialog.cs" />
     <Compile Include="..\GaRuleCheck\LinkProgress.cs" Link="Shared\LinkProgress.cs" />
+    <Compile Include="..\GaRuleCheck\CompareForm.cs" Link="Shared\CompareForm.cs" />
+    <Compile Include="..\GaRuleCheck\CompareParts.cs" Link="Shared\CompareParts.cs" />
+    <Compile Include="..\GaRuleCheck\CompareCanvas.cs" Link="Shared\CompareCanvas.cs" />
+    <Compile Include="..\GaRuleCheck\ExportSheet.cs" Link="Shared\ExportSheet.cs" />
+    <Compile Include="..\GaRuleCheck\RasterPdf.cs" Link="Shared\RasterPdf.cs" />
+    <Compile Include="..\GaRuleCheck\VersionStore.cs" Link="Shared\VersionStore.cs" />
+    <Compile Include="..\GaRuleCheck\EngineClient.cs" Link="Shared\EngineClient.cs" />
+    <Compile Include="..\GaRuleCheck\HitIndex.cs" Link="Shared\HitIndex.cs" />
     <EmbeddedResource Include="samples.json" LogicalName="BuoyPreview.samples.json" />
+    <EmbeddedResource Include="samples_compare.json" LogicalName="BuoyPreview.samples_compare.json" />
   </ItemGroup>
 </Project>

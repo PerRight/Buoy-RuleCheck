@@ -54,7 +54,7 @@ namespace GaRuleCheck
             W($"5 0 obj\n<< /Length {content.Length} >>\nstream\n");
             f.Write(content, 0, content.Length);
             W("endstream\nendobj\n");
-            Obj($"<< /Title <{Utf16Hex(title)}> /Producer (GA-RuleCheck) /CreationDate (D:{DateTime.Now:yyyyMMddHHmmss}) >>");
+            Obj($"<< /Title <{Utf16Hex(title)}> /Producer ({Product.Name}) /CreationDate (D:{DateTime.Now:yyyyMMddHHmmss}) >>");
 
             long xref = f.Position;
             W($"xref\n0 {offsets.Count + 1}\n0000000000 65535 f \n");

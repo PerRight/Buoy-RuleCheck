@@ -1,5 +1,10 @@
-// 버전 비교 창(GARCCOMPARE): 두 버전을 골라 나란히 / 겹쳐 / 차이만 보기, 번호 표식, 변경 목록, 생산팀 전달 내보내기.
-// 무엇이 바뀌었고 무엇이 해결됐는지는 엔진(/v1/compare)이 계산한다. 이 창은 고르고·그리고·내보내기만 한다.
+// 버전 비교 창(GARCCOMPARE, 명세 6-6, 디자인 보드 07): 이전/이후 버전 고르기 · 나란히 · 겹쳐 · 차이만 · 도면에 표시 · 생산팀 전달.
+//   요약 줄: 수정 소요 3 → 0 · 변경 4건 · 전체 ● 수정 소요 → ● 문제없음 · 확인 필요 0
+//   그림: 바뀌지 않은 형상 회색, 추가 초록 빗금 ○ · 삭제 빨강 파선 □ · 변경 노랑(이전 점선 · 이후 실선) ◇, 번호 표식
+//   변경 내역: 번호 · 제목 · 해결/기준 충족 · 수치 변화(z 24.00 → 21.40 m) · 덧붙임. 고른 칸 ↔ 그림의 점선 틀
+// 무엇이 바뀌었고 무엇이 해결됐는지는 엔진(/v1/compare)이 계산한다. '해결'은 이후가 충족이거나 판정할 수 있는 상태에서
+// 객체가 지워진 경우만, 판정 못 함으로 바뀌면 '확인 필요'(주황) — 이 창은 고르고·그리고·내보내기만 한다.
+// AutoCAD에 묶인 일(현재 도면 추출·버전 폴더·도면 번호)은 CompareSource로 받는다(단독 미리보기도 같은 창을 쓴다).
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -8,111 +13,135 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
-using Autodesk.AutoCAD.ApplicationServices;
 
 namespace GaRuleCheck
 {
+    /// 비교 창이 쓰는 바깥 일(AutoCAD 도면·버전 폴더·엔진)
+    public sealed class CompareSource
+    {
+        public string DrawingName = "";
+        /// 내보내기 기본 폴더(없으면 내 문서)
+        public string? SaveDir;
+        public Func<VersionIndex> LoadIndex = () => new VersionIndex();
+        public Func<VersionEntry, RawDrawing> LoadRaw = _ => new RawDrawing();
+        /// 저장 전 상태를 포함한 지금 도면
+        public Func<RawDrawing> ExtractLive = () => new RawDrawing();
+        public Func<RawDrawing, RawDrawing, string, string, CompareResponse> Compare = (a, b, la, lb) => EngineClient.Compare(a, b, la, lb);
+        /// 도면 번호(특성 GARC_DWG_NO, 없으면 파일 이름)
+        public Func<string> DwgNumber = () => "";
+    }
+
     public sealed class CompareForm : Form
     {
         private const string Live = "__live__";
-        private readonly Document _doc;
-        private readonly string _folder;
+        private readonly CompareSource _src;
         private VersionIndex _index = new();
         /// 도면 위 임시 표시. false = 이 비교 창의 도면이 지금 활성 탭이 아니라 표시하지 못함.
         private readonly Func<CompareResponse?, bool> _showOnDrawing;
         private readonly Action<ChangeDto, double> _focusInDrawing;
 
-        private readonly ComboBox _a = Combo(), _b = Combo();
-        private readonly Button _side, _over, _diff, _export, _onDwg;
-        private readonly TrackBar _opacity = new() { Minimum = 0, Maximum = 100, Value = 60, TickStyle = TickStyle.None, Width = 110, Height = 26 };
-        private readonly Label _opLabel = Theme.Label("투명도 60%", Theme.Small, Theme.Muted);
-        private readonly Label _summary = new() { Dock = DockStyle.Top, Height = 74, Font = Theme.Body, ForeColor = Theme.Text, BackColor = Theme.Card, Padding = new Padding(12, 4, 12, 4) };
+        private readonly InkCombo _a = new("이전 버전"), _b = new("이후 버전");
+        private readonly Segmented _modes = new("보기 방식", "나란히", "겹쳐", "차이만");
+        private readonly InkSlider _opacity = new("겹쳐 보기 — 이후 투명도");
+        private readonly Label _opLabel = new() { AutoSize = true, Font = Theme.Small, ForeColor = Theme.Faint, BackColor = Theme.Bg, Text = "이후 60%" };
+        private readonly Button _onDwg, _export;
+        private readonly LinedStrip _tools = new() { Dock = DockStyle.Top, Height = 58 };
+        private readonly Label _labA = Lbl("이전"), _labB = Lbl("이후"), _arrow = Lbl("→");
+        private readonly CompareSummaryBar _summary = new() { Dock = DockStyle.Top };
         private readonly CompareCanvas _left = new() { Dock = DockStyle.Fill, Mode = CanvasMode.Before };
         private readonly CompareCanvas _right = new() { Dock = DockStyle.Fill, Mode = CanvasMode.After };
         private readonly CompareCanvas _main = new() { Dock = DockStyle.Fill, Mode = CanvasMode.Diff };
-        private readonly TableLayoutPanel _sideBySide = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, BackColor = Theme.Bg };
-        private readonly FlowLayoutPanel _list = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true, BackColor = Theme.Bg, Padding = new Padding(8) };
+        private readonly TableLayoutPanel _sideBySide = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, BackColor = Theme.Line, Margin = Padding.Empty };
+        private readonly Panel _canvasHost = new() { Dock = DockStyle.Fill, BackColor = PaintStyle.Screen.Back };
+        private readonly LegendPill _legend = new();
+        private readonly Button _zoomIn = Theme.RingButton("+"), _zoomOut = Theme.RingButton("−"), _zoomAll = Theme.RingButton("전체");
+        private readonly Panel _side = new() { Dock = DockStyle.Right, Width = 380, BackColor = Theme.Bg };
+        private readonly ListHeader _listHead = new() { Dock = DockStyle.Top };
+        private readonly FlowLayoutPanel _list = new()
+        {
+            Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true, BackColor = Theme.Bg,
+            Padding = new Padding(12, 2, 12, 8),
+        };
+        private readonly FooterView _note = new() { Dock = DockStyle.Bottom, Text = UiText.ResolvedRule };
         private readonly ViewState _view = new();
         private CanvasMode _mode = CanvasMode.Diff;
         private CompareResponse? _data;
         private bool _drawOnDwg;
         private bool _loading;
 
-        public CompareForm(Document doc, string folder, Func<CompareResponse?, bool> showOnDrawing, Action<ChangeDto, double> focusInDrawing)
+        public CompareForm(CompareSource src, Func<CompareResponse?, bool> showOnDrawing, Action<ChangeDto, double> focusInDrawing)
         {
-            _doc = doc;
-            _folder = folder;
+            _src = src;
             _showOnDrawing = showOnDrawing;
             _focusInDrawing = focusInDrawing;
-            Text = $"버전 비교 — {Path.GetFileName(doc.Name)}";
+            Text = $"버전 비교 — {src.DrawingName}";
             BackColor = Theme.Bg;
             ForeColor = Theme.Text;
             Font = Theme.Body;
-            Size = new Size(1280, 780);
-            MinimumSize = new Size(900, 560);
+            Size = new Size(1280, 800);
+            MinimumSize = new Size(960, 580);
             StartPosition = FormStartPosition.CenterScreen;
             ShowInTaskbar = false;
             KeyPreview = true;
 
             // ── 도구 줄 ──
-            var tools = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 44, BackColor = Theme.Bg, Padding = new Padding(10, 8, 8, 0), WrapContents = false };
-            _side = Toggle("나란히 보기");
-            _over = Toggle("겹쳐 보기");
-            _diff = Toggle("차이만 강조");
-            _onDwg = Toggle("도면에 표시");
-            _export = Theme.FlatButton("생산팀 전달", Theme.Info);
+            _onDwg = Theme.RingButton("도면에 표시");
+            _export = Theme.PrimaryButton("생산팀 전달");
+            _modes.Selected = 2;
             var tip = new ToolTip();
-            tip.SetToolTip(_side, "이전·이후를 좌우로. 한쪽을 확대·이동하면 다른 쪽도 같이 움직입니다.");
-            tip.SetToolTip(_over, "이전 위에 이후를 겹칩니다. 슬라이더로 이후의 투명도를 조절합니다.");
-            tip.SetToolTip(_diff, "추가 초록(빗금) · 삭제 빨강(파선) · 변경 노랑(이전 점선/이후 실선)");
+            tip.SetToolTip(_modes, "나란히: 이전·이후를 좌우로(함께 확대·이동) · 겹쳐: 이전 위에 이후 · 차이만: 바뀐 것만 색으로");
             tip.SetToolTip(_onDwg, "변경 위치를 AutoCAD 도면 위에 임시 표시합니다(도면은 바뀌지 않음).");
-            tip.SetToolTip(_export, "도면 번호·버전·날짜·작성자·차이 그림·변경 목록·범례를 PDF 또는 PNG 한 장으로.");
-            tools.Controls.AddRange(new Control[]
-            {
-                Theme.Label("이전", Theme.Bold), _a, Theme.Label("→  이후", Theme.Bold), _b, Spacer(14),
-                _side, _over, _diff, Spacer(6), _opLabel, _opacity, Spacer(10), _onDwg, _export,
-            });
-            foreach (Control c in tools.Controls) if (c is Label l) l.Margin = new Padding(0, 5, 6, 0);
-            _opacity.Margin = new Padding(0, 2, 6, 0);
+            tip.SetToolTip(_export, "도면 번호·버전·날짜·작성자·차이 그림·변경 목록·범례·확인란을 A4 한 장(PDF 또는 PNG)으로.");
+            _tools.Controls.AddRange(new Control[] { _labA, _a, _arrow, _labB, _b, _modes, _opLabel, _opacity, _onDwg, _export });
+            _tools.Resize += (_, _) => LayoutTools();
 
-            // ── 본문: 그림 | 변경 목록 ──
-            var split = new SplitContainer { Dock = DockStyle.Fill, BackColor = Theme.Line, SplitterWidth = 4, FixedPanel = FixedPanel.Panel2 };
-            split.Panel1.BackColor = Theme.Bg;
-            split.Panel2.BackColor = Theme.Bg;
+            // ── 그림 ──
             _sideBySide.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
             _sideBySide.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
             _sideBySide.Controls.Add(_left, 0, 0);
             _sideBySide.Controls.Add(_right, 1, 0);
-            _left.Margin = new Padding(0, 0, 2, 0);
-            _right.Margin = new Padding(2, 0, 0, 0);
-            split.Panel1.Controls.Add(_main);
-            split.Panel1.Controls.Add(_sideBySide);
-            var listTitle = new Label { Dock = DockStyle.Top, Height = 30, Text = "변경 내역", Font = Theme.Title, ForeColor = Theme.Text, Padding = new Padding(10, 6, 0, 0) };
-            split.Panel2.Controls.Add(_list);
-            split.Panel2.Controls.Add(listTitle);
+            _left.Margin = new Padding(0, 0, 1, 0);
+            _right.Margin = new Padding(0);
+            _canvasHost.Controls.Add(_main);
+            _canvasHost.Controls.Add(_sideBySide);
+            foreach (var b in new[] { _zoomIn, _zoomOut, _zoomAll })
+            {
+                b.Size = new Size(b.Text.Length > 1 ? 54 : 32, 32);
+                _canvasHost.Controls.Add(b);
+                b.BringToFront();
+            }
+            _zoomIn.AccessibleName = "확대";
+            _zoomOut.AccessibleName = "축소";
+            _zoomAll.AccessibleName = "전체 보기";
+            _canvasHost.Controls.Add(_legend);
+            _legend.BringToFront();
+            _canvasHost.Resize += (_, _) => LayoutCanvasChrome();
 
-            var legend = new Panel { Dock = DockStyle.Bottom, Height = 34, BackColor = Theme.Card };
-            legend.Paint += (_, e) => CanvasPainter.PaintLegend(e.Graphics, new RectangleF(12, 0, legend.Width - 24, legend.Height), PaintStyle.Screen);
+            // ── 변경 내역 ──
+            _side.Controls.Add(_list);
+            _side.Controls.Add(_note);
+            _side.Controls.Add(_listHead);
+            _side.Paint += (_, e) => { using var p = new Pen(Theme.Line, 1f); e.Graphics.DrawLine(p, 0, 0, 0, _side.Height); };
+            _side.Padding = new Padding(1, 0, 0, 0);
 
-            Controls.Add(split);
-            Controls.Add(legend);
+            Controls.Add(_canvasHost);
+            Controls.Add(_side);
             Controls.Add(_summary);
-            Controls.Add(tools);
+            Controls.Add(_tools);
             Shown += (_, _) =>
             {
-                split.SplitterDistance = Math.Max(split.Width - 380, 300);
+                LayoutTools();
+                LayoutCanvasChrome();
                 // 창이 보이기 전엔 그림 칸 크기가 0이라 맞춤이 안 된다 → 보인 뒤 한 번 더
                 if (_data?.Bounds is double[] b) _view.Fit(b, _mode == CanvasMode.Before ? _left.ClientSize : _main.ClientSize);
             };
 
             // ── 동작 ──
-            _side.Click += (_, _) => SetMode(CanvasMode.Before);
-            _over.Click += (_, _) => SetMode(CanvasMode.Overlay);
-            _diff.Click += (_, _) => SetMode(CanvasMode.Diff);
-            _opacity.Scroll += (_, _) =>
+            _modes.Changed += i => SetMode(i switch { 0 => CanvasMode.Before, 1 => CanvasMode.Overlay, _ => CanvasMode.Diff });
+            _opacity.ValueChanged += () =>
             {
                 _main.OverlayOpacity = _opacity.Value / 100f;
-                _opLabel.Text = $"투명도 {_opacity.Value}%";
+                _opLabel.Text = $"이후 {_opacity.Value}%";
                 _main.Invalidate();
             };
             _onDwg.Click += (_, _) =>
@@ -122,19 +151,56 @@ namespace GaRuleCheck
                 if (!_showOnDrawing(_drawOnDwg ? _data : null)) NotActive();
             };
             _export.Click += (_, _) => Export();
-            _a.SelectedIndexChanged += (_, _) => Reload();
-            _b.SelectedIndexChanged += (_, _) => Reload();
+            _a.SelectionChanged += Reload;
+            _b.SelectionChanged += Reload;
+            _zoomIn.Click += (_, _) => Zoom(1.25);
+            _zoomOut.Click += (_, _) => Zoom(1 / 1.25);
+            _zoomAll.Click += (_, _) => (_mode == CanvasMode.Before ? _left : _main).FitAll();
             foreach (var cv in new[] { _left, _right, _main })
             {
                 cv.MarkerClicked += Select;
-                cv.ChangeHovered += c => SetHighlight(c?.Number);
+                cv.ChangeHovered += c => SetHighlight(c?.Number ?? _selected);
             }
             KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) Close(); };
             FormClosed += (_, _) => _showOnDrawing(null);
-            _summary.Resize += (_, _) => FitSummary();
+            _list.Resize += (_, _) => FitList();
 
             LoadVersions();
             SetMode(CanvasMode.Diff);
+        }
+
+        private static Label Lbl(string t) => new() { AutoSize = true, Text = t, Font = Theme.Body, ForeColor = Theme.Faint, BackColor = Theme.Bg };
+
+        private void LayoutTools()
+        {
+            int x = 16, cy = (_tools.Height - 1) / 2;
+            void Put(Control c, int gap = 8) { c.Location = new Point(x, cy - c.Height / 2); x += c.Width + gap; }
+            Put(_labA);
+            Put(_a, 10);
+            Put(_arrow, 10);
+            Put(_labB);
+            Put(_b, 18);
+            Put(_modes, 12);
+            if (_opacity.Visible) { Put(_opLabel, 4); Put(_opacity, 12); }
+            int r = _tools.Width - 16;
+            _export.Location = new Point(r - _export.Width, cy - _export.Height / 2);
+            _onDwg.Location = new Point(_export.Left - 8 - _onDwg.Width, cy - _onDwg.Height / 2);
+        }
+
+        private void LayoutCanvasChrome()
+        {
+            int pad = 16, by = _canvasHost.Height - pad - 32;
+            _legend.Location = new Point(pad, by);
+            int x = _canvasHost.Width - pad;
+            foreach (var b in new[] { _zoomAll, _zoomOut, _zoomIn }) { x -= b.Width; b.Location = new Point(x, by); x -= 6; }
+        }
+
+        private void Zoom(double f)
+        {
+            var cv = _mode == CanvasMode.Before ? _left : _main;
+            if (cv.Data == null) return;
+            _view.Scale *= f;
+            _view.Notify();
         }
 
         private void LoadVersions()
@@ -142,50 +208,41 @@ namespace GaRuleCheck
             _loading = true;
             try
             {
-                _index = VersionStore.Load(_folder);
+                _index = _src.LoadIndex();
                 var items = _index.Versions.OrderBy(v => v.Version)
-                    .Select(v => new Item(VersionStore.Describe(v), v.Version.ToString())).ToList();
-                items.Add(new Item("현재 도면 (저장 전 상태 포함)", Live));
-                foreach (var cb in new[] { _a, _b })
-                {
-                    cb.Items.Clear();
-                    cb.Items.AddRange(items.Cast<object>().ToArray());
-                }
+                    .Select(v => new InkCombo.Entry(VersionStore.Describe(v), v.Version.ToString(), VersionStore.DescribeLong(v))).ToList();
+                items.Add(new InkCombo.Entry("현재 도면", Live, "현재 도면 (저장 전 상태 포함)"));
                 int n = _index.Versions.Count;
                 // 기본: 직전 버전 → 현재 버전. 버전이 하나면 그 버전 → 현재 도면.
-                _a.SelectedIndex = n >= 2 ? n - 2 : 0;
-                _b.SelectedIndex = n >= 2 ? n - 1 : items.Count - 1;
+                _a.SetItems(items, n >= 2 ? n - 2 : 0);
+                _b.SetItems(items, n >= 2 ? n - 1 : items.Count - 1);
             }
             catch (Exception ex)
             {
-                _summary.Text = "버전 기록을 읽지 못했습니다: " + ex.Message;
-                _summary.ForeColor = Theme.Warn;
+                _summary.SetMessage("버전 기록을 읽지 못했어요: " + ex.Message, warn: true);
             }
             finally { _loading = false; }
             Reload();
         }
 
-        private (RawDrawing raw, VersionEntry? entry, string label) Pick(ComboBox cb)
+        private (RawDrawing raw, VersionEntry? entry, string label) Pick(InkCombo cb)
         {
-            var it = (Item)cb.SelectedItem!;
-            if (it.Key == Live)
-            {
-                using (_doc.LockDocument()) return (Extractor.Extract(_doc), null, "현재 도면");
-            }
+            var it = cb.Selected!;
+            if (it.Key == Live) return (_src.ExtractLive(), null, "현재");
             var v = _index.Versions.First(x => x.Version.ToString() == it.Key);
-            return (VersionStore.LoadRaw(_folder, v), v, VersionStore.Label(v));
+            return (_src.LoadRaw(v), v, VersionStore.Label(v));
         }
 
         private VersionEntry? _ea, _eb;
         private string _la = "", _lb = "";
+        private int? _selected;
 
         private void Reload()
         {
-            if (_loading || _a.SelectedItem == null || _b.SelectedItem == null) return;
+            if (_loading || _a.Selected == null || _b.Selected == null) return;
             if (_index.Versions.Count == 0)
             {
-                _summary.Text = "아직 버전 기록이 없습니다. 도면을 저장하면(또는 GARCVERSION) 버전이 생깁니다. 지금은 '현재 도면'만 있습니다.";
-                _summary.ForeColor = Theme.Muted;
+                _summary.SetMessage("아직 버전 기록이 없어요. 도면을 저장하면(또는 GARCVERSION) 버전이 생깁니다. 지금은 '현재 도면'만 있습니다.", warn: false);
                 return;
             }
             Cursor = Cursors.WaitCursor;
@@ -194,26 +251,23 @@ namespace GaRuleCheck
                 var (ra, ea, la) = Pick(_a);
                 var (rb, eb, lb) = Pick(_b);
                 _ea = ea; _eb = eb; _la = la; _lb = lb;
-                _data = EngineClient.Compare(ra, rb, la, lb);
+                _data = _src.Compare(ra, rb, la, lb);
+                _selected = null;
                 foreach (var cv in new[] { _left, _right, _main }) cv.Bind(_data, _view);
-                _left.Caption = $"이전 · {la}";
-                _right.Caption = $"이후 · {lb}";
+                _left.Caption = $"이전 · {_a.Selected!.Text}";
+                _right.Caption = $"이후 · {_b.Selected!.Text}";
                 _view.Fit(_data.Bounds ?? new double[] { 0, 0, 1, 1 }, _mode == CanvasMode.Before ? _left.ClientSize : _main.ClientSize);
+                _summary.Set(_data);
+                _listHead.Set(UiText.ReasonLine(eb == null ? null : VersionStore.ReasonText(eb.Reason), eb?.Reference));
                 FillList();
-                var (text, color) = SummaryText(_data, la, lb, eb);
-                _summary.Text = text;
-                _summary.ForeColor = color;
-                FitSummary();
                 if (_drawOnDwg && !_showOnDrawing(_data)) NotActive();
             }
             catch (Exception ex)
             {
                 _data = null;
                 foreach (var cv in new[] { _left, _right, _main }) cv.Bind(null, _view);   // 이전 결과가 남아 보이지 않게
-                _summary.ForeColor = Theme.Warn;
-                _summary.Text = "비교할 수 없습니다 — " + ex.Message;
-                FitSummary();
-                _list.Controls.Clear();
+                _summary.SetMessage("비교할 수 없어요 — " + ex.Message, warn: true);
+                ClearList();
                 if (_drawOnDwg) _showOnDrawing(null);
             }
             finally { Cursor = Cursors.Default; }
@@ -230,79 +284,48 @@ namespace GaRuleCheck
         {
             _drawOnDwg = false;
             Mark(_onDwg, false);
-            MessageBox.Show(this, $"'{Path.GetFileName(_doc.Name)}' 도면 탭이 활성일 때만 도면에 표시할 수 있습니다. 그 탭으로 바꾼 뒤 다시 누르세요.",
+            MessageBox.Show(this, $"'{_src.DrawingName}' 도면 탭이 활성일 때만 도면에 표시할 수 있어요. 그 탭으로 바꾼 뒤 다시 누르세요.",
                             "도면에 표시", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
-        /// 요약: 미충족·확인 필요 개수, 해결/새 위반/확인 필요 규칙, 두 버전의 전체 판정, 작성자·사유.
-        /// 판정 못 함(확인 필요)으로 바뀐 것은 '해결'로 보이지 않게 주황으로 따로 적는다.
-        internal static (string text, Color color) SummaryText(CompareResponse d, string la, string lb, VersionEntry? eb)
+        private void ClearList()
         {
-            var p = SummaryParts(d, la, lb, eb);
-            return (p.head + "\n" + p.verdict + "\n" + p.who, p.color);
-        }
-
-        /// 요약을 (머리줄, 두 버전 판정, 작성자·사유) 따로 — 내보내기는 작성자 줄을 머리말에 따로 쓰므로 앞의 둘만 쓴다.
-        internal static (string head, string verdict, string who, Color color) SummaryParts(CompareResponse d, string la, string lb, VersionEntry? eb)
-        {
-            static string Names(List<ChangeRefDto> xs) => string.Join(", ", xs.Select(x => x.RuleName));
-            string who = eb != null
-                ? $"{lb} 작성자 {eb.Author} · 사유 {VersionStore.ReasonText(eb.Reason)}" + (string.IsNullOrWhiteSpace(eb.Reference) ? "" : $" — {OneLine(eb.Reference)}")
-                : "이후: 저장 전 현재 도면";
-            string verdict = $"판정  {la}: {d.A.OverallKo}  →  {lb}: {d.B.OverallKo}";
-            if (d.Same)
-                return ($"{la} → {lb}: GA_ 레이어·선박 정보와 판정에 바뀐 것이 없습니다.", verdict, who, Theme.Text);
-            var parts = new List<string> { $"{la} → {lb}", $"미충족 요소 {d.Violations.Before} → {d.Violations.After}" };
-            if (d.Unknown.Before + d.Unknown.After > 0) parts.Add($"확인 필요 요소 {d.Unknown.Before} → {d.Unknown.After}");
-            parts.Add(d.Changes.Count > 0 ? $"변경 {d.Changes.Count}건" : "형상·선박 정보 변경 없음 — 판정만 바뀜(비슷한 레이어 이름·블록 등 확인)");
-            if (d.ResolvedRules.Count > 0) parts.Add("해결: " + Names(d.ResolvedRules));
-            if (d.IntroducedRules.Count > 0) parts.Add("새 위반: " + Names(d.IntroducedRules));
-            if (d.NeedsCheckRules.Count > 0) parts.Add("⚠ 확인 필요: " + Names(d.NeedsCheckRules));
-            var color = d.Violations.After > 0 ? Theme.Fail
-                      : d.Unknown.After > 0 || d.NeedsCheckRules.Count > 0 || d.B.Overall != "pass" ? Theme.Warn
-                      : Theme.Text;
-            return (string.Join("   ·   ", parts), verdict, who, color);
-        }
-
-        internal static string OneLine(string s) => string.Join(" / ", s.Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.RemoveEmptyEntries));
-
-        /// 요약 줄 높이를 글 길이에 맞춘다(창 폭이 좁거나 사유가 길어도 마지막 줄이 잘리지 않게).
-        private void FitSummary()
-        {
-            int w = Math.Max(_summary.ClientSize.Width - _summary.Padding.Horizontal, 200);
-            int h = TextRenderer.MeasureText(_summary.Text, _summary.Font, new Size(w, 0), TextFormatFlags.WordBreak).Height;
-            _summary.Height = Math.Clamp(h + _summary.Padding.Vertical + 6, 44, 140);
+            var old = _list.Controls.Cast<Control>().ToList();
+            _list.Controls.Clear();
+            foreach (var c in old) c.Dispose();
         }
 
         private void FillList()
         {
             _list.SuspendLayout();
-            _list.Controls.Clear();
+            ClearList();
             if (_data == null) { _list.ResumeLayout(); return; }
-            string reason = _eb == null ? "저장 전 변경" : VersionStore.ReasonText(_eb.Reason) + (string.IsNullOrWhiteSpace(_eb.Reference) ? "" : " — " + _eb.Reference);
-            int w = Math.Max(_list.ClientSize.Width - 24, 260);
             foreach (var c in _data.Changes)
             {
-                var row = new ChangeRow(c, reason) { Width = w };
-                row.Hovered += on => SetHighlight(on ? c.Number : null);
+                var row = new ChangeCard(c);
+                row.Hovered += on => SetHighlight(on ? c.Number : _selected);
                 row.Clicked += () => Select(c);
                 _list.Controls.Add(row);
             }
-            foreach (var x in _data.Indirect)
-                _list.Controls.Add(new Label
-                {
-                    Text = (x.To is null or "unknown" ? "⚠ " : "※ ") + x.Text, AutoSize = false, Width = w, Height = 36, Font = Theme.Small,
-                    ForeColor = x.To is null or "unknown" ? Theme.Warn : Theme.Muted,
-                });
+            if (_data.Changes.Count == 0)
+                _list.Controls.Add(new NoteLabel(_data.Same ? "바뀐 것이 없어요." : "형상·선박 정보는 같고 판정만 바뀌었어요 — 비슷한 레이어 이름·블록 등을 확인하세요.", Theme.Muted, Theme.Body));
+            if (_data.Indirect.Count > 0)
+            {
+                _list.Controls.Add(new NoteLabel("다른 변경의 영향", Theme.Faint) { Margin = new Padding(4, 8, 0, 4) });
+                foreach (var x in _data.Indirect)
+                    _list.Controls.Add(new NoteLabel((x.To is null or "unknown" ? "확인 필요 · " : "") + x.Text, x.To is null or "unknown" ? Theme.Warn : Theme.Muted)
+                    { Margin = new Padding(4, 0, 0, 6) });
+            }
             _list.ResumeLayout();
-            _list.Resize -= ListResize;
-            _list.Resize += ListResize;
+            FitList();
         }
 
-        private void ListResize(object? s, EventArgs e)
+        private void FitList()
         {
-            int w = Math.Max(_list.ClientSize.Width - 24, 260);
-            foreach (Control c in _list.Controls) { c.Width = w; if (c is ChangeRow r) r.Relayout(); }
+            int w = Math.Max(_list.ClientSize.Width - _list.Padding.Horizontal - 2, 240);
+            foreach (Control c in _list.Controls)
+                if (c is ChangeCard r) r.FitTo(w);
+                else if (c is IFits f) f.FitTo(w);
         }
 
         private void SetMode(CanvasMode m)
@@ -312,11 +335,9 @@ namespace GaRuleCheck
             _sideBySide.Visible = side;
             _main.Visible = !side;
             if (!side) _main.Mode = m;
-            _opacity.Enabled = m == CanvasMode.Overlay;
-            _opLabel.ForeColor = m == CanvasMode.Overlay ? Theme.Text : Theme.Muted;
-            Mark(_side, side);
-            Mark(_over, m == CanvasMode.Overlay);
-            Mark(_diff, m == CanvasMode.Diff);
+            _opacity.Visible = _opLabel.Visible = m == CanvasMode.Overlay;
+            _modes.Selected = side ? 0 : m == CanvasMode.Overlay ? 1 : 2;
+            LayoutTools();
             _main.Invalidate();
             _left.Invalidate();
             _right.Invalidate();
@@ -331,31 +352,32 @@ namespace GaRuleCheck
                 cv.Invalidate();
             }
             foreach (Control c in _list.Controls)
-                if (c is ChangeRow r) r.SetActive(r.Change.Number == n);
+                if (c is ChangeCard r) r.SetActive(r.Change.Number == n);
         }
 
         /// 표식·목록 클릭: 그 변경 위치로 확대·이동(도면에 표시 중이면 AutoCAD 화면도).
         private void Select(ChangeDto c)
         {
+            _selected = c.Number;
             SetHighlight(c.Number);
             var cv = _mode == CanvasMode.Before ? _left : _main;
             cv.FocusChange(c);
             foreach (Control x in _list.Controls)
-                if (x is ChangeRow r && r.Change.Number == c.Number) _list.ScrollControlIntoView(r);
+                if (x is ChangeCard r && r.Change.Number == c.Number) _list.ScrollControlIntoView(r);
             if (_drawOnDwg && _data?.UnitsScale is double sc && sc > 0) _focusInDrawing(c, sc);
         }
 
         private void Export()
         {
             if (_data == null) return;
-            string dwgNo = DwgNumber();
+            string dwgNo = _src.DwgNumber();
             string baseName = $"{Safe(dwgNo)}_{Safe(_la)}-{Safe(_lb)}_변경";   // 점(.)도 바꿔서 확장자로 오인되지 않게
             using var dlg = new SaveFileDialog
             {
                 Title = "생산팀 전달 — 저장",
                 Filter = "PDF (*.pdf)|*.pdf|PNG 그림 (*.png)|*.png",
                 FileName = baseName,
-                InitialDirectory = Path.GetDirectoryName(_doc.Name) is string d && Directory.Exists(d) ? d : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                InitialDirectory = _src.SaveDir is string d && Directory.Exists(d) ? d : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
                 AddExtension = true,
             };
             if (dlg.ShowDialog(this) != DialogResult.OK) return;
@@ -365,7 +387,7 @@ namespace GaRuleCheck
             if (ext != ".pdf" && ext != ".png") path += dlg.FilterIndex == 2 ? ".png" : ".pdf";
             try
             {
-                using var bmp = ExportSheet.Render(_data, _ea, _eb, _la, _lb, dwgNo, Path.GetFileName(_doc.Name));
+                using var bmp = ExportSheet.Render(_data, _ea, _eb, _la, _lb, dwgNo, _src.DrawingName);
                 if (path.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) bmp.Save(path, ImageFormat.Png);
                 else RasterPdf.WriteImagePage(path, bmp, $"{dwgNo} {_la}→{_lb} 변경");
                 Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
@@ -376,110 +398,41 @@ namespace GaRuleCheck
             }
         }
 
-        private string DwgNumber()
-        {
-            try
-            {
-                var p = DrawingProps.Read(_doc.Database);
-                if (p.TryGetValue("GARC_DWG_NO", out var v) && !string.IsNullOrWhiteSpace(v)) return v.Trim();
-            }
-            catch { /* 특성 읽기 실패 → 파일 이름 */ }
-            return Path.GetFileNameWithoutExtension(_doc.Name);
-        }
-
         private static string Safe(string s) => string.Concat(s.Select(ch => Path.GetInvalidFileNameChars().Contains(ch) || ch == ' ' || ch == '.' ? '_' : ch));
-
-        private static ComboBox Combo() => new()
-        {
-            DropDownStyle = ComboBoxStyle.DropDownList, Width = 250, BackColor = Theme.Input, ForeColor = Theme.Text,
-            FlatStyle = FlatStyle.Flat, Margin = new Padding(0, 2, 8, 0),
-        };
-
-        private static Button Toggle(string text)
-        {
-            var b = Theme.FlatButton(text);
-            b.Margin = new Padding(0, 0, 4, 0);
-            return b;
-        }
 
         private static void Mark(Button b, bool on)
         {
             if (b is PillButton pb) pb.Selected = on;
-            b.Font = on ? Theme.Bold : Theme.Body;
+            b.AccessibleName = b.Text + (on ? " 켜짐" : " 꺼짐");
         }
 
-        private static Control Spacer(int w) => new Panel { Width = w, Height = 1, Margin = Padding.Empty };
-
-        private sealed record Item(string Text, string Key)
+        /// 변경 내역 머리: '변경 내역' + 사유 줄
+        private sealed class ListHeader : Control
         {
-            public override string ToString() => Text;
-        }
-    }
-
-    /// 변경 목록 한 줄: 번호 표식(모양·색) + 설명 + 이전/이후 + 수정 사유 + 해결된 위반.
-    public sealed class ChangeRow : Control
-    {
-        public ChangeDto Change { get; }
-        public event Action<bool>? Hovered;
-        public event Action? Clicked;
-        private readonly string _reason;
-        private bool _active, _hover;
-
-        public ChangeRow(ChangeDto c, string reason)
-        {
-            Change = c;
-            _reason = reason;
-            DoubleBuffered = true;
-            Cursor = Cursors.Hand;
-            Margin = new Padding(0, 0, 0, 6);
-            Font = Theme.Body;
-            Relayout();
-        }
-
-        private string Body() =>
-            $"이전: {Change.BeforeKo}\n이후: {Change.AfterKo}\n사유: {_reason}"
-            + string.Concat(Change.Resolved.Select(x => "\n✔ 해결: " + x.Text))
-            + string.Concat(Change.Introduced.Select(x => "\n✖ 새 위반: " + x.Text))
-            + string.Concat(Change.NeedsCheck.Select(x => "\n⚠ 확인 필요: " + x.Text));
-
-        public void Relayout()
-        {
-            int tw = Math.Max(Width - 52, 120);
-            var h1 = TextRenderer.MeasureText(Change.DescKo, Theme.Bold, new Size(tw, 0), TextFormatFlags.WordBreak).Height;
-            var h2 = TextRenderer.MeasureText(Body(), Theme.Small, new Size(tw, 0), TextFormatFlags.WordBreak).Height;
-            Height = h1 + h2 + 18;
-            Invalidate();
-        }
-
-        public void SetActive(bool on)
-        {
-            if (_active == on) return;
-            _active = on;
-            Invalidate();
-        }
-
-        protected override void OnResize(EventArgs e) { base.OnResize(e); Relayout(); }
-        protected override void OnMouseEnter(EventArgs e) { _hover = true; Hovered?.Invoke(true); Invalidate(); }
-        protected override void OnMouseLeave(EventArgs e) { _hover = false; Hovered?.Invoke(false); Invalidate(); }
-        protected override void OnClick(EventArgs e) => Clicked?.Invoke();
-
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            var g = e.Graphics;
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            g.Clear(_active || _hover ? Theme.CardHover : Theme.Card);
-            var col = CanvasPainter.KindColor(Change.Kind);
-            using (var bar = new SolidBrush(col)) g.FillRectangle(bar, 0, 0, 4, Height);
-            var mr = new RectangleF(12, 10, 24, 24);
-            using (var f = new Font(Theme.FontName, 8.5f, FontStyle.Bold))
+            private string _sub = "";
+            public ListHeader()
             {
-                if (Change.Bbox != null) CanvasPainter.DrawMarker(g, PaintStyle.Screen, Change, mr, null, f, _active);
-                else TextRenderer.DrawText(g, $"{Change.Number}.", Theme.Bold, new Point(12, 12), Theme.Text);
+                SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+                BackColor = Theme.Bg;
+                Height = 70;
+                AccessibleRole = AccessibleRole.StaticText;
+                AccessibleName = "변경 내역";
             }
-            int tw = Math.Max(Width - 52, 120);
-            var h1 = TextRenderer.MeasureText(Change.DescKo, Theme.Bold, new Size(tw, 0), TextFormatFlags.WordBreak).Height;
-            TextRenderer.DrawText(g, Change.DescKo, Theme.Bold, new Rectangle(44, 8, tw, h1), Theme.Text, TextFormatFlags.WordBreak);
-            TextRenderer.DrawText(g, Body(), Theme.Small, new Rectangle(44, 10 + h1, tw, Height - h1 - 10), Theme.Muted, TextFormatFlags.WordBreak);
+
+            public void Set(string sub)
+            {
+                _sub = sub;
+                AccessibleDescription = sub;
+                Invalidate();
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                var g = e.Graphics;
+                g.Clear(Theme.Bg);
+                TextRenderer.DrawText(g, "변경 내역", Theme.Title, new Point(16, 16), Theme.Text, Ink.Line);
+                TextRenderer.DrawText(g, _sub, Theme.Small, new Rectangle(16, 42, Width - 32, 18), Theme.Muted, Ink.Line);
+            }
         }
     }
 }

@@ -1,5 +1,9 @@
-// 생산팀 전달용 한 장(A4 가로, 200 dpi): 도면 번호·버전 비교·날짜·작성자·사유, 차이 강조 그림, 번호 매긴 변경 목록, 범례.
-// 흑백 인쇄에서도 구분되게 색과 함께 선 모양·빗금·표식 모양(○ □ ◇)과 기호(+ − ~)를 쓴다(CanvasPainter 공용).
+// 생산팀 전달 A4 한 장(명세 6-7, 디자인 보드 08): A4 가로, 라이트 잉크 토큰(hi·edge·mid·lo·plate), 200 dpi 그림.
+//   머리: 'GA 변경 전달 · 생산팀' · 도면 번호 v1 → v2 · (오른쪽) 날짜 · 작성자 · 수정 사유
+//   왼쪽: 차이 그림(바뀌지 않은 형상 mid, 추가 ○ 빗금 · 삭제 □ 파선 · 변경 ◇ 이전 점선/이후 굵은 실선) + 범례
+//   오른쪽: 변경 목록 ①②③④(기호 + 제목 · 수치 변화 · 해결/기준 충족) + 확인란(생산 ____ 일자 ____)
+//   아래: 고지 문구 · 워드마크 'Buoy RuleCheck · 1 / 1'
+// 흑백 인쇄에서도 구분되게 색과 함께 선 모양·빗금·표식 모양(○ □ ◇)과 기호(+ − ~)를 쓴다(CanvasPainter 공용). 판정은 엔진 결과 그대로.
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -11,7 +15,11 @@ namespace GaRuleCheck
     public static class ExportSheet
     {
         public const int Width = 2339, Height = 1654;   // A4 가로 @200 dpi
-        private const float Px = 2.4f;
+        /// 디자인 보드 08은 1123 × 794(96 dpi 기준 px) — 그 px에 곱해 200 dpi 그림 px로
+        private const float S = Width / 1123f;
+        private const float M = 44;                     // 좌우 여백(디자인 px)
+
+        private static float P(float designPx) => designPx * S;
 
         public static Bitmap Render(CompareResponse d, VersionEntry? va, VersionEntry? vb, string labelA, string labelB,
                                     string dwgNo, string drawingName)
@@ -21,109 +29,154 @@ namespace GaRuleCheck
             using var g = Graphics.FromImage(bmp);
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-            g.Clear(Color.White);
-            var st = PaintStyle.Paper(Px);
-            using var title = F(15, FontStyle.Bold);
-            using var h2 = F(9.5f, FontStyle.Bold);
-            using var body = F(8.5f);
-            using var small = F(7.2f);
-            using var black = new SolidBrush(Color.Black);
-            using var gray = new SolidBrush(Color.FromArgb(90, 90, 90));
-            using var line = new Pen(Color.FromArgb(150, 150, 150), 1.2f);
+            g.Clear(Theme.Paper.Plate);
+            var st = PaintStyle.Paper(S);
+            using var hi = new SolidBrush(Theme.Paper.Hi);
+            using var muted = new SolidBrush(Theme.Paper.Muted);
+            using var lo = new Pen(Theme.Paper.Lo, Math.Max(1f, 0.9f * S));
+            using var rule = new Pen(Theme.Paper.Hi, 1f * S);
+            float right = 1123 - M;
 
-            float m = 70;   // 여백
-            // ── 머리말 ──
-            g.DrawString("도면 변경 비교 — 생산팀 전달", title, black, m, m - 10);
-            string reason = vb == null ? "" : VersionStore.ReasonText(vb.Reason) + (string.IsNullOrWhiteSpace(vb.Reference) ? "" : $" — {CompareForm.OneLine(vb.Reference)}");
+            // ── 머리 ──
+            using (var kicker = F(11, mono: true)) Text(g, "GA 변경 전달 · 생산팀", kicker, muted, M, 40);
+            using (var title = F(26, FontStyle.Bold, mono: true))
+            using (var ver = F(18, mono: true))
+            {
+                Text(g, dwgNo, title, hi, M, 60);
+                float x = M + Measure(g, dwgNo, title) + 14;
+                Text(g, labelA, ver, muted, x, 68);
+                x += Measure(g, labelA, ver) + 6;
+                Text(g, "→", ver, muted, x, 68);
+                x += Measure(g, "→", ver) + 6;
+                Text(g, labelB, ver, hi, x, 68);
+            }
+            string reason = vb == null ? "저장 전 변경" : VersionStore.ReasonText(vb.Reason) + (string.IsNullOrWhiteSpace(vb.Reference) ? "" : " — " + UiText.OneLine(vb.Reference));
             var meta = new (string k, string v)[]
             {
-                ("도면 번호", dwgNo),
-                ("도면", drawingName),
-                ("버전 비교", $"{labelA} → {labelB}" + (va != null && vb != null ? $"   ({When(va)} → {When(vb)})" : "")),
-                ("작성자", vb?.Author ?? "-"),
-                ("수정 사유", string.IsNullOrEmpty(reason) ? "-" : reason),
-                ("출력일", DateTime.Now.ToString("yyyy-MM-dd HH:mm")),
+                ("날짜", vb != null && DateTime.TryParse(vb.Created, out var t) ? t.ToString("yyyy-MM-dd") : DateTime.Now.ToString("yyyy-MM-dd")),
+                ("작성자", vb?.Author ?? "—"),
+                ("수정 사유", reason),
             };
-            float mx = Width * 0.52f, my = m - 6;
-            float vw = Width - m - mx - 210;
-            foreach (var (k, v) in meta)
+            using (var mf = F(12))
             {
-                g.DrawString(k, h2, gray, mx, my);
-                // 긴 사유·조항은 두 줄까지 감싼다(그 이상은 줄임표)
-                float vh = Math.Min(g.MeasureString(v, body, (int)vw).Height, body.GetHeight(g) * 2 + 2);
-                using (var fmt = new StringFormat { Trimming = StringTrimming.EllipsisWord })
-                    g.DrawString(v, body, black, new RectangleF(mx + 210, my, vw, vh + 1), fmt);
-                my += Math.Max(38, vh + 8);
+                float my = 38;
+                foreach (var (k, v) in meta)
+                {
+                    Text(g, k, mf, muted, 815, my);
+                    using var fmt = new StringFormat(StringFormatFlags.NoWrap) { Trimming = StringTrimming.EllipsisCharacter };
+                    g.DrawString(v, mf, hi, new RectangleF(P(880), P(my), P(right - 880), P(18)), fmt);
+                    my += 21;
+                }
             }
-            float headerBottom = Math.Max(my, m + 110) + 14;
-            g.DrawLine(line, m, headerBottom, Width - m, headerBottom);
+            g.DrawLine(rule, P(M), P(113), P(right), P(113));
 
-            // ── 요약 줄 ──
-            // 비교 창과 같은 요약(미충족·확인 필요 개수, 해결/새 위반/확인 필요 규칙, 두 버전의 전체 판정). 작성자 줄은 머리말에 있으므로 뺀다.
-            var parts = CompareForm.SummaryParts(d, labelA, labelB, vb);
-            string summary = parts.head + "\n" + parts.verdict;
-            var sumSize = g.MeasureString(summary, body, (int)(Width - 2 * m));
-            g.DrawString(summary, body, black, new RectangleF(m, headerBottom + 14, Width - 2 * m, sumSize.Height + 2));
-            float top = headerBottom + 14 + sumSize.Height + 22;
-
-            // ── 차이 강조 그림 ──
-            float footer = 150;
-            var img = new RectangleF(m, top, Width * 0.62f - m, Height - top - footer - 20);
-            g.DrawRectangle(line, img.X, img.Y, img.Width, img.Height);
+            // ── 차이 그림 ──
+            var frame = new RectangleF(P(M), P(132), P(705 - M), P(695 - 132));
+            var img = RectangleF.Inflate(frame, -P(1), -P(1));
             var view = new ViewState();
-            if (d.Bounds is double[] b) view.Fit(b, Size.Round(img.Size), 0.06);
+            if (d.Bounds is double[] b) view.Fit(b, Size.Round(img.Size), 0.08);
+            var clip = g.Clip;
+            using (var fpath = Theme.RoundRect(img, P(6))) g.SetClip(fpath);
             CanvasPainter.Paint(g, img, d, CanvasMode.Diff, view, st, 1f, null);
+            g.Clip = clip;
+            using (var fpath = Theme.RoundRect(frame, P(6))) g.DrawPath(lo, fpath);
+            CanvasPainter.PaintLegend(g, new RectangleF(P(M), P(703), P(705 - M), P(20)), st);
 
             // ── 변경 목록 ──
-            float lx = img.Right + 50, lw = Width - m - lx, ly = top;
-            g.DrawString("변경 목록", h2, black, lx, ly);
-            ly += 46;
+            float lx = 729, lw = right - lx;
+            using (var h = F(15, FontStyle.Bold)) Text(g, "변경 목록", h, hi, lx, 131);
+            var (fb, fa, n, _) = UiText.CompareCounts(d);
+            using (var sm = F(11))
+            {
+                string sum = d.Same ? "바뀐 것 없음" : $"수정 소요 {fb} → {fa} · {n}건";
+                Text(g, sum, sm, muted, right - Measure(g, sum, sm), 134);
+            }
+            g.DrawLine(lo, P(lx), P(160), P(right), P(160));
+            float ly = 160, bottom = 655;
+            using var num = F(18);
+            using var tf = F(12, FontStyle.Bold);
+            using var vf = F(12, mono: true);
+            using var nf = F(11);
             int shown = 0;
             foreach (var c in d.Changes)
             {
-                var text = $"{c.DescKo}\n이전: {c.BeforeKo}   이후: {c.AfterKo}"
-                           + string.Concat(c.Resolved.Select(x => $"\n✔ 해결: {x.Text}"))
-                           + string.Concat(c.Introduced.Select(x => $"\n✖ 새 위반: {x.Text}"))
-                           + string.Concat(c.NeedsCheck.Select(x => $"\n⚠ 확인 필요: {x.Text}"));
-                var sz = g.MeasureString(text, small, (int)(lw - 70));
-                if (ly + sz.Height > img.Bottom - 40)
+                string title = $"{Glyph(c.Kind)} {UiText.ChangeTitle(c)}";
+                var (from, to) = UiText.ChangeValue(c);
+                string value = (from == null ? "" : from + " → ") + to;
+                string note = UiText.ChangeNoteShort(c);
+                float th = HeightOf(g, title, tf, lw - 36), vh = HeightOf(g, value, vf, lw - 36), nh = note.Length > 0 ? HeightOf(g, note, nf, lw - 36) : 0;
+                float itemH = 12 + th + 5 + vh + (nh > 0 ? 5 + nh : 0) + 12;
+                if (ly + itemH > bottom)
                 {
-                    g.DrawString($"… 외 {d.Changes.Count - shown}건 — 비교 창에서 확인", small, gray, lx, ly);
+                    Text(g, $"… 외 {d.Changes.Count - shown}건 — 비교 창에서 확인", nf, muted, lx, ly + 10);
                     break;
                 }
-                var mr = new RectangleF(lx, ly + 2, 40, 40);
-                if (c.Bbox != null)
-                    using (var mf = F(7.5f, FontStyle.Bold)) CanvasPainter.DrawMarker(g, st, c, mr, null, mf, false);
-                else
-                    g.DrawString($"{c.Number}.", h2, black, lx + 2, ly + 4);
-                g.DrawString(text, small, black, new RectangleF(lx + 62, ly, lw - 70, sz.Height + 4));
-                ly += Math.Max(sz.Height, 44) + 22;
+                Text(g, Circled(c.Number), num, hi, lx, ly + 8);
+                float cx = lx + 36, y = ly + 12;
+                Wrap(g, title, tf, hi, cx, y, lw - 36); y += th + 5;
+                Wrap(g, value, vf, hi, cx, y, lw - 36); y += vh + 5;
+                if (nh > 0) Wrap(g, note, nf, muted, cx, y, lw - 36);
+                ly += itemH;
+                g.DrawLine(lo, P(lx), P(ly), P(right), P(ly));
                 shown++;
             }
-            if (d.Indirect.Count > 0 && ly < img.Bottom - 80)
+            if (d.Indirect.Count > 0 && ly + 24 < bottom)
+                Text(g, $"다른 변경의 영향 {d.Indirect.Count}건 — 비교 창에서 확인", nf, muted, lx, ly + 10);
+
+            // 확인란
+            var box = new RectangleF(P(lx), P(665), P(lw), P(55));
+            using (var bpath = Theme.RoundRect(box, P(6))) g.DrawPath(lo, bpath);
+            using (var lab = F(11))
+            using (var val = F(12))
+            using (var ul = new Pen(Theme.Paper.Hi, 0.9f * S))
             {
-                ly += 6;
-                g.DrawString("다른 변경의 영향", h2, black, lx, ly);
-                ly += 42;
-                foreach (var x in d.Indirect.Take(4))
-                {
-                    g.DrawString((x.To is null or "unknown" ? "⚠ " : "※ ") + x.Text, small, gray, new RectangleF(lx, ly, lw, 60));
-                    ly += 40;
-                }
+                Text(g, "확인", lab, muted, lx + 12, 674);
+                Text(g, "생산", val, hi, lx + 46, 673);
+                float u0 = lx + 46 + Measure(g, "생산", val) + 4;
+                g.DrawLine(ul, P(u0), P(688), P(u0 + 90), P(688));
+                Text(g, "일자", lab, muted, lx + 12, 696);
+                g.DrawLine(ul, P(lx + 46), P(710), P(lx + 136), P(710));
             }
 
-            // ── 범례·면책 ──
-            float fy = Height - footer;
-            g.DrawLine(line, m, fy, Width - m, fy);
-            CanvasPainter.PaintLegend(g, new RectangleF(m, fy + 16, Width - 2 * m, 50), st);
-            g.DrawString("규칙 엔진의 후보 판정입니다. 선급 승인이나 적합 증명이 아니며, 최종 판단은 설계자·선급 검토로 합니다.  "
-                         + "번호 표식: ○ 추가  □ 삭제  ◇ 변경", small, gray, m, fy + 82);
-            g.DrawString("GA-RuleCheck", small, gray, Width - m - 220, fy + 82);
+            // ── 아래: 고지 · 워드마크 · 쪽 ──
+            g.DrawLine(lo, P(M), P(739), P(right), P(739));
+            using (var foot = F(11))
+            {
+                Text(g, UiText.Disclaimer, foot, muted, M, 748);
+                const string page = " · 1 / 1";
+                float pw = Measure(g, page, foot);
+                Text(g, page, foot, muted, right - pw, 748);
+                // 워드마크 'Buoy RuleCheck' — Buoy 굵게 + RuleCheck 보통(Theme.DrawWordmark, 글꼴 없으면 대체)
+                float ww;
+                using (var probe = new Bitmap(1, 1))
+                {
+                    probe.SetResolution(200, 200);   // 같은 해상도에서 재야 pt → px가 맞는다
+                    using var pg = Graphics.FromImage(probe);
+                    ww = Theme.DrawWordmark(pg, PointF.Empty, 9f, Color.Black);   // 폭만 잰다(12 px = 9 pt)
+                }
+                float wx = P(right) - pw * S - ww;
+                Theme.DrawWordmark(g, new PointF(wx, P(747)), 9f, Theme.Paper.Hi, Theme.Paper.Hi);
+                var orb = new OrbGeometry(new OrbSpec { Size = P(14) });
+                OrbRenderer.Draw(g, orb, 0.0, new PointF(wx - P(20), P(747)), new OrbLook { Dots = Color.FromArgb(0x8E, 0x8E, 0x96) });
+            }
             return bmp;
         }
 
-        private static Font F(float pt, FontStyle style = FontStyle.Regular) => new(Theme.FontName, pt * Px * 1.35f, style, GraphicsUnit.Pixel);
+        private static string Glyph(string kind) => kind switch { "added" => "+", "removed" => "−", "modified" => "~", _ => "·" };
 
-        private static string When(VersionEntry v) => DateTime.TryParse(v.Created, out var t) ? t.ToString("yyyy-MM-dd HH:mm") : v.Created;
+        /// ①~⑳, 그 뒤는 (21)
+        private static string Circled(int n) => n is >= 1 and <= 20 ? ((char)(0x2460 + n - 1)).ToString() : $"({n})";
+
+        private static Font F(float designPx, FontStyle style = FontStyle.Regular, bool mono = false) =>
+            new(mono ? Theme.MonoName : Theme.FontName, designPx * S, style, GraphicsUnit.Pixel);
+
+        private static void Text(Graphics g, string s, Font f, Brush b, float x, float y) => g.DrawString(s, f, b, P(x), P(y));
+
+        private static float Measure(Graphics g, string s, Font f) => g.MeasureString(s, f).Width / S;
+
+        private static float HeightOf(Graphics g, string s, Font f, float w) => g.MeasureString(s, f, (int)P(w)).Height / S;
+
+        private static void Wrap(Graphics g, string s, Font f, Brush b, float x, float y, float w) =>
+            g.DrawString(s, f, b, new RectangleF(P(x), P(y), P(w), P(400)));
     }
 }

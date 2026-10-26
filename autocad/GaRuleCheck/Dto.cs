@@ -331,6 +331,13 @@ namespace GaRuleCheck
         public List<string> RelatedRules { get; set; } = new();
         public double[]? Center { get; set; }
         public double[]? Bbox { get; set; }
+        /// 표시용(엔진 0.4.2+): 짧은 제목·수치 변화(앞 → 뒤)·덧붙임·그 객체의 이전/이후 판정(fail/unknown/pass/null)
+        public string? TitleKo { get; set; }
+        public string? ValueFromKo { get; set; }
+        public string? ValueToKo { get; set; }
+        public string? DetailKo { get; set; }
+        public string? StatusBefore { get; set; }
+        public string? StatusAfter { get; set; }
     }
 
     public sealed class IndirectDto

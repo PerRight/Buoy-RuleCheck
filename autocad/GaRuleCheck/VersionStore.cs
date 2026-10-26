@@ -8,7 +8,6 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Autodesk.AutoCAD.ApplicationServices;
 
 namespace GaRuleCheck
 {
@@ -24,11 +23,12 @@ namespace GaRuleCheck
         public static string ReasonText(string code) => ReasonKo.TryGetValue(code, out var k) ? k : code;
 
         /// 저장된 도면: 도면 폴더\<이름>.garc. 아직 저장 안 된 도면: 내 문서\GaRuleCheck\<이름>.garc
-        public static string FolderFor(Document doc)
+        /// drawingPath = Document.Name, named = Document.IsNamedDrawing (AutoCAD 없이도 쓰게 값으로 받는다)
+        public static string FolderFor(string drawingPath, bool named)
         {
-            var name = Path.GetFileNameWithoutExtension(doc.Name);
-            var dir = Path.GetDirectoryName(doc.Name);
-            if (!doc.IsNamedDrawing || string.IsNullOrEmpty(dir) || !Directory.Exists(dir))
+            var name = Path.GetFileNameWithoutExtension(drawingPath);
+            var dir = Path.GetDirectoryName(drawingPath);
+            if (!named || string.IsNullOrEmpty(dir) || !Directory.Exists(dir))
                 dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "GaRuleCheck");
             return Path.Combine(dir, name + ".garc");
         }
@@ -118,7 +118,15 @@ namespace GaRuleCheck
 
         public static string Label(VersionEntry v) => $"v{v.Version}";
 
+        /// 버전 고르기 칸(예: v1 · 10-18 손종민)
         public static string Describe(VersionEntry v)
+        {
+            var when = DateTime.TryParse(v.Created, out var t) ? t.ToString("MM-dd") : v.Created;
+            return $"v{v.Version} · {when} {v.Author}";
+        }
+
+        /// 펼친 목록 한 줄(예: v1 · 10-18 14:32 · 손종민 · 규정 위반)
+        public static string DescribeLong(VersionEntry v)
         {
             var when = DateTime.TryParse(v.Created, out var t) ? t.ToString("MM-dd HH:mm") : v.Created;
             return $"v{v.Version} · {when} · {v.Author} · {ReasonText(v.Reason)}";

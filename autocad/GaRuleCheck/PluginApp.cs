@@ -318,7 +318,7 @@ namespace GaRuleCheck
             {
                 RawDrawing raw;
                 using (doc.LockDocument()) raw = Extractor.Extract(doc);
-                var folder = VersionStore.FolderFor(doc);
+                var folder = VersionStore.FolderFor(doc.Name, doc.IsNamedDrawing);
                 if (VersionStore.SameAsLatest(folder, raw))
                 {
                     if (!fromSave) doc.Editor.WriteMessage($"\n{Product.Tag} 마지막 버전과 같아(GA_ 레이어·선박 정보 변화 없음) 새 버전을 만들지 않았습니다.\n");
@@ -381,7 +381,26 @@ namespace GaRuleCheck
                 return;
             }
             // 비교 창은 연 도면(doc)에 묶인다 — 다른 도면 탭이 활성일 때는 그 도면에 표시·이동하지 않는다
-            var form = new CompareForm(doc, VersionStore.FolderFor(doc),
+            var folder = VersionStore.FolderFor(doc.Name, doc.IsNamedDrawing);
+            var src = new CompareSource
+            {
+                DrawingName = DocName(doc),
+                SaveDir = Path.GetDirectoryName(doc.Name),
+                LoadIndex = () => VersionStore.Load(folder),
+                LoadRaw = v => VersionStore.LoadRaw(folder, v),
+                ExtractLive = () => { using (doc.LockDocument()) return Extractor.Extract(doc); },
+                DwgNumber = () =>
+                {
+                    try
+                    {
+                        var p = DrawingProps.Read(doc.Database);
+                        if (p.TryGetValue("GARC_DWG_NO", out var v) && !string.IsNullOrWhiteSpace(v)) return v.Trim();
+                    }
+                    catch { /* 특성 읽기 실패 → 파일 이름 */ }
+                    return Path.GetFileNameWithoutExtension(doc.Name);
+                },
+            };
+            var form = new CompareForm(src,
                 d =>
                 {
                     if (d == null) { Overlay.ClearDiff(); return true; }
