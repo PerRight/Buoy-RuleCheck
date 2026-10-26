@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from garc.engine import all_rules, STATUS_KO  # noqa: E402
+from brc.engine import all_rules, STATUS_KO  # noqa: E402
 
 data = json.loads((ROOT / "tests" / "cases" / "expected_24.json").read_text(encoding="utf-8"))
 rules = {r.id: r for r in all_rules()}
@@ -35,7 +35,7 @@ for rid, r in rules.items():
         if c["rule"] != rid:
             continue
         m = json.loads(json.dumps(c["model"]))
-        from garc.contract import validate_model
+        from brc.contract import validate_model
         validate_model(m)
         res = r.evaluate(m)
         e = c["expected"]

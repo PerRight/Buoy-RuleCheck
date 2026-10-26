@@ -1,15 +1,30 @@
-"""GA-RuleCheck 규칙 엔진 (작업명).
+"""옛 이름 garc → 새 패키지 brc (2026-10-26 이름 변경: Buoy-RuleCheck).
 
-CAD를 모르는 순수 파이썬 패키지. 표준 라이브러리만 쓴다(DXF 어댑터만 ezdxf 선택 의존).
-AutoCAD 플러그인·DXF·테스트는 모두 같은 입력 계약(contract.py)을 거쳐 이 엔진을 호출한다.
+`python -m garc serve`, `import garc.contract` 같은 옛 명령·스크립트가 그대로 돌게, garc.X를 brc.X 모듈 그 자체로 넘긴다
+(같은 모듈 객체 — 서버 세션·클래스가 두 벌 생기지 않는다). 새 코드는 brc를 쓴다.
 """
-from .contract import raw_to_model, validate_model, ContractError
-from .engine import evaluate, Report, RuleResult, DISCLAIMER_KO
-from .session import Session, diff_models
+import importlib
+import importlib.abc
+import importlib.util
+import sys
 
-__all__ = [
-    "raw_to_model", "validate_model", "ContractError",
-    "evaluate", "Report", "RuleResult", "DISCLAIMER_KO",
-    "Session", "diff_models",
-]
-__version__ = "0.4.0"  # 0.2.0: raw bulges/closed, 입력 값·형상 검증 / 0.2.1: 오타 감지(눈 위치·흘수·기선·용골일·숫자 형식·유사 레이어) (2026-10-12) / 0.3.0: 요소별 판정·버전 비교 /v1/compare / 0.4.0: 실도면 연결(축척·영역·역할·블록 펼침·준비 상태·치수표 읽기) (2026-10-18)
+import brc as _brc
+from brc import *  # noqa: F401,F403
+from brc import __all__, __version__  # noqa: F401
+
+
+class _Alias(importlib.abc.MetaPathFinder, importlib.abc.Loader):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.startswith("garc.") and fullname != "garc.__main__":   # `python -m garc`는 이 폴더의 __main__.py
+            return importlib.util.spec_from_loader(fullname, self)
+        return None
+
+    def create_module(self, spec):
+        return importlib.import_module("brc." + spec.name[len("garc."):])
+
+    def exec_module(self, module):
+        sys.modules[module.__spec__.name if module.__spec__ else module.__name__] = module
+
+
+if not any(isinstance(f, _Alias) for f in sys.meta_path):
+    sys.meta_path.insert(0, _Alias())

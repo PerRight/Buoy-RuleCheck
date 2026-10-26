@@ -1,5 +1,5 @@
 {
- "schema": "garc.raw/1",
+ "schema": "brc.raw/1",
  "source": {
   "app": "dxf",
   "file": "S140_v2_fixed.dxf",
@@ -7,20 +7,19 @@
  },
  "insunits": 4,
  "props": {
-  "GARC_LOA": "140",
-  "GARC_L_LL": "132",
-  "GARC_X_AP": "0",
-  "GARC_X_FP": "132",
-  "GARC_Z_BASE": "0",
-  "GARC_EYE_HEIGHT": "1.8",
-  "GARC_KEEL_LAID": "2026-03-02",
-  "GARC_SHIP_TYPE": "general_cargo",
-  "GARC_DWG_NO": "S140-GA-001",
-  "GARC_CONDITIONS": "만재 출항:8.0/8.0; 밸러스트 도착:6.5/4.0"
+  "BRC_LOA": "140",
+  "BRC_L_LL": "132",
+  "BRC_X_AP": "0",
+  "BRC_X_FP": "132",
+  "BRC_Z_BASE": "0",
+  "BRC_EYE_HEIGHT": "1.8",
+  "BRC_KEEL_LAID": "2026-03-02",
+  "BRC_SHIP_TYPE": "general_cargo",
+  "BRC_DWG_NO": "S140-GA-001",
+  "BRC_CONDITIONS": "만재 출항:8.0/8.0; 밸러스트 도착:6.5/4.0"
  },
  "entities": [
   {
-   "handle": "90",
    "type": "LWPOLYLINE",
    "points": [
     [
@@ -61,10 +60,10 @@
     ]
    ],
    "closed": false,
+   "handle": "90",
    "layer": "GA_HULL"
   },
   {
-   "handle": "91",
    "type": "POINT",
    "points": [
     [
@@ -72,10 +71,10 @@
      28000.0
     ]
    ],
+   "handle": "91",
    "layer": "GA_EYE"
   },
   {
-   "handle": "92",
    "type": "LINE",
    "points": [
     [
@@ -87,10 +86,10 @@
      14500.0
     ]
    ],
+   "handle": "92",
    "layer": "GA_BHD_COLL"
   },
   {
-   "handle": "93",
    "type": "LWPOLYLINE",
    "points": [
     [
@@ -107,10 +106,10 @@
     ]
    ],
    "closed": false,
+   "handle": "93",
    "layer": "GA_BULB"
   },
   {
-   "handle": "97",
    "type": "LWPOLYLINE",
    "points": [
     [
@@ -131,10 +130,10 @@
     ]
    ],
    "closed": true,
+   "handle": "97",
    "layer": "GA_OBST"
   },
   {
-   "handle": "98",
    "type": "LWPOLYLINE",
    "points": [
     [
@@ -155,6 +154,7 @@
     ]
    ],
    "closed": true,
+   "handle": "98",
    "layer": "GA_OBST"
   }
  ],

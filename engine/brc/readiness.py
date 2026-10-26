@@ -20,18 +20,18 @@ VIS, BHD = "SOLAS-V-22.1.1", "SOLAS-II1-12"
 
 # (키, 한글 이름, 필수 여부, 쓰는 규칙, 어떻게 채우나)
 SHIP_ITEMS = [
-    ("loa", "전장 LOA", True, [VIS], "주요 치수표의 LENGTH O.A — 선박 정보 탭 또는 GARCLINK"),
+    ("loa", "전장 LOA", True, [VIS], "주요 치수표의 LENGTH O.A — 선박 정보 탭 또는 BRCLINK"),
     ("l_ll", "L (만재흘수선협약 길이)", True, [BHD], "선급 계산서의 L — 도면에 없으면 직접 입력(LBP와 다를 수 있음)"),
-    ("x_ap", "AP 위치", True, [VIS, BHD], "도면에서 AP 클릭 — GARCPICK AP 또는 GARCLINK"),
-    ("x_fp", "FP 위치", True, [VIS, BHD], "도면에서 FP 클릭 — GARCPICK FP 또는 GARCLINK"),
-    ("z_base", "기선 높이", True, [VIS], "도면에서 기선 클릭 — GARCPICK BASE 또는 GARCLINK"),
+    ("x_ap", "AP 위치", True, [VIS, BHD], "도면에서 AP 클릭 — BRCPICK AP 또는 BRCLINK"),
+    ("x_fp", "FP 위치", True, [VIS, BHD], "도면에서 FP 클릭 — BRCPICK FP 또는 BRCLINK"),
+    ("z_base", "기선 높이", True, [VIS], "도면에서 기선 클릭 — BRCPICK BASE 또는 BRCLINK"),
     ("eye_height", "눈높이(선교 갑판 위)", False, [VIS], "기본 1.8 m"),
     ("lbp", "LBP (참고)", False, [], "주요 치수표의 LENGTH B.P — AP–FP 간격 대조용"),
     ("keel_laid", "용골 거치일", False, [VIS], "없으면 1998-07-01 이후 건조선으로 가정"),
 ]
 ROLE_ITEMS = [
     ("hull", "선체 윤곽", True, [VIS], "측면도 선체 외곽선(갑판선·선수재·선미·바닥)에 역할 지정"),
-    ("eye", "조종위치", True, [VIS], "선교 갑판 높이의 점 1개 — GARCEYE 또는 GARCLINK"),
+    ("eye", "조종위치", True, [VIS], "선교 갑판 높이의 점 1개 — BRCEYE 또는 BRCLINK"),
     ("collision_bhd", "충돌격벽", True, [BHD], "측면도 충돌격벽 선에 역할 지정"),
     ("obstruction", "장애물(갑판 화물·크레인·마스트 등)", False, [VIS], "지정하지 않으면 선체 윤곽만으로 시야를 판정"),
     ("bulb", "구상선수", False, [BHD], "있는 배만 — 수선 아래 FP 앞으로 돌출한 부분"),
@@ -57,7 +57,7 @@ def readiness(model: dict[str, Any]) -> dict[str, Any]:
     unit_issue = next((i for i in issues if i["code"] == "UNIT_UNKNOWN"), None)
     if unit_issue or model.get("units_scale") is None:
         add("units", "단위·축척", True, [VIS, BHD], "invalid" if unit_issue else "missing",
-            hint="도면 단위(mm/m)와 축척(1/N) — GARCLINK", problem=unit_issue["message_ko"] if unit_issue else None)
+            hint="도면 단위(mm/m)와 축척(1/N) — BRCLINK", problem=unit_issue["message_ko"] if unit_issue else None)
     else:
         n = model.get("scale_n")
         add("units", "단위·축척", True, [VIS, BHD], "ok",
@@ -65,7 +65,7 @@ def readiness(model: dict[str, Any]) -> dict[str, Any]:
     region_issue = next((i for i in issues if i["code"] in ("REGION_INVALID", "LAYER_ROLES_INVALID")), None)
     if region_issue:
         add("region", "측면도 영역·레이어 역할", False, [VIS, BHD], "invalid", problem=region_issue["message_ko"],
-            hint="GARCLINK에서 측면도 영역을 다시 지정")
+            hint="BRCLINK에서 측면도 영역을 다시 지정")
 
     # 선박 정보
     for key, name, required, rules, hint in SHIP_ITEMS:

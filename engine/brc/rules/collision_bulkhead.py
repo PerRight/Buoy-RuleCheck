@@ -38,7 +38,7 @@ def check_collision_bulkhead(model: dict[str, Any], r: Rule) -> RuleResult:
     ship = model["ship"]
     missing = [k for k in ("l_ll", "x_fp") if ship.get(k) is None]
     if missing:
-        return r.result("na", f"선박 정보 누락: {', '.join(missing)} (도면 특성 GARC_L_LL/GARC_X_FP)")
+        return r.result("na", f"선박 정보 누락: {', '.join(missing)} (도면 특성 BRC_L_LL/BRC_X_FP)")
     L, x_fp = ship["l_ll"], ship["x_fp"]
 
     bhds = objects_by_role(model, "collision_bhd")
@@ -67,7 +67,7 @@ def check_collision_bulkhead(model: dict[str, Any], r: Rule) -> RuleResult:
     d_max = x_ref - min(xs)   # 가장 뒤쪽 꼭짓점까지 거리
     if not all(math.isfinite(v) for v in (L, x_fp, x_ref, lower, upper, d_min, d_max)) or L <= 0:
         # 계약 검증(contract.validate_model)을 통과했다면 생기지 않음 — NaN이 '기준 충족'으로 새지 않게 막는 방어선
-        return r.result("review", "충돌격벽 계산값이 유한하지 않습니다 — GARC_L_LL·GARC_X_FP·격벽 좌표를 확인하세요.",
+        return r.result("review", "충돌격벽 계산값이 유한하지 않습니다 — BRC_L_LL·BRC_X_FP·격벽 좌표를 확인하세요.",
                         targets=[bhds[0]["handle"]])
     evidence = {
         "L": L, "x_fp": x_fp, "bulb_extension": round(ext, 3),

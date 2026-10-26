@@ -1,5 +1,4 @@
-import sys
+"""옛 명령 `python -m garc …` → `python -m brc …`와 같다."""
+from brc.cli import main
 
-from .cli import main
-
-sys.exit(main())
+raise SystemExit(main())

@@ -1,12 +1,12 @@
 """명령행.
 
-  python -m garc serve [--port 8765]          AutoCAD 플러그인용 로컬 엔진 서버
-  python -m garc check <file.dxf|model.json> [--roles map.json] [--prop KEY=값 …]  한 도면 판정(+ 준비 상태)
-  python -m garc particulars <file.dxf>        주요 치수표·축척 후보(실도면 연결)
-  python -m garc revs <rev0.dxf> <rev1.dxf> … 순서대로 넣어 revision diff·상태 변화 확인
-  python -m garc report <file…> [-o out.html]  검토 리포트(HTML) — 여러 파일이면 revision 이력 포함
-  python -m garc compare <A> <B> [--json]      두 버전 비교 — 변경 항목·해결된 위반 (플러그인 비교 창과 같은 계산)
-  python -m garc rules                         규칙 목록
+  python -m brc serve [--port 8765]          AutoCAD 플러그인용 로컬 엔진 서버
+  python -m brc check <file.dxf|model.json> [--roles map.json] [--prop KEY=값 …]  한 도면 판정(+ 준비 상태)
+  python -m brc particulars <file.dxf>        주요 치수표·축척 후보(실도면 연결)
+  python -m brc revs <rev0.dxf> <rev1.dxf> … 순서대로 넣어 revision diff·상태 변화 확인
+  python -m brc report <file…> [-o out.html]  검토 리포트(HTML) — 여러 파일이면 revision 이력 포함
+  python -m brc compare <A> <B> [--json]      두 버전 비교 — 변경 항목·해결된 위반 (플러그인 비교 창과 같은 계산)
+  python -m brc rules                         규칙 목록
 """
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ def load_any(path: str, roles: dict[str, str] | None = None, props: dict[str, st
         raw["props"].update(props or {})
         return raw_to_model(raw)
     data = json.loads(p.read_text(encoding="utf-8"))
-    if data.get("schema", "").startswith("garc.raw"):
+    if data.get("schema", "").startswith(("brc.raw", "garc.raw")):   # 옛 이름 스냅샷도
         data.setdefault("props", {}).update(props or {})
         return raw_to_model(data)
     validate_model(data)
@@ -56,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
             stream.reconfigure(errors="replace")
         except (AttributeError, ValueError):
             pass
-    ap = argparse.ArgumentParser(prog="garc")
+    ap = argparse.ArgumentParser(prog="brc")
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("serve"); s.add_argument("--port", type=int, default=8765)
     c = sub.add_parser("check"); c.add_argument("path"); c.add_argument("--json", action="store_true")

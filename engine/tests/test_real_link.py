@@ -16,11 +16,11 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
-from garc.contract import raw_to_model  # noqa: E402
-from garc.engine import evaluate  # noqa: E402
-from garc.particulars import find_particulars  # noqa: E402
-from garc.readiness import readiness  # noqa: E402
-from garc.session import Session  # noqa: E402
+from brc.contract import raw_to_model  # noqa: E402
+from brc.engine import evaluate  # noqa: E402
+from brc.particulars import find_particulars  # noqa: E402
+from brc.readiness import readiness  # noqa: E402
+from brc.session import Session  # noqa: E402
 
 VIS, BHD = "SOLAS-V-22.1.1", "SOLAS-II1-12"
 HULL = [(-3, 4), (-3, 13), (0, 12), (120, 12), (120, 14.5), (137, 14.5), (134, 8), (132, 0), (0, 0)]
@@ -32,10 +32,10 @@ def status(rep):
 
 
 def ship_props(ox=0.0, oz=0.0, base=True):
-    p = {"GARC_LOA": "140", "GARC_L_LL": "132", "GARC_X_AP": f"{ox:g}", "GARC_X_FP": f"{ox + 132:g}",
-         "GARC_CONDITIONS": "만재 출항:8.0/8.0; 밸러스트 도착:6.5/4.0"}
+    p = {"BRC_LOA": "140", "BRC_L_LL": "132", "BRC_X_AP": f"{ox:g}", "BRC_X_FP": f"{ox + 132:g}",
+         "BRC_CONDITIONS": "만재 출항:8.0/8.0; 밸러스트 도착:6.5/4.0"}
     if base:
-        p["GARC_Z_BASE"] = f"{oz:g}"
+        p["BRC_Z_BASE"] = f"{oz:g}"
     return p
 
 
@@ -57,8 +57,8 @@ def sheet_raw(ox=500.0, oz=300.0, layer="0", roles=True, extra=(), props=None):
         ent("U1", "bulb", [(132, 1.5), (135, 3), (132, 5)]),
         *extra,
     ]
-    pr = {**ship_props(ox, oz), "GARC_SCALE": "1/1000", **(props or {})}
-    return {"schema": "garc.raw/1", "insunits": 4, "props": pr, "entities": ents}
+    pr = {**ship_props(ox, oz), "BRC_SCALE": "1/1000", **(props or {})}
+    return {"schema": "brc.raw/1", "insunits": 4, "props": pr, "entities": ents}
 
 
 def reference_raw(extra=()):
@@ -67,7 +67,7 @@ def reference_raw(extra=()):
         return {"handle": h, "layer": layer, "type": typ, "points": [list(p) for p in seq]}
     ents = [e("H1", "GA_HULL", HULL), e("E1", "GA_EYE", [(18, 28)], "POINT"),
             e("B1", "GA_BHD_COLL", [(124.5, 0), (124.5, 14.5)], "LINE"), e("U1", "GA_BULB", [(132, 1.5), (135, 3), (132, 5)]), *extra]
-    return {"schema": "garc.raw/1", "insunits": 6, "props": ship_props(), "entities": ents}
+    return {"schema": "brc.raw/1", "insunits": 6, "props": ship_props(), "entities": ents}
 
 
 class ScaleOriginRoles(unittest.TestCase):
@@ -85,34 +85,34 @@ class ScaleOriginRoles(unittest.TestCase):
 
     def test_without_scale_ship_is_tiny_and_stops(self):
         raw = sheet_raw()
-        raw["props"].pop("GARC_SCALE")
+        raw["props"].pop("BRC_SCALE")
         rep = evaluate(raw_to_model(raw))
         self.assertNotIn("pass", status(rep).values())                # 배가 0.14 m로 읽혀 LOA와 안 맞음 → 멈춤
 
     def test_bad_scale_stops_everything(self):
         for bad in ("1/0", "abc", "2/1000", "1/99999"):
-            rep = evaluate(raw_to_model(sheet_raw(props={"GARC_SCALE": bad})))
+            rep = evaluate(raw_to_model(sheet_raw(props={"BRC_SCALE": bad})))
             self.assertEqual(rep.overall, "incomplete", bad)
 
     def test_default_base_with_offset_origin_is_not_pass(self):
         """원점이 기선이 아닌데 기선을 안 넣으면(기본 0) 수선이 배 아래로 가 시야가 좋게 나온다 → 검토 불가."""
         raw = sheet_raw()
-        raw["props"].pop("GARC_Z_BASE")
+        raw["props"].pop("BRC_Z_BASE")
         rep = evaluate(raw_to_model(raw))
         self.assertEqual(status(rep)[VIS], "review")
         self.assertIn("기선", next(r for r in rep.results if r.rule_id == VIS).message_ko)
 
     def test_leftover_zero_base_with_offset_origin_is_not_pass(self):
-        """GARCSETUP이 넣은 GARC_Z_BASE=0이 남은 채 AP·FP만 찍은 경우도 같다(입력값이어도 선체보다 한참 아래면 멈춤)."""
-        rep = evaluate(raw_to_model(sheet_raw(props={"GARC_Z_BASE": "0"})))
+        """BRCSETUP이 넣은 BRC_Z_BASE=0이 남은 채 AP·FP만 찍은 경우도 같다(입력값이어도 선체보다 한참 아래면 멈춤)."""
+        rep = evaluate(raw_to_model(sheet_raw(props={"BRC_Z_BASE": "0"})))
         self.assertEqual(status(rep)[VIS], "review")
 
     def test_default_base_is_part_of_cache_key(self):
         raw = sheet_raw(oz=0.0)
         s = Session()
-        raw["props"].pop("GARC_Z_BASE")
+        raw["props"].pop("BRC_Z_BASE")
         first = s.check(raw_to_model(raw))
-        raw["props"]["GARC_Z_BASE"] = "0"
+        raw["props"]["BRC_Z_BASE"] = "0"
         second = s.check(raw_to_model(raw))
         self.assertIn(VIS, second["rerun_rules"])                       # 기본값 → 입력값: 같은 0이어도 다시 계산
         self.assertEqual(first["overall"], second["overall"])
@@ -139,9 +139,9 @@ class LayerRolesRegion(unittest.TestCase):
                 "points": [[600, 150], [612, 150], [612, 190], [600, 190]]}
         border = {"handle": "BD", "layer": "컨테이너", "type": "LWPOLYLINE", "closed": True,
                   "points": [[0, 0], [1000, 0], [1000, 700], [0, 700]]}
-        props = {"GARC_LAYER_ROLES": "컨테이너=장애물"}
+        props = {"BRC_LAYER_ROLES": "컨테이너=장애물"}
         if region:
-            props["GARC_REGION"] = region
+            props["BRC_REGION"] = region
         return sheet_raw(extra=[prof, plan, border], props=props)
 
     def test_only_profile_region_objects(self):
@@ -155,9 +155,9 @@ class LayerRolesRegion(unittest.TestCase):
         self.assertEqual(status(rep)[VIS], "review")
 
     def test_bad_layer_roles_and_region(self):
-        for props in ({"GARC_LAYER_ROLES": "컨테이너=갑판실", "GARC_REGION": "0,0,1,1"},
-                      {"GARC_LAYER_ROLES": "EYE=조종위치", "GARC_REGION": "0,0,1,1"},
-                      {"GARC_REGION": "1,2,3"}, {"GARC_REGION": "5,5,5,9"}):
+        for props in ({"BRC_LAYER_ROLES": "컨테이너=갑판실", "BRC_REGION": "0,0,1,1"},
+                      {"BRC_LAYER_ROLES": "EYE=조종위치", "BRC_REGION": "0,0,1,1"},
+                      {"BRC_REGION": "1,2,3"}, {"BRC_REGION": "5,5,5,9"}):
             rep = evaluate(raw_to_model(sheet_raw(props=props)))
             self.assertEqual(rep.overall, "incomplete", props)
 
@@ -180,7 +180,7 @@ class BlockSuggestionText(unittest.TestCase):
 class BlockCompare(unittest.TestCase):
     def test_moved_block_is_one_change(self):
         """크레인 블록(하위 30개)을 옮기면 변경 30건이 아니라 '블록 … 수정 (하위 객체 30개)' 한 건."""
-        from garc.compare import compare_raws
+        from brc.compare import compare_raws
 
         def crane(dx):
             return [{"handle": f"K1.{i}", "block": "K1", "layer": "0", "type": "LINE", "role": "obstruction",
@@ -197,19 +197,19 @@ class BlockCompare(unittest.TestCase):
 
 class LbpCheck(unittest.TestCase):
     def test_lbp_matches_ap_fp(self):
-        rep = evaluate(raw_to_model(sheet_raw(props={"GARC_LBP": "132"})))
+        rep = evaluate(raw_to_model(sheet_raw(props={"BRC_LBP": "132"})))
         self.assertEqual(status(rep), {VIS: "pass", BHD: "pass"})
 
     def test_lbp_mismatch_stops(self):
         """AP·FP를 축척이 다른 뷰에서 찍었거나 LBP 오타 → 둘 다 검토 불가."""
-        rep = evaluate(raw_to_model(sheet_raw(props={"GARC_LBP": "264"})))
+        rep = evaluate(raw_to_model(sheet_raw(props={"BRC_LBP": "264"})))
         self.assertEqual(set(status(rep).values()), {"review"})
 
 
 class Readiness(unittest.TestCase):
     def test_lists_every_missing_input_at_once(self):
         raw = sheet_raw()
-        raw["props"] = {"GARC_SCALE": "1/1000"}
+        raw["props"] = {"BRC_SCALE": "1/1000"}
         raw["entities"] = [e for e in raw["entities"] if e["handle"] == "H1"]
         r = readiness(raw_to_model(raw))
         miss = {i["key"] for i in r["items"] if i["status"] == "missing"}
@@ -227,7 +227,7 @@ class Readiness(unittest.TestCase):
         self.assertIn("1/1000", units["value_ko"])
 
     def test_invalid_and_problems(self):
-        r = readiness(raw_to_model(sheet_raw(props={"GARC_LOA": "abc", "GARC_LBP": "999"})))
+        r = readiness(raw_to_model(sheet_raw(props={"BRC_LOA": "abc", "BRC_LBP": "999"})))
         self.assertEqual(next(i for i in r["items"] if i["key"] == "loa")["status"], "invalid")
         self.assertFalse(r["all_ready"])
         self.assertTrue(r["problems_ko"])
@@ -260,10 +260,10 @@ class DxfBlocksArcsRoles(unittest.TestCase):
         else:
             arc = msp.add_arc((106 + ox, 18 + oz), 6.0, 0, 180, dxfattribs={"layer": "0"})   # 꼭대기 z=24
             obst_handle = arc.dxf.handle
-        for k, v in {**ship_props(500, 300), "GARC_SCALE": "1/1000"}.items():
+        for k, v in {**ship_props(500, 300), "BRC_SCALE": "1/1000"}.items():
             doc.header.custom_vars.append(k, v)
         if with_xrecord:
-            xr = doc.rootdict.add_xrecord("GARC_ROLES")
+            xr = doc.rootdict.add_xrecord("BRC_ROLES")
             tags = []
             for role, h in (("hull", hull.dxf.handle), ("eye", eye.dxf.handle), ("collision_bhd", bhd.dxf.handle),
                             ("obstruction", obst_handle)):
@@ -273,7 +273,7 @@ class DxfBlocksArcsRoles(unittest.TestCase):
         return obst_handle
 
     def test_block_obstruction_is_expanded(self):
-        from garc.adapters.dxf import read_dxf
+        from brc.adapters.dxf import read_dxf
         with tempfile.TemporaryDirectory() as d:
             f = Path(d) / "sheet.dxf"
             h = self.build(f)
@@ -289,7 +289,7 @@ class DxfBlocksArcsRoles(unittest.TestCase):
         self.assertAlmostEqual(top, 324.5, places=6)                   # 컨테이너 꼭대기 24 + 중첩 블록 0.5
 
     def test_arc_obstruction_uses_bulge(self):
-        from garc.adapters.dxf import read_dxf
+        from brc.adapters.dxf import read_dxf
         with tempfile.TemporaryDirectory() as d:
             f = Path(d) / "arc.dxf"
             self.build(f, as_block=False)
@@ -302,7 +302,7 @@ class DxfBlocksArcsRoles(unittest.TestCase):
         self.assertLess(top, 324.0 + 1e-3)
 
     def test_without_roles_real_sheet_is_not_pass(self):
-        from garc.adapters.dxf import read_dxf
+        from brc.adapters.dxf import read_dxf
         with tempfile.TemporaryDirectory() as d:
             f = Path(d) / "noroles.dxf"
             self.build(f, with_xrecord=False)
@@ -329,7 +329,7 @@ class NoSilentGeometryLoss(unittest.TestCase):
 
     def run_block(self, fill, inject=None):
         import ezdxf
-        from garc.adapters.dxf import read_dxf
+        from brc.adapters.dxf import read_dxf
         doc = ezdxf.new("R2018")
         doc.header["$INSUNITS"] = 4
         msp = doc.modelspace()
@@ -381,9 +381,9 @@ class NoSilentGeometryLoss(unittest.TestCase):
             obst.dxf.column_count, obst.dxf.column_spacing = 2, 13
         else:
             obst = msp.add_blockref("box", (100 + ox, 13.5 + oz))
-        for k, v in {**ship_props(500, 300), "GARC_SCALE": "1/1000"}.items():
+        for k, v in {**ship_props(500, 300), "BRC_SCALE": "1/1000"}.items():
             doc.header.custom_vars.append(k, v)
-        xr = doc.rootdict.add_xrecord("GARC_ROLES")
+        xr = doc.rootdict.add_xrecord("BRC_ROLES")
         tags = []
         for role, ent in (("hull", h), ("eye", eye), ("collision_bhd", bhd), ("obstruction", obst)):
             tags += [(1, role), (330, ent.dxf.handle)]
@@ -466,7 +466,7 @@ class LayerRoleSafety(unittest.TestCase):
         """영역을 m 값으로 잘못 넣어 매핑 레이어 객체가 전부 빠지면 장애물이 없는 것처럼 통과하지 않게."""
         box = {"handle": "C1", "layer": "컨테이너", "type": "LWPOLYLINE", "closed": True,
                "points": [[x + 500, z + 300] for x, z in CONTAINER]}
-        m = raw_to_model(sheet_raw(extra=[box], props={"GARC_LAYER_ROLES": "컨테이너=장애물", "GARC_REGION": "0,0,140,30"}))
+        m = raw_to_model(sheet_raw(extra=[box], props={"BRC_LAYER_ROLES": "컨테이너=장애물", "BRC_REGION": "0,0,140,30"}))
         self.assertEqual(status(evaluate(m))[VIS], "review")
         self.assertEqual(next(i for i in readiness(m)["items"] if i["key"] == "obstruction")["status"], "invalid")
 
@@ -474,7 +474,7 @@ class LayerRoleSafety(unittest.TestCase):
         """라벨 문자를 클릭해 문자뿐인 레이어를 장애물로 매핑했거나 레이어 이름이 틀리면, 장애물이 없는 채 통과하지 않게."""
         label = {"handle": "T1", "layer": "라벨", "type": "MTEXT", "points": [[606, 318]]}
         for roles in ("라벨=장애물", "없는레이어=장애물"):
-            m = raw_to_model(sheet_raw(extra=[label], props={"GARC_LAYER_ROLES": roles, "GARC_REGION": "490,290,650,340"}))
+            m = raw_to_model(sheet_raw(extra=[label], props={"BRC_LAYER_ROLES": roles, "BRC_REGION": "490,290,650,340"}))
             self.assertEqual(status(evaluate(m))[VIS], "review", roles)
 
     def test_unsupported_outside_region_is_ignored(self):
@@ -482,8 +482,8 @@ class LayerRoleSafety(unittest.TestCase):
         box = {"handle": "C1", "layer": "컨테이너", "type": "LWPOLYLINE", "closed": True,
                "points": [[x + 500, z + 300] for x, z in CONTAINER]}
         far = {"handle": "W1", "layer": "컨테이너", "type": "WIPEOUT", "points": [[600, 100], [610, 100], [610, 110]]}
-        rep = evaluate(raw_to_model(sheet_raw(extra=[box, far], props={"GARC_LAYER_ROLES": "컨테이너=장애물",
-                                                                        "GARC_REGION": "490,290,650,340"})))
+        rep = evaluate(raw_to_model(sheet_raw(extra=[box, far], props={"BRC_LAYER_ROLES": "컨테이너=장애물",
+                                                                        "BRC_REGION": "490,290,650,340"})))
         self.assertEqual(status(rep)[VIS], "fail")
 
     def test_unexpanded_block_outside_region_still_stops(self):
@@ -491,7 +491,7 @@ class LayerRoleSafety(unittest.TestCase):
         small = {"handle": "S1", "layer": "컨테이너", "type": "LWPOLYLINE", "closed": True,
                  "points": [[630, 300], [631, 300], [631, 301], [630, 301]]}
         far_insert = {"handle": "K1", "layer": "컨테이너", "type": "INSERT", "points": [[0, 0]]}
-        props = {"GARC_LAYER_ROLES": "컨테이너=장애물", "GARC_REGION": "490,290,650,340"}
+        props = {"BRC_LAYER_ROLES": "컨테이너=장애물", "BRC_REGION": "490,290,650,340"}
         self.assertEqual(status(evaluate(raw_to_model(sheet_raw(extra=[small], props=props))))[VIS], "pass")   # 대조군
         m = raw_to_model(sheet_raw(extra=[small, far_insert], props=props))
         self.assertEqual(status(evaluate(m))[VIS], "review")
@@ -501,7 +501,7 @@ class LayerRoleSafety(unittest.TestCase):
         """좌표가 NaN·inf면 '영역 밖'으로 버리지 않고 멈춘다(JSON NaN도 json.loads가 받아들인다). 점 1개짜리 지원 타입도."""
         small = {"handle": "S1", "layer": "컨테이너", "type": "LWPOLYLINE", "closed": True,
                  "points": [[630, 300], [631, 300], [631, 301], [630, 301]]}
-        props = {"GARC_LAYER_ROLES": "컨테이너=장애물", "GARC_REGION": "490,290,650,340"}
+        props = {"BRC_LAYER_ROLES": "컨테이너=장애물", "BRC_REGION": "490,290,650,340"}
         for typ in ("WIPEOUT", "INSERT", "POINT", " insert "):
             for v in (float("nan"), float("inf"), 10 ** 400):             # 10**400: float로 못 바꾸는 정수
                 bad = {"handle": "N1", "layer": "컨테이너", "type": typ, "points": [[v, v]]}
@@ -512,19 +512,19 @@ class LayerRoleSafety(unittest.TestCase):
         box = {"handle": "C1", "layer": "컨테이너", "type": "LWPOLYLINE", "closed": True,
                "points": [[x + 500, z + 300] for x, z in CONTAINER]}
         label = {"handle": "T1", "layer": "컨테이너", "type": "MTEXT", "points": [[606, 318]]}
-        rep = evaluate(raw_to_model(sheet_raw(extra=[box, label], props={"GARC_LAYER_ROLES": "컨테이너=장애물",
-                                                                          "GARC_REGION": "490,290,650,340"})))
+        rep = evaluate(raw_to_model(sheet_raw(extra=[box, label], props={"BRC_LAYER_ROLES": "컨테이너=장애물",
+                                                                          "BRC_REGION": "490,290,650,340"})))
         self.assertEqual(status(rep)[VIS], "fail")                         # 문자 때문에 '검토 불가'가 되지 않음
 
     def test_ambiguous_layer_roles_stop(self):
         for text in ("컨테이너=장애물; 컨테이너=선체", "GA_OBST=선체"):
-            rep = evaluate(raw_to_model(sheet_raw(props={"GARC_LAYER_ROLES": text, "GARC_REGION": "490,290,650,340"})))
+            rep = evaluate(raw_to_model(sheet_raw(props={"BRC_LAYER_ROLES": text, "BRC_REGION": "490,290,650,340"})))
             self.assertEqual(rep.overall, "incomplete", text)
 
 
 class ConditionWarnings(unittest.TestCase):
     def test_even_keel_only_pass_is_flagged(self):
-        rep = evaluate(raw_to_model(sheet_raw(props={"GARC_CONDITIONS": "설계 흘수(등흘수):8/8"})))
+        rep = evaluate(raw_to_model(sheet_raw(props={"BRC_CONDITIONS": "설계 흘수(등흘수):8/8"})))
         vis = next(r for r in rep.results if r.rule_id == VIS)
         self.assertEqual(vis.status, "pass")
         self.assertIn("트림", vis.message_ko)
@@ -563,8 +563,8 @@ class Particulars(unittest.TestCase):
         v = {k: i["value"] for k, i in out["items"].items()}
         self.assertEqual((v["loa"], v["lbp"], v["breadth"], v["depth"], v["draft_design"], v["draft_scantling"], v["scale"]),
                          (251.0, 243.5, 40.1, 22.4, 11.3, 12.8, 1000.0))
-        self.assertEqual(out["suggested_props"], {"GARC_LOA": "251", "GARC_LBP": "243.5", "GARC_SCALE": "1/1000"})
-        self.assertNotIn("GARC_L_LL", out["suggested_props"])           # L(ICLL)은 GA에 없다 — 추측하지 않음
+        self.assertEqual(out["suggested_props"], {"BRC_LOA": "251", "BRC_LBP": "243.5", "BRC_SCALE": "1/1000"})
+        self.assertNotIn("BRC_L_LL", out["suggested_props"])           # L(ICLL)은 GA에 없다 — 추측하지 않음
         self.assertEqual([c["t_aft"] for c in out["suggested_conditions"]], [11.3, 12.8])
 
     def test_columns(self):
@@ -590,7 +590,7 @@ class Particulars(unittest.TestCase):
                                              {"text": "300.00 M", "x": 40, "y": 10, "h": 2}])
         self.assertEqual(out["items"]["loa"]["status"], "conflict")
         self.assertIsNone(out["items"]["loa"]["value"])
-        self.assertNotIn("GARC_LOA", out["suggested_props"])
+        self.assertNotIn("BRC_LOA", out["suggested_props"])
 
     def test_garbage(self):
         out = find_particulars([{"text": None, "x": "a", "y": 1}, {"x": 1}, {"text": "LENGTH O. A", "x": 1, "y": 1, "h": 1},
@@ -600,7 +600,7 @@ class Particulars(unittest.TestCase):
 
     def test_http(self):
         from http.server import ThreadingHTTPServer
-        from garc.server import Handler
+        from brc.server import Handler
         httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         port = httpd.server_address[1]
         threading.Thread(target=httpd.serve_forever, daemon=True).start()

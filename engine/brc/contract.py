@@ -5,10 +5,10 @@
 
 raw (AutoCAD 플러그인 / DXF 어댑터가 만든다, 도면 단위 그대로)
 {
-  "schema": "garc.raw/1",
+  "schema": "brc.raw/1",
   "source": {"app": "AutoCAD 2025", "file": "S140_GA.dwg", "doc_id": "..."},
   "insunits": 4,                      # DWG/DXF $INSUNITS (4=mm, 5=cm, 6=m, 0=미지정)
-  "props": {"GARC_LOA": "140", ...},  # 도면 사용자 정의 특성(DWGPROPS) — 값은 문자열, 길이는 m
+  "props": {"BRC_LOA": "140", ...},  # 도면 사용자 정의 특성(DWGPROPS) — 값은 문자열, 길이는 m
   "entities": [{"handle": "2A1", "layer": "GA_HULL", "type": "LWPOLYLINE",
                 "points": [[x, y], ...],
                 "bulges": [b0, b1, ...],      # (선택) 꼭짓점 i→i+1 구간의 bulge. 있으면 호를 외접 꺾은선으로 근사
@@ -19,14 +19,14 @@ raw (AutoCAD 플러그인 / DXF 어댑터가 만든다, 도면 단위 그대로)
 }
 
 실도면 연결용 도면 특성(선택, 2026-10-18)
-  GARC_SCALE        도면 축척 "1/1000" — 시트에 1/N로 그린 도면. 도면 1단위 = (단위) × N
-  GARC_REGION       측면도 영역 "x0,y0,x1,y1"(도면 단위) — GARC_LAYER_ROLES로 고른 객체는 이 안의 것만
-  GARC_LAYER_ROLES  레이어 단위 역할 "컨테이너=장애물; HULL=선체" — 측면도 영역과 함께만 쓸 수 있다
-  GARC_LBP          수선간 길이 LBP [m] — 참고값. AP–FP 간격과 대조해 축척·기준점 실수를 잡는다
+  BRC_SCALE        도면 축척 "1/1000" — 시트에 1/N로 그린 도면. 도면 1단위 = (단위) × N
+  BRC_REGION       측면도 영역 "x0,y0,x1,y1"(도면 단위) — BRC_LAYER_ROLES로 고른 객체는 이 안의 것만
+  BRC_LAYER_ROLES  레이어 단위 역할 "컨테이너=장애물; HULL=선체" — 측면도 영역과 함께만 쓸 수 있다
+  BRC_LBP          수선간 길이 LBP [m] — 참고값. AP–FP 간격과 대조해 축척·기준점 실수를 잡는다
 
 model (엔진 입력, 전부 m)
 {
-  "schema": "garc.model/1",
+  "schema": "brc.model/1",
   "units_scale": 0.001,               # 도면 단위 1 = 몇 m (플러그인이 오버레이를 도면에 되돌릴 때 사용)
   "ship": {"loa", "l_ll", "x_ap", "x_fp", "z_base", "eye_height", "keel_laid", "ship_type"},
   "conditions": [{"name": "밸러스트 도착", "t_aft": 6.5, "t_fwd": 4.0}],
@@ -41,8 +41,11 @@ import re
 import unicodedata
 from typing import Any
 
-SCHEMA_RAW = "garc.raw/1"
-SCHEMA_MODEL = "garc.model/1"
+SCHEMA_RAW = "brc.raw/1"
+# 도면 특성 이름: 새 이름 BRC_* — 옛 이름 GARC_*(작업명 GA-RuleCheck 시절 도면)도 같은 뜻으로 읽는다
+PROP_PREFIX = "BRC_"
+LEGACY_PROP_PREFIX = "GARC_"
+SCHEMA_MODEL = "brc.model/1"
 
 # 레이어 → 역할. 레이어 이름은 대소문자 무시.
 LAYER_ROLES: dict[str, str] = {
@@ -53,7 +56,7 @@ LAYER_ROLES: dict[str, str] = {
     "GA_BULB": "bulb",              # 수선 아래 FP 앞으로 돌출한 부분(구상선수) 윤곽
 }
 ROLES = tuple(LAYER_ROLES.values())
-# 역할 이름: 엔진 이름 또는 한글 이름(실도면 연결 마법사·도면 특성 GARC_LAYER_ROLES)
+# 역할 이름: 엔진 이름 또는 한글 이름(실도면 연결 마법사·도면 특성 BRC_LAYER_ROLES)
 ROLE_ALIASES: dict[str, str] = {
     **{r: r for r in ROLES},
     "선체": "hull", "선체 윤곽": "hull", "조종위치": "eye", "장애물": "obstruction",
@@ -63,7 +66,7 @@ ROLE_ALIASES: dict[str, str] = {
 # ARC·CIRCLE은 points + bulges(호)로, ELLIPSE·SPLINE은 추출기가 촘촘히 꺾은선으로 바꿔 보낸다.
 # SOLID(4점 채움)는 다각형으로, HATCH는 경계 고리마다 닫힌 꺾은선으로 보낸다(채움 영역도 시야를 막으므로 버리지 않는다).
 SUPPORTED_TYPES = {"LINE", "LWPOLYLINE", "POLYLINE", "POINT", "INSERT", "ARC", "CIRCLE", "ELLIPSE", "SPLINE", "SOLID", "HATCH"}
-# 주석(형상 아님) — 레이어 단위 역할(GARC_LAYER_ROLES)로 들어온 것은 조용히 뺀다. DXF 이름과 AutoCAD .NET 클래스 이름 모두.
+# 주석(형상 아님) — 레이어 단위 역할(BRC_LAYER_ROLES)로 들어온 것은 조용히 뺀다. DXF 이름과 AutoCAD .NET 클래스 이름 모두.
 ANNOTATION_TYPES = {"TEXT", "MTEXT", "DBTEXT", "ATTRIB", "ATTDEF", "ATTRIBUTEDEFINITION", "ATTRIBUTEREFERENCE",
                     "DIMENSION", "ARC_DIMENSION", "LARGE_RADIAL_DIMENSION", "ROTATEDDIMENSION", "ALIGNEDDIMENSION",
                     "RADIALDIMENSION", "RADIALDIMENSIONLARGE", "DIAMETRICDIMENSION", "ARCDIMENSION", "ORDINATEDIMENSION",
@@ -77,15 +80,15 @@ UNIT_NAMES = {"mm": 0.001, "cm": 0.01, "m": 1.0}
 
 # 사용자 정의 특성 키 → (ship 필드, 형)
 PROP_KEYS = {
-    "GARC_LOA": ("loa", float),            # 전장 LOA [m] — SOLAS V/2.4 '길이'(가시거리 규칙)
-    "GARC_L_LL": ("l_ll", float),          # 만재흘수선협약 길이 L [m] — SOLAS II-1/2(충돌격벽 규칙)
-    "GARC_X_AP": ("x_ap", float),          # 도면 좌표계에서 AP의 x [m]
-    "GARC_X_FP": ("x_fp", float),          # 도면 좌표계에서 FP의 x [m]
-    "GARC_Z_BASE": ("z_base", float),      # 기선(baseline)의 도면 y [m], 기본 0
-    "GARC_EYE_HEIGHT": ("eye_height", float),  # 선교 갑판 위 눈높이 [m], 기본 1.8
-    "GARC_KEEL_LAID": ("keel_laid", str),  # 용골 거치일 YYYY-MM-DD
-    "GARC_SHIP_TYPE": ("ship_type", str),
-    "GARC_LBP": ("lbp", float),            # 수선간 길이 LBP [m] — 참고값(AP–FP 간격 대조용). L(ICLL)과 다를 수 있다
+    "BRC_LOA": ("loa", float),            # 전장 LOA [m] — SOLAS V/2.4 '길이'(가시거리 규칙)
+    "BRC_L_LL": ("l_ll", float),          # 만재흘수선협약 길이 L [m] — SOLAS II-1/2(충돌격벽 규칙)
+    "BRC_X_AP": ("x_ap", float),          # 도면 좌표계에서 AP의 x [m]
+    "BRC_X_FP": ("x_fp", float),          # 도면 좌표계에서 FP의 x [m]
+    "BRC_Z_BASE": ("z_base", float),      # 기선(baseline)의 도면 y [m], 기본 0
+    "BRC_EYE_HEIGHT": ("eye_height", float),  # 선교 갑판 위 눈높이 [m], 기본 1.8
+    "BRC_KEEL_LAID": ("keel_laid", str),  # 용골 거치일 YYYY-MM-DD
+    "BRC_SHIP_TYPE": ("ship_type", str),
+    "BRC_LBP": ("lbp", float),            # 수선간 길이 LBP [m] — 참고값(AP–FP 간격 대조용). L(ICLL)과 다를 수 있다
 }
 DEFAULT_EYE_HEIGHT = 1.8
 ROUND = 6  # m 단위 소수 6자리(1 µm)로 반올림 — 부동소수점 잡음 제거용, 설계 허용오차 아님
@@ -368,35 +371,47 @@ def raw_to_model(raw: dict[str, Any]) -> dict[str, Any]:
     issues: list[dict[str, Any]] = []
     props: dict[str, str] = {}
     dup: set[str] = set()
+    legacy_dup: set[str] = set()
+    seen: dict[str, set[str]] = {}   # 새 키 → 도면에 있던 이름 갈래("new" = BRC_, "old" = 옛 GARC_)
     for k, v in (raw.get("props") or {}).items():
         if v is None:
             continue
         key = str(k).strip().upper()
-        if key in props and props[key] != str(v).strip() and key.startswith("GARC_"):
-            dup.add(key)
-        props[key] = str(v).strip()
+        # 옛 이름(GARC_*, 2026-10-26 이전 도면)도 읽는다 — 새 이름 BRC_*로 맞춰 쓴다
+        old_name = key.startswith(LEGACY_PROP_PREFIX)
+        canon = PROP_PREFIX + key[len(LEGACY_PROP_PREFIX):] if old_name else key
+        fam = "old" if old_name else "new"
+        val = str(v).strip()
+        if canon in props and props[canon] != val and canon.startswith(PROP_PREFIX):
+            # 같은 특성이 두 번(대소문자만 다르거나, 새 이름과 옛 이름)인데 값이 다르면 어느 쪽인지 고르지 않는다
+            (dup if fam in seen.get(canon, set()) else legacy_dup).add(canon)
+        if canon not in props or not old_name:   # 둘 다 있으면 새 이름 값(값이 다르면 위 issue로 판정을 멈춘다)
+            props[canon] = val
+        seen.setdefault(canon, set()).add(fam)
     for key in sorted(dup):
-        # 대소문자만 다른 같은 키가 서로 다른 값 → 어느 쪽인지 고르지 않는다
         issues.append(_issue("PROP_DUPLICATE", f"도면 특성 {key}가 대소문자만 다르게 두 번 있고 값이 다릅니다 — 하나만 남기세요."))
+    for key in sorted(legacy_dup):
+        old = LEGACY_PROP_PREFIX + key[len(PROP_PREFIX):]
+        issues.append(_issue("PROP_DUPLICATE", f"도면 특성 {key}와 옛 이름 {old}가 둘 다 있고 값이 다릅니다 — 하나만 남기세요."))
 
     # 1) 단위 — 모르면 추측하지 않고 전체를 '검토 불가'로
     scale = None
-    if props.get("GARC_UNITS"):
-        scale = UNIT_NAMES.get(props["GARC_UNITS"].lower())
+    if props.get("BRC_UNITS"):
+        scale = UNIT_NAMES.get(props["BRC_UNITS"].lower())
         if scale is None:
-            issues.append(_issue("UNIT_UNKNOWN", f"GARC_UNITS='{props['GARC_UNITS']}'는 지원하지 않는 단위입니다 (mm/cm/m)."))
+            issues.append(_issue("UNIT_UNKNOWN", f"BRC_UNITS='{props['BRC_UNITS']}'는 지원하지 않는 단위입니다 (mm/cm/m)."))
     else:
         scale = INSUNITS_SCALE.get(raw.get("insunits"))
         if scale is None:
             issues.append(_issue("UNIT_UNKNOWN",
-                                 f"도면 단위($INSUNITS={raw.get('insunits')})를 알 수 없습니다. mm 또는 m로 지정하거나 GARC_UNITS 특성을 넣으세요."))
+                                 f"도면 단위($INSUNITS={raw.get('insunits')})를 알 수 없습니다. mm 또는 m로 지정하거나 BRC_UNITS 특성을 넣으세요."))
     # 1-1) 축척 — 시트에 1/N로 그린 도면(실도면 대부분: mm 시트에 1/1000)
     scale_n = None
-    if props.get("GARC_SCALE"):
+    if props.get("BRC_SCALE"):
         try:
-            scale_n = parse_scale(props["GARC_SCALE"])
+            scale_n = parse_scale(props["BRC_SCALE"])
         except ValueError as e:
-            issues.append(_issue("UNIT_UNKNOWN", f"GARC_SCALE='{props['GARC_SCALE']}'를 축척으로 읽을 수 없습니다 — {e}"))
+            issues.append(_issue("UNIT_UNKNOWN", f"BRC_SCALE='{props['BRC_SCALE']}'를 축척으로 읽을 수 없습니다 — {e}"))
             scale = None
         else:
             if scale is not None:
@@ -404,21 +419,21 @@ def raw_to_model(raw: dict[str, Any]) -> dict[str, Any]:
 
     # 1-2) 측면도 영역·레이어 단위 역할(실도면 연결)
     region = None
-    if props.get("GARC_REGION"):
+    if props.get("BRC_REGION"):
         try:
-            region = parse_region(props["GARC_REGION"])
+            region = parse_region(props["BRC_REGION"])
         except ValueError as e:
-            issues.append(_issue("REGION_INVALID", f"GARC_REGION(측면도 영역)을 읽을 수 없습니다 — {e}"))
+            issues.append(_issue("REGION_INVALID", f"BRC_REGION(측면도 영역)을 읽을 수 없습니다 — {e}"))
     layer_roles: dict[str, str] = {}
-    if props.get("GARC_LAYER_ROLES"):
+    if props.get("BRC_LAYER_ROLES"):
         try:
-            layer_roles = parse_layer_roles(props["GARC_LAYER_ROLES"])
+            layer_roles = parse_layer_roles(props["BRC_LAYER_ROLES"])
         except ValueError as e:
-            issues.append(_issue("LAYER_ROLES_INVALID", f"GARC_LAYER_ROLES를 읽을 수 없습니다 — {e}"))
+            issues.append(_issue("LAYER_ROLES_INVALID", f"BRC_LAYER_ROLES를 읽을 수 없습니다 — {e}"))
         else:
             if region is None and layer_roles:
                 # 한 시트에 측면도·평면도가 같이 있으면 같은 레이어가 여러 뷰에 걸친다 → 영역 없이 레이어째 쓰면 평면도가 섞인다
-                issues.append(_issue("LAYER_ROLES_INVALID", "레이어 단위 역할(GARC_LAYER_ROLES)은 측면도 영역(GARC_REGION)을 지정해야 쓸 수 있습니다.",
+                issues.append(_issue("LAYER_ROLES_INVALID", "레이어 단위 역할(BRC_LAYER_ROLES)은 측면도 영역(BRC_REGION)을 지정해야 쓸 수 있습니다.",
                                      sorted(set(layer_roles.values()))))
                 layer_roles = {}
 
@@ -432,9 +447,9 @@ def raw_to_model(raw: dict[str, Any]) -> dict[str, Any]:
                 issues.append(_issue("PROP_INVALID", f"{key}='{props[key]}'를 숫자로 읽을 수 없습니다."))
 
     conditions: list[dict[str, Any]] = []
-    if props.get("GARC_CONDITIONS"):
+    if props.get("BRC_CONDITIONS"):
         try:
-            conditions = parse_conditions(props["GARC_CONDITIONS"])
+            conditions = parse_conditions(props["BRC_CONDITIONS"])
         except ValueError as e:
             issues.append(_issue("CONDITIONS_INVALID", str(e), ["conditions"]))
 
@@ -503,7 +518,7 @@ def raw_to_model(raw: dict[str, Any]) -> dict[str, Any]:
         if etype == "INSERT" and role != "eye":
             # 블록은 삽입점 1개만 전달된다 → 장애물·선체·격벽 형상을 잃고 '기준 충족'으로 보일 수 있으므로 멈춘다.
             hint = (" 레이어 단위로 역할을 지정한 경우 측면도 영역 밖에 있어도 멈춥니다(삽입점만으로는 형상 위치를 알 수 없음) — "
-                    "그 블록만 분해하거나, 레이어 지정 대신 필요한 객체만 골라 역할을 지정하세요(GARCROLE — 측면도 밖 블록은 고르지 않으면 됨)."
+                    "그 블록만 분해하거나, 레이어 지정 대신 필요한 객체만 골라 역할을 지정하세요(BRCROLE — 측면도 밖 블록은 고르지 않으면 됨)."
                     if source == "layer_map" else "")
             _add_issue(issues, _issue("ENTITY_UNSUPPORTED",
                                       f"{layer} 레이어의 블록(INSERT, handle {ent.get('handle')})은 삽입점만 읽혀 형상을 판정할 수 없습니다. "
@@ -540,7 +555,7 @@ def raw_to_model(raw: dict[str, Any]) -> dict[str, Any]:
     for lname, cnt in sorted(layer_role_counts.items()):
         if cnt["in"] == 0 and region is not None:
             # 영역을 잘못 잡았거나(예: m 값으로 입력) 레이어에 형상이 없으면(주석뿐·이름 틀림) 장애물이 없는 것처럼 보인다 → 멈춘다
-            why = (f"객체 {cnt['out']}개가 모두 측면도 영역(GARC_REGION, 도면 단위) 밖입니다 — 영역을 다시 지정하세요"
+            why = (f"객체 {cnt['out']}개가 모두 측면도 영역(BRC_REGION, 도면 단위) 밖입니다 — 영역을 다시 지정하세요"
                    if cnt["out"] else "형상 객체가 없습니다(문자·치수뿐이거나 레이어 이름이 다름) — 레이어를 다시 고르세요")
             issues.append(_issue("LAYER_ROLES_EMPTY", f"레이어 '{lname}'의 {why}.", [cnt["role"]]))
 
@@ -550,7 +565,7 @@ def raw_to_model(raw: dict[str, Any]) -> dict[str, Any]:
         "scale_n": scale_n,
         "layer_role_counts": layer_role_counts,
         # 입력이 없어 기본값을 쓴 선박 정보(준비 상태 표시·기선 대조용)
-        "defaults": [f for f, key in (("z_base", "GARC_Z_BASE"), ("eye_height", "GARC_EYE_HEIGHT")) if not props.get(key)],
+        "defaults": [f for f, key in (("z_base", "BRC_Z_BASE"), ("eye_height", "BRC_EYE_HEIGHT")) if not props.get(key)],
         "source": raw.get("source") or {},
         "ship": ship,
         "conditions": conditions,
@@ -608,7 +623,7 @@ def validate_model(model: dict[str, Any]) -> None:
         tol = max(LENGTH_TOL_RATIO * loa, LENGTH_TOL_MIN)
         if l_ll > loa + tol or l_ll < L_LL_MIN_RATIO * loa:
             _add_issue(issues, _issue("SHIP_VALUE_MISMATCH",
-                                      f"GARC_L_LL={l_ll:g} m와 GARC_LOA={loa:g} m가 맞지 않습니다 — L은 LOA보다 길 수 없고, "
+                                      f"BRC_L_LL={l_ll:g} m와 BRC_LOA={loa:g} m가 맞지 않습니다 — L은 LOA보다 길 수 없고, "
                                       f"LOA의 {L_LL_MIN_RATIO:g}배보다 짧으면 자릿수 오타로 봅니다. 두 값을 확인하세요."))
 
     # AP–FP 간격 = LBP(정의). 크게 다르면 축척·기준점·LBP 중 하나가 틀렸다.
@@ -617,7 +632,7 @@ def validate_model(model: dict[str, Any]) -> None:
         span, lbp = ship["x_fp"] - ship["x_ap"], ship["lbp"]
         if abs(span - lbp) > max(LENGTH_TOL_RATIO * lbp, LENGTH_TOL_MIN):
             _add_issue(issues, _issue("SHIP_VALUE_MISMATCH",
-                                      f"AP–FP 간격 {span:.2f} m가 LBP {lbp:g} m(GARC_LBP)와 다릅니다 — 축척(GARC_SCALE)·AP/FP 위치·LBP를 확인하세요."))
+                                      f"AP–FP 간격 {span:.2f} m가 LBP {lbp:g} m(BRC_LBP)와 다릅니다 — 축척(BRC_SCALE)·AP/FP 위치·LBP를 확인하세요."))
 
     if ("x_ap" in ship and "x_fp" in ship and not {"x_ap", "x_fp"} & bad_fields
             and ship["x_ap"] is not None and ship["x_fp"] is not None and ship["x_fp"] <= ship["x_ap"]):

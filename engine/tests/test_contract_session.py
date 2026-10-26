@@ -10,12 +10,12 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
-from garc.contract import raw_to_model, parse_conditions  # noqa: E402
-from garc.engine import evaluate  # noqa: E402
-from garc.session import Session  # noqa: E402
+from brc.contract import raw_to_model, parse_conditions  # noqa: E402
+from brc.engine import evaluate  # noqa: E402
+from brc.session import Session  # noqa: E402
 
-PROPS = {"GARC_LOA": "140", "GARC_L_LL": "132", "GARC_X_AP": "0", "GARC_X_FP": "132",
-         "GARC_CONDITIONS": "만재 출항:8.0/8.0; 밸러스트 도착:6.5/4.0"}
+PROPS = {"BRC_LOA": "140", "BRC_L_LL": "132", "BRC_X_AP": "0", "BRC_X_FP": "132",
+         "BRC_CONDITIONS": "만재 출항:8.0/8.0; 밸러스트 도착:6.5/4.0"}
 
 
 def raw(insunits=4, scale=1000.0, props=None, extra=(), bhd_x=124.5):
@@ -29,7 +29,7 @@ def raw(insunits=4, scale=1000.0, props=None, extra=(), bhd_x=124.5):
         {"handle": "X1", "layer": "0", "type": "LINE", "points": [[0, 0], [1, 1]]},  # 규약 밖 레이어 → 무시
         *extra,
     ]
-    return {"schema": "garc.raw/1", "insunits": insunits, "props": dict(props or PROPS), "entities": ents}
+    return {"schema": "brc.raw/1", "insunits": insunits, "props": dict(props or PROPS), "entities": ents}
 
 
 STACK = {"handle": "S1", "layer": "GA_OBST", "type": "LWPOLYLINE",
@@ -49,7 +49,7 @@ class Contract(unittest.TestCase):
         self.assertEqual(rep["overall"], "incomplete")
 
     def test_units_override_prop(self):
-        m = raw_to_model(raw(0, props={**PROPS, "GARC_UNITS": "mm"}))
+        m = raw_to_model(raw(0, props={**PROPS, "BRC_UNITS": "mm"}))
         self.assertEqual(m["units_scale"], 0.001)
 
     def test_wrong_scale_caught_by_loa_check(self):
@@ -67,7 +67,7 @@ class Contract(unittest.TestCase):
         self.assertEqual(rep["overall"], "incomplete")
 
     def test_flipped_drawing(self):
-        rep = evaluate(raw_to_model(raw(props={**PROPS, "GARC_X_AP": "132", "GARC_X_FP": "0"}))).to_dict()
+        rep = evaluate(raw_to_model(raw(props={**PROPS, "BRC_X_AP": "132", "BRC_X_FP": "0"}))).to_dict()
         self.assertTrue(all(r["status"] == "review" for r in rep["results"]))
 
     def test_unsupported_entity(self):
@@ -79,7 +79,7 @@ class Contract(unittest.TestCase):
     def test_conditions_parse(self):
         self.assertEqual(parse_conditions("A:1/2; B:3.5/4"),
                          [{"name": "A", "t_aft": 1.0, "t_fwd": 2.0}, {"name": "B", "t_aft": 3.5, "t_fwd": 4.0}])
-        rep = evaluate(raw_to_model(raw(props={**PROPS, "GARC_CONDITIONS": "잘못된형식"}))).to_dict()
+        rep = evaluate(raw_to_model(raw(props={**PROPS, "BRC_CONDITIONS": "잘못된형식"}))).to_dict()
         self.assertEqual(rep["results"][0]["status"], "review")
 
 
@@ -118,7 +118,7 @@ class Revisions(unittest.TestCase):
     def test_condition_change_reruns_visibility(self):
         s = Session()
         s.check(raw_to_model(raw()))
-        r = s.check(raw_to_model(raw(props={**PROPS, "GARC_CONDITIONS": "만재 출항:8.0/8.0"})))
+        r = s.check(raw_to_model(raw(props={**PROPS, "BRC_CONDITIONS": "만재 출항:8.0/8.0"})))
         self.assertTrue(r["diff"]["conditions_changed"])
         self.assertEqual(r["affected_rules"], ["SOLAS-V-22.1.1"])
 
@@ -132,7 +132,7 @@ class Revisions(unittest.TestCase):
 class Server(unittest.TestCase):
     def test_http_roundtrip(self):
         from http.server import ThreadingHTTPServer
-        from garc.server import Handler
+        from brc.server import Handler
         httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         port = httpd.server_address[1]
         threading.Thread(target=httpd.serve_forever, daemon=True).start()
@@ -154,7 +154,7 @@ class Server(unittest.TestCase):
 @unittest.skipUnless(importlib.util.find_spec("ezdxf"), "ezdxf 없음")
 class Dxf(unittest.TestCase):
     def test_samples(self):
-        from garc.cli import load_any
+        from brc.cli import load_any
         samples = HERE.parents[1] / "samples"
         files = sorted(samples.glob("S140_rev*.dxf"))
         if not files:
@@ -180,7 +180,7 @@ class ReportAndOverlays(unittest.TestCase):
         json.dumps(out, allow_nan=False)
 
     def test_report_html(self):
-        from garc.report import build_from_session
+        from brc.report import build_from_session
         s = Session()
         s.check(raw_to_model(raw()))
         s.check(raw_to_model(raw(extra=[STACK])))
@@ -192,7 +192,7 @@ class ReportAndOverlays(unittest.TestCase):
 
     def test_report_endpoint(self):
         from http.server import ThreadingHTTPServer
-        from garc.server import Handler
+        from brc.server import Handler
         httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         port = httpd.server_address[1]
         threading.Thread(target=httpd.serve_forever, daemon=True).start()

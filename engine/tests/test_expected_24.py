@@ -11,8 +11,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
-from garc.engine import all_rules  # noqa: E402
-from garc.contract import validate_model  # noqa: E402
+from brc.engine import all_rules  # noqa: E402
+from brc.contract import validate_model  # noqa: E402
 
 CASES = json.loads((HERE / "cases" / "expected_24.json").read_text(encoding="utf-8"))["cases"]
 RULES = {r.id: r for r in all_rules()}

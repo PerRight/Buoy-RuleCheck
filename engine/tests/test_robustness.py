@@ -22,14 +22,14 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
-from garc.contract import raw_to_model, validate_model, ContractError  # noqa: E402
-from garc.engine import evaluate, all_rules  # noqa: E402
-from garc.session import Session  # noqa: E402
+from brc.contract import raw_to_model, validate_model, ContractError  # noqa: E402
+from brc.engine import evaluate, all_rules  # noqa: E402
+from brc.session import Session  # noqa: E402
 
 RULES = {r.id: r for r in all_rules()}
 VIS, BHD = "SOLAS-V-22.1.1", "SOLAS-II1-12"
-PROPS = {"GARC_LOA": "140", "GARC_L_LL": "132", "GARC_X_AP": "0", "GARC_X_FP": "132",
-         "GARC_CONDITIONS": "만재 출항:8.0/8.0; 밸러스트 도착:6.5/4.0"}
+PROPS = {"BRC_LOA": "140", "BRC_L_LL": "132", "BRC_X_AP": "0", "BRC_X_FP": "132",
+         "BRC_CONDITIONS": "만재 출항:8.0/8.0; 밸러스트 도착:6.5/4.0"}
 S = 1000.0  # mm
 
 
@@ -42,7 +42,7 @@ def raw(props=None, extra=(), insunits=4):
         {"handle": "U1", "layer": "GA_BULB", "type": "LWPOLYLINE", "points": [[132 * S, 1.5 * S], [135 * S, 3 * S], [132 * S, 5 * S]]},
         *extra,
     ]
-    return {"schema": "garc.raw/1", "insunits": insunits, "props": dict(props or PROPS), "entities": ents}
+    return {"schema": "brc.raw/1", "insunits": insunits, "props": dict(props or PROPS), "entities": ents}
 
 
 def run(r):
@@ -79,9 +79,9 @@ class BlockInsert(unittest.TestCase):  # H1
 
 class NonFiniteShipValues(unittest.TestCase):  # H2
     def test_bad_values_never_pass(self):
-        cases = [("GARC_L_LL", v) for v in ("nan", "inf", "-inf", "0", "-120")]
-        cases += [("GARC_X_FP", "nan"), ("GARC_X_AP", "inf"), ("GARC_LOA", "nan"), ("GARC_LOA", "0"),
-                  ("GARC_Z_BASE", "nan"), ("GARC_EYE_HEIGHT", "-1"), ("GARC_EYE_HEIGHT", "nan")]
+        cases = [("BRC_L_LL", v) for v in ("nan", "inf", "-inf", "0", "-120")]
+        cases += [("BRC_X_FP", "nan"), ("BRC_X_AP", "inf"), ("BRC_LOA", "nan"), ("BRC_LOA", "0"),
+                  ("BRC_Z_BASE", "nan"), ("BRC_EYE_HEIGHT", "-1"), ("BRC_EYE_HEIGHT", "nan")]
         for key, v in cases:
             with self.subTest(f"{key}={v}"):
                 rep, res = run(raw(props={**PROPS, key: v}))
@@ -99,7 +99,7 @@ class NonFiniteShipValues(unittest.TestCase):  # H2
 
     def test_bulkhead_defence_line_without_contract(self):
         # 계약 검증을 거치지 않고 규칙 함수만 불러도 NaN이 '기준 충족'으로 새지 않아야 한다
-        from garc.rules.collision_bulkhead import check_collision_bulkhead
+        from brc.rules.collision_bulkhead import check_collision_bulkhead
         model = {"ship": {"l_ll": float("nan"), "x_fp": 120.0}, "conditions": [], "issues": [],
                  "objects": [{"handle": "B1", "role": "collision_bhd", "points": [[112, 0], [112, 15]]}]}
         self.assertEqual(check_collision_bulkhead(model, RULES[BHD]).status, "review")
@@ -107,7 +107,7 @@ class NonFiniteShipValues(unittest.TestCase):  # H2
         self.assertEqual(check_collision_bulkhead(model, RULES[BHD]).status, "review")
 
     def test_nan_draft_is_review(self):
-        rep, res = run(raw(props={**PROPS, "GARC_CONDITIONS": "A:nan/4"}))
+        rep, res = run(raw(props={**PROPS, "BRC_CONDITIONS": "A:nan/4"}))
         self.assertEqual(res[VIS]["status"], "review")
 
 
@@ -127,7 +127,7 @@ class EmptyGeometry(unittest.TestCase):  # H3
 
 class IssueDedup(unittest.TestCase):  # L1
     def test_condition_issue_once(self):
-        m = raw_to_model(raw(props={**PROPS, "GARC_CONDITIONS": "A:-1/4"}))
+        m = raw_to_model(raw(props={**PROPS, "BRC_CONDITIONS": "A:-1/4"}))
         validate_model(m)
         out = Session().check(m)
         self.assertEqual([i["code"] for i in m["issues"]].count("CONDITION_RANGE"), 1)
@@ -135,8 +135,8 @@ class IssueDedup(unittest.TestCase):  # L1
 
     def test_same_snapshot_hits_cache(self):
         s = Session()
-        s.check(raw_to_model(raw(props={**PROPS, "GARC_CONDITIONS": "A:-1/4"})))
-        out = s.check(raw_to_model(raw(props={**PROPS, "GARC_CONDITIONS": "A:-1/4"})))
+        s.check(raw_to_model(raw(props={**PROPS, "BRC_CONDITIONS": "A:-1/4"})))
+        out = s.check(raw_to_model(raw(props={**PROPS, "BRC_CONDITIONS": "A:-1/4"})))
         self.assertEqual(out["rerun_rules"], [])
         self.assertEqual(out["same_as_revision"], 1)
 
@@ -187,11 +187,11 @@ class SuggestionAllConditions(unittest.TestCase):  # M2
 
 class BulgeArcs(unittest.TestCase):  # M3 (+ 1차 검증 N6: 외접 꺾은선으로 안전 쪽 근사)
     TOP = [[64, 12], [64, 18], [68, 18], [68, 12]]
-    PROPS = {"GARC_LOA": "100", "GARC_X_AP": "0", "GARC_X_FP": "95", "GARC_CONDITIONS": "만재:6/6"}
+    PROPS = {"BRC_LOA": "100", "BRC_X_AP": "0", "BRC_X_FP": "95", "BRC_CONDITIONS": "만재:6/6"}
     TOL = 1e-4   # contract.ARC_TOL_M (도면 단위 m)
 
     def _raw(self, obst):
-        return {"schema": "garc.raw/1", "insunits": 6, "props": self.PROPS, "entities": [
+        return {"schema": "brc.raw/1", "insunits": 6, "props": self.PROPS, "entities": [
             {"handle": "H1", "layer": "GA_HULL", "type": "LWPOLYLINE", "points": [[0, 0], [0, 14], [100, 14], [100, 0]]},
             {"handle": "E1", "layer": "GA_EYE", "type": "POINT", "points": [[10, 20.2]]},
             {"handle": "O1", "layer": "GA_OBST", "type": "LWPOLYLINE", **obst}]}
@@ -257,9 +257,9 @@ class BulgeArcs(unittest.TestCase):  # M3 (+ 1차 검증 N6: 외접 꺾은선으
 def _dense_blind_distance(r, n=200_000):
     """엔진과 독립적으로: 호를 촘촘히(n점) 펼쳐 S140 조건의 사각 거리를 직접 계산(검산용)."""
     props = r["props"]
-    conds = [c.split(":") for c in props["GARC_CONDITIONS"].split(";")]
+    conds = [c.split(":") for c in props["BRC_CONDITIONS"].split(";")]
     conds = [(float(v.split("/")[0]), float(v.split("/")[1])) for _, v in conds]
-    x_ap, x_fp = float(props["GARC_X_AP"]), float(props["GARC_X_FP"])
+    x_ap, x_fp = float(props["BRC_X_AP"]), float(props["BRC_X_FP"])
     pts = []
     for e in r["entities"]:
         q = [[x / S, z / S] for x, z in e["points"]]
@@ -296,7 +296,7 @@ def _dense_blind_distance(r, n=200_000):
 class ServerOrigin(unittest.TestCase):  # L3
     def test_host_and_origin_checks(self):
         from http.server import ThreadingHTTPServer
-        from garc.server import Handler
+        from brc.server import Handler
         httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         port = httpd.server_address[1]
         threading.Thread(target=httpd.serve_forever, daemon=True).start()
@@ -334,12 +334,15 @@ class ServerOrigin(unittest.TestCase):  # L3
 
 class ReportWording(unittest.TestCase):  # L2
     def test_no_english_pass_badge(self):
-        from garc.report import build_from_session
+        from brc.report import build_from_session
         s = Session()
         s.check(raw_to_model(raw()))
         html = build_from_session(s, "S140.dwg")
         self.assertNotIn(">PASS<", html)
-        self.assertIn(">기준 충족<", html)
+        self.assertIn(">문제없음<", html)                          # 통과는 '문제없음'(2026-10-26 Buoy UI 명세 3절)
+        for word in ("적합", "GA RuleCheck", "GA-RuleCheck"):
+            self.assertNotIn(word, html)
+        self.assertEqual(html.count("승인"), html.count("승인이 아니"))   # '승인'은 '선급 승인이 아니며' 고지에만
 
 
 class FirstReviewFindings(unittest.TestCase):
@@ -348,8 +351,8 @@ class FirstReviewFindings(unittest.TestCase):
     def test_n1_loa_typo_is_review_not_skip(self):
         for loa in ("14", "54", "1400"):
             with self.subTest(loa=loa):
-                props = {k: v for k, v in PROPS.items() if k != "GARC_L_LL"}   # L 대조(SHIP_VALUE_MISMATCH)는 빼고 LOA만
-                rep, res = run(raw(props={**props, "GARC_LOA": loa}))
+                props = {k: v for k, v in PROPS.items() if k != "BRC_L_LL"}   # L 대조(SHIP_VALUE_MISMATCH)는 빼고 LOA만
+                rep, res = run(raw(props={**props, "BRC_LOA": loa}))
                 self.assertEqual(res[VIS]["status"], "review", res[VIS]["message_ko"])
                 self.assertIn("LOA", res[VIS]["message_ko"])
                 self.assertNotEqual(rep["overall"], "pass")
@@ -357,24 +360,24 @@ class FirstReviewFindings(unittest.TestCase):
     def test_n2_eye_height_sanity(self):
         for v in ("1800", "18", "5.01"):
             with self.subTest(v=v):
-                rep, res = run(raw(props={**PROPS, "GARC_EYE_HEIGHT": v}))
+                rep, res = run(raw(props={**PROPS, "BRC_EYE_HEIGHT": v}))
                 self.assertEqual(res[VIS]["status"], "review")
-                self.assertIn("GARC_EYE_HEIGHT", res[VIS]["message_ko"])
-        self.assertEqual(run(raw(props={**PROPS, "GARC_EYE_HEIGHT": "5"}))[0]["overall"], "pass")
-        self.assertEqual(run(raw(props={**PROPS, "GARC_EYE_HEIGHT": "0"}))[0]["overall"], "pass")
+                self.assertIn("BRC_EYE_HEIGHT", res[VIS]["message_ko"])
+        self.assertEqual(run(raw(props={**PROPS, "BRC_EYE_HEIGHT": "5"}))[0]["overall"], "pass")
+        self.assertEqual(run(raw(props={**PROPS, "BRC_EYE_HEIGHT": "0"}))[0]["overall"], "pass")
 
     def test_n2_l_ll_vs_loa(self):
         for v in ("1320", "13.2", "60", "144"):
             with self.subTest(v=v):
-                rep, res = run(raw(props={**PROPS, "GARC_L_LL": v}))
+                rep, res = run(raw(props={**PROPS, "BRC_L_LL": v}))
                 self.assertEqual(res[BHD]["status"], "review", res[BHD]["message_ko"])
                 self.assertIn("SHIP_VALUE_MISMATCH", res[BHD]["evidence"]["issues"])
         for v in ("132", "140", "70"):
             with self.subTest(ok=v):
-                self.assertNotEqual(run(raw(props={**PROPS, "GARC_L_LL": v}))[1][BHD]["status"], "review")
+                self.assertNotEqual(run(raw(props={**PROPS, "BRC_L_LL": v}))[1][BHD]["status"], "review")
 
     def test_n2_perpendiculars_outside_hull(self):
-        rep, res = run(raw(props={**PROPS, "GARC_X_AP": "100", "GARC_X_FP": "232"}))
+        rep, res = run(raw(props={**PROPS, "BRC_X_AP": "100", "BRC_X_FP": "232"}))
         self.assertEqual(res[VIS]["status"], "review")
         self.assertIn("AP", res[VIS]["message_ko"])
 
@@ -436,7 +439,7 @@ class FirstReviewFindings(unittest.TestCase):
         self.assertEqual(rep["results"][0]["status"], "review")
 
     def test_n8_nonfinite_payload_not_encoded(self):
-        from garc.server import encode_payload
+        from brc.server import encode_payload
         self.assertIsNone(encode_payload({"x": float("inf")}))
         self.assertIsNone(encode_payload({"x": [float("nan")]}))
         self.assertIsNotNone(encode_payload({"x": 1.5}))
@@ -468,27 +471,27 @@ class SecondReviewFindings(unittest.TestCase):
         self.assertEqual(run(self._eye(18, 28))[0]["overall"], "pass")   # 정상 위치는 그대로
 
     def test_f2_draft_and_baseline_typos(self):
-        for props in ({"GARC_CONDITIONS": "만재:18/18"}, {"GARC_CONDITIONS": "만재:25/25; 밸러스트:6.5/4"},
-                      {"GARC_Z_BASE": "10"}, {"GARC_Z_BASE": "14"}):
+        for props in ({"BRC_CONDITIONS": "만재:18/18"}, {"BRC_CONDITIONS": "만재:25/25; 밸러스트:6.5/4"},
+                      {"BRC_Z_BASE": "10"}, {"BRC_Z_BASE": "14"}):
             with self.subTest(props=props):
                 rep, res = run(raw(props={**PROPS, **props}))
                 self.assertEqual(res[VIS]["status"], "review", res[VIS]["message_ko"])
         # 정상 범위(오타로 판단할 수 없는 값)는 막지 않는다
-        for props in ({"GARC_CONDITIONS": "만재:9/9"}, {"GARC_Z_BASE": "2"}, {"GARC_Z_BASE": "-1"}):
+        for props in ({"BRC_CONDITIONS": "만재:9/9"}, {"BRC_Z_BASE": "2"}, {"BRC_Z_BASE": "-1"}):
             with self.subTest(ok=props):
                 self.assertNotEqual(run(raw(props={**PROPS, **props}))[1][VIS]["status"], "review")
 
     def test_f3_keel_laid(self):
         for v in ("1926-03-02", "0001-01-01", "20260302", "2026-W10-1", "2026-3-2", "2026-13-01"):
             with self.subTest(v=v):
-                rep, res = run(raw(props={**PROPS, "GARC_KEEL_LAID": v}))
+                rep, res = run(raw(props={**PROPS, "BRC_KEEL_LAID": v}))
                 self.assertEqual(res[VIS]["status"], "review")
                 self.assertNotEqual(rep["overall"], "pass")
-        rep, res = run(raw(props={**PROPS, "GARC_KEEL_LAID": "1990-01-01"}))
+        rep, res = run(raw(props={**PROPS, "BRC_KEEL_LAID": "1990-01-01"}))
         self.assertEqual(res[VIS]["status"], "skip")
         self.assertEqual(rep["overall"], "pass")
         self.assertIn("적용 제외 1건", rep["overall_ko"])          # 초록이어도 적용 제외가 있다는 사실을 남김
-        self.assertEqual(run(raw(props={**PROPS, "GARC_KEEL_LAID": "2026-03-02"}))[1][VIS]["status"], "pass")
+        self.assertEqual(run(raw(props={**PROPS, "BRC_KEEL_LAID": "2026-03-02"}))[1][VIS]["status"], "pass")
 
     def test_f5_stepped_bulkhead_too_wide(self):
         model = {"ship": {"l_ll": 132.0, "x_fp": 132.0}, "conditions": [],
@@ -508,16 +511,16 @@ class SecondReviewFindings(unittest.TestCase):
     def test_f10_strict_numbers_and_duplicate_keys(self):
         for v in ("1_40", "１４０", "140,0", "nan", "infinity", "0x8C"):
             with self.subTest(v=v):
-                rep, res = run(raw(props={**PROPS, "GARC_LOA": v}))
+                rep, res = run(raw(props={**PROPS, "BRC_LOA": v}))
                 self.assertEqual(res[VIS]["status"], "review")
         for v in ("140", " 140 ", "1.4e2", "+140", "140."):
             with self.subTest(ok=v):
-                self.assertEqual(run(raw(props={**PROPS, "GARC_LOA": v}))[0]["overall"], "pass")
-        rep, res = run(raw(props={**PROPS, "garc_loa": "14"}))
+                self.assertEqual(run(raw(props={**PROPS, "BRC_LOA": v}))[0]["overall"], "pass")
+        rep, res = run(raw(props={**PROPS, "brc_loa": "14"}))
         self.assertEqual(res[BHD]["status"], "review")
         self.assertIn("PROP_DUPLICATE", res[BHD]["evidence"]["issues"])
-        self.assertEqual(run(raw(props={**PROPS, "garc_loa": "140"}))[0]["overall"], "pass")   # 같은 값이면 문제 없음
-        rep, res = run(raw(props={**PROPS, "GARC_CONDITIONS": "만재:8_0/8"}))
+        self.assertEqual(run(raw(props={**PROPS, "brc_loa": "140"}))[0]["overall"], "pass")   # 같은 값이면 문제 없음
+        rep, res = run(raw(props={**PROPS, "BRC_CONDITIONS": "만재:8_0/8"}))
         self.assertEqual(res[VIS]["status"], "review")
 
     def test_f12_suggestion_stays_below_eye(self):
@@ -576,10 +579,10 @@ class ThirdReviewFindings(unittest.TestCase):
         raked = [(-3, 4), (-3, 13), (0, 12), (120, 12), (120, 14.5), (137, 14.5), (134, 8), (132, 0), (0, -4)]
         self.assertEqual(run(self._hull(raked))[0]["overall"], "pass")
         # 평평한 용골에서 기선 오타(3 m)는 여전히 멈춤
-        self.assertEqual(run(raw(props={**PROPS, "GARC_Z_BASE": "3"}))[1][VIS]["status"], "review")
+        self.assertEqual(run(raw(props={**PROPS, "BRC_Z_BASE": "3"}))[1][VIS]["status"], "review")
 
     def test_n3_near_miss_variants(self):
-        from garc.contract import near_miss_layer
+        from brc.contract import near_miss_layer
         flagged = ["GA_0BST", "GA_BHD", "GA_OBS", "GA_HUL", "ＧＡ＿ＯＢＳＴ", "GA_ОBST", "GA-OBST", "GA_OBST_2",
                    "GA_OBSTRUCTION", "GA__OBST", "ga.obst", "GA_EYE2", "GA_BULBOUS", "GA_BHD_COLLISION"]
         for n in flagged:
@@ -603,9 +606,9 @@ class ThirdReviewFindings(unittest.TestCase):
             raw_to_model(r)
 
     def test_n5_report_shows_skip_note(self):
-        from garc.report import build_from_session
+        from brc.report import build_from_session
         s = Session()
-        s.check(raw_to_model(raw(props={**PROPS, "GARC_KEEL_LAID": "1990-01-01"})))
+        s.check(raw_to_model(raw(props={**PROPS, "BRC_KEEL_LAID": "1990-01-01"})))
         self.assertIn("적용 제외 1건", build_from_session(s, "t.dwg"))
 
 
@@ -614,13 +617,13 @@ class FourthReviewFindings(unittest.TestCase):
 
     def test_baseline_check_with_gapped_bottom(self):
         # 선체 바닥선이 LINE 두 개로 나뉘고 중앙에 7 m 틈 — 한 점이 갑판선으로 튀어도 기선 오타(3 m)는 멈춰야 한다
-        r = raw(props={**PROPS, "GARC_Z_BASE": "3"})
+        r = raw(props={**PROPS, "BRC_Z_BASE": "3"})
         r["entities"][0] = {"handle": "H1", "layer": "GA_HULL", "type": "LWPOLYLINE",
                             "points": [[x * S, z * S] for x, z in [(-3, 4), (-3, 13), (0, 12), (120, 12), (120, 14.5), (137, 14.5), (134, 8), (132, 0)]]}
         r["entities"].append({"handle": "H2", "layer": "GA_HULL", "type": "LINE", "points": [[132 * S, 0], [70 * S, 0]]})
         r["entities"].append({"handle": "H3", "layer": "GA_HULL", "type": "LINE", "points": [[63 * S, 0], [0, 0]]})
         self.assertEqual(run(r)[1][VIS]["status"], "review")
-        r["props"]["GARC_Z_BASE"] = "0"
+        r["props"]["BRC_Z_BASE"] = "0"
         self.assertEqual(run(r)[0]["overall"], "pass")
 
     def test_huge_layer_count(self):
@@ -629,7 +632,7 @@ class FourthReviewFindings(unittest.TestCase):
         self.assertEqual(run(r)[0]["overall"], "incomplete")
 
     def test_edit_rule_needs_ga_prefix(self):
-        from garc.contract import near_miss_layer
+        from brc.contract import near_miss_layer
         for n in ("A-HULL", "A-OBST", "A-BULB", "GB_OBST"):
             with self.subTest(ok=n):
                 self.assertIsNone(near_miss_layer(n))
@@ -642,7 +645,7 @@ class FourthReviewFindings(unittest.TestCase):
 class DxfAdapter(unittest.TestCase):
     def test_bulge_ocs_spline_and_unsupported(self):
         import ezdxf
-        from garc.adapters.dxf import read_dxf
+        from brc.adapters.dxf import read_dxf
         doc = ezdxf.new("R2018")
         doc.header["$INSUNITS"] = 6
         msp = doc.modelspace()
@@ -671,7 +674,7 @@ class DxfAdapter(unittest.TestCase):
 
     def test_layer_spaces_and_counts(self):
         import ezdxf
-        from garc.adapters.dxf import read_dxf
+        from brc.adapters.dxf import read_dxf
         doc = ezdxf.new("R2018")
         doc.header["$INSUNITS"] = 4
         for k, v in PROPS.items():

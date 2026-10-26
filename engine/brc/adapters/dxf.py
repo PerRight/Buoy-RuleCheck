@@ -10,9 +10,9 @@ AutoCAD 플러그인(Extractor.cs)과 같은 raw를 만든다. 즉 DXF로 통과
   엔진이 GA_ 이름과 비슷한 레이어(GA-OBST 등)를 '검토 불가'로 멈추게 한다.
 
 실도면 연결(2026-10-18)
-- 역할 지정: 플러그인이 도면 사전(NOD)의 XRecord 'GARC_ROLES'에 (역할, 객체) 쌍으로 저장한 것을 읽어 각 객체에 role을 붙인다.
+- 역할 지정: 플러그인이 도면 사전(NOD)의 XRecord 'BRC_ROLES'에 (역할, 객체) 쌍으로 저장한 것을 읽어 각 객체에 role을 붙인다.
   시험용으로 바깥에서 {handle: 역할} 표를 줄 수도 있다(read_dxf(roles=...)).
-- 도면 특성 GARC_LAYER_ROLES에 적힌 레이어의 객체도 보낸다(측면도 영역 거르기는 엔진이 한다).
+- 도면 특성 BRC_LAYER_ROLES에 적힌 레이어의 객체도 보낸다(측면도 영역 거르기는 엔진이 한다).
 - 역할이 있는 블록(INSERT, 조종위치 제외)은 펼쳐서 하위 객체를 보낸다: handle '<블록 handle>.<번호>', block = 블록 handle.
   안쪽 문자·치수·지시선(주석)만 뺀다. 솔리드는 다각형으로, 해치는 경계 고리마다 닫힌 꺾은선으로 보내고(채움도 시야를 막음),
   와이프아웃·이미지 등은 그 타입 그대로 보내 엔진이 '검토 불가'로 멈춘다. 중첩 블록도 펼친다.
@@ -29,7 +29,8 @@ from typing import Any, Iterable
 from ..contract import LAYER_ROLES, SCHEMA_RAW
 
 _SPLINE_FRAME_CONTROL_POINT = 16  # DXF VERTEX 플래그
-ROLES_XRECORD = "GARC_ROLES"
+ROLES_XRECORD = "BRC_ROLES"
+LEGACY_ROLES_XRECORD = "GARC_ROLES"   # 2026-10-26 이전 이름
 # 블록을 펼칠 때 형상이 아닌 하위 객체(주석·채우기)는 뺀다
 _ANNOTATION = {"TEXT", "MTEXT", "ATTRIB", "ATTDEF", "DIMENSION", "LEADER", "MLEADER", "MULTILEADER", "TOLERANCE",
                "ARC_DIMENSION", "LARGE_RADIAL_DIMENSION"}
@@ -223,26 +224,28 @@ def _expand(insert, parent_handle: str, counter: list[int], depth: int = 0) -> l
 
 
 def read_roles(doc) -> dict[str, str]:
-    """도면 사전 XRecord 'GARC_ROLES' → {handle: 역할}. 형식: (1, 역할) 다음 (330, 객체 handle) 반복."""
+    """도면 사전 XRecord 'BRC_ROLES'(옛 이름 'GARC_ROLES'도) → {handle: 역할}. 형식: (1, 역할) 다음 (330, 객체 handle) 반복.
+    둘 다 있으면 옛 것을 먼저 읽고 새 것으로 덮는다(플러그인은 새 이름으로 옮겨 쓰고 옛 것을 지운다)."""
     out: dict[str, str] = {}
-    try:
-        xr = doc.rootdict.get(ROLES_XRECORD)
-    except Exception:
-        return out
-    if xr is None or xr.dxftype() != "XRECORD":
-        return out
-    role = None
-    for code, value in xr.tags:
-        if code == 1:
-            role = str(value)
-        elif code in (330, 340, 350, 360) and role:
-            out[str(value).upper()] = role
+    for name in (LEGACY_ROLES_XRECORD, ROLES_XRECORD):
+        try:
+            xr = doc.rootdict.get(name)
+        except Exception:
+            continue
+        if xr is None or xr.dxftype() != "XRECORD":
+            continue
+        role = None
+        for code, value in xr.tags:
+            if code == 1:
+                role = str(value)
+            elif code in (330, 340, 350, 360) and role:
+                out[str(value).upper()] = role
     return out
 
 
 def _layer_role_names(props: dict[str, str]) -> set[str]:
-    """GARC_LAYER_ROLES의 레이어 이름만(어떤 역할인지·형식 검사는 엔진이 한다)."""
-    text = next((v for k, v in props.items() if str(k).strip().upper() == "GARC_LAYER_ROLES"), "")
+    """BRC_LAYER_ROLES의 레이어 이름만(어떤 역할인지·형식 검사는 엔진이 한다)."""
+    text = next((v for k, v in props.items() if str(k).strip().upper() == "BRC_LAYER_ROLES"), "")
     names = set()
     for chunk in str(text or "").replace("\n", ";").split(";"):
         if "=" in chunk:

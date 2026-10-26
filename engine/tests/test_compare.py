@@ -14,14 +14,14 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
-from garc.compare import compare_models, compare_raws  # noqa: E402
-from garc.contract import raw_to_model  # noqa: E402
-from garc.engine import evaluate  # noqa: E402
+from brc.compare import compare_models, compare_raws  # noqa: E402
+from brc.contract import raw_to_model  # noqa: E402
+from brc.engine import evaluate  # noqa: E402
 
 VIS, BHD = "SOLAS-V-22.1.1", "SOLAS-II1-12"
 S = 1000.0
-PROPS = {"GARC_LOA": "140", "GARC_L_LL": "132", "GARC_X_AP": "0", "GARC_X_FP": "132",
-         "GARC_CONDITIONS": "만재 출항:8.0/8.0; 밸러스트 도착:6.5/4.0"}
+PROPS = {"BRC_LOA": "140", "BRC_L_LL": "132", "BRC_X_AP": "0", "BRC_X_FP": "132",
+         "BRC_CONDITIONS": "만재 출항:8.0/8.0; 밸러스트 도착:6.5/4.0"}
 
 
 def box(handle, x0, x1, z0, z1):
@@ -38,7 +38,7 @@ def raw(props=None, extra=(), bhd_x=124.5):
         {"handle": "U1", "layer": "GA_BULB", "type": "LWPOLYLINE", "points": [[132 * S, 1.5 * S], [135 * S, 3 * S], [132 * S, 5 * S]]},
         *extra,
     ]
-    return {"schema": "garc.raw/1", "insunits": 4, "props": dict(PROPS if props is None else props), "entities": ents}
+    return {"schema": "brc.raw/1", "insunits": 4, "props": dict(PROPS if props is None else props), "entities": ents}
 
 
 def elements(rep, rule_id=None):
@@ -96,7 +96,7 @@ class Compare(unittest.TestCase):
         self.assertEqual(out["changes"], [])
 
     def test_ship_and_conditions(self):
-        p2 = {**PROPS, "GARC_LOA": "141", "GARC_CONDITIONS": "만재 출항:8.0/8.0"}
+        p2 = {**PROPS, "BRC_LOA": "141", "BRC_CONDITIONS": "만재 출항:8.0/8.0"}
         out = compare_raws(raw(), raw(props=p2))
         descs = [c["desc_ko"] for c in out["changes"]]
         self.assertTrue(any("LOA 140 m → 141 m" in d for d in descs), descs)
@@ -137,7 +137,7 @@ class Compare(unittest.TestCase):
     def test_loa_typo_is_not_resolution(self):
         """LOA 140 → 14 오입력: 시야 규칙이 판정을 못 하게 되면 '해결'이 아니다(선박 정보 변경에 '확인 필요'를 붙인다)."""
         a = raw(extra=[box("C1", 100, 112, 13.5, 24.0)])
-        b = raw(props={**PROPS, "GARC_LOA": "14"}, extra=[box("C1", 100, 112, 13.5, 24.0)])
+        b = raw(props={**PROPS, "BRC_LOA": "14"}, extra=[box("C1", 100, 112, 13.5, 24.0)])
         out = compare_raws(a, b)
         self.assert_not_resolved(out)
         loa = next(c for c in out["changes"] if c["kind"] == "ship")
@@ -147,7 +147,7 @@ class Compare(unittest.TestCase):
         self.assertNotIn("함께 바뀐", loa["needs_check"][0]["text"])
 
     def test_multi_ship_keys_do_not_guess_cause(self):
-        p2 = {**PROPS, "GARC_LOA": "14", "GARC_X_FP": "133", "GARC_KEEL_LAID": "1990-01-01"}
+        p2 = {**PROPS, "BRC_LOA": "14", "BRC_X_FP": "133", "BRC_KEEL_LAID": "1990-01-01"}
         out = compare_raws(raw(extra=[box("C1", 100, 112, 13.5, 24.0)]), raw(props=p2, extra=[box("C1", 100, 112, 13.5, 24.0)]))
         self.assert_not_resolved(out)
         checks = [x for c in out["changes"] if c["kind"] == "ship" for x in c["needs_check"]]
@@ -182,7 +182,7 @@ class Compare(unittest.TestCase):
         """LOA 오입력으로 여러 객체가 판정 못 함이 되면 간접 영향은 규칙마다 한 줄."""
         extra = [box(f"C{i}", 60 + i * 8, 66 + i * 8, 13.5, 20.0) for i in range(6)]
         a = raw(extra=extra)
-        b = raw(props={**PROPS, "GARC_LOA": "14"}, extra=extra)
+        b = raw(props={**PROPS, "BRC_LOA": "14"}, extra=extra)
         out = compare_raws(a, b)
         vis = [x for x in out["indirect"] if x["rule_id"] == VIS]
         self.assertEqual(len(vis), 1, vis)
@@ -201,7 +201,7 @@ class Compare(unittest.TestCase):
 
     def test_http(self):
         from http.server import ThreadingHTTPServer
-        from garc.server import Handler
+        from brc.server import Handler
         httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         port = httpd.server_address[1]
         threading.Thread(target=httpd.serve_forever, daemon=True).start()

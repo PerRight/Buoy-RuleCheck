@@ -13,13 +13,13 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
-from garc.contract import raw_to_model  # noqa: E402
-from garc.engine import evaluate  # noqa: E402
+from brc.contract import raw_to_model  # noqa: E402
+from brc.engine import evaluate  # noqa: E402
 
 VIS, BHD = "SOLAS-V-22.1.1", "SOLAS-II1-12"
 S = 1000.0
-PROPS = {"GARC_LOA": "140", "GARC_L_LL": "132", "GARC_X_AP": "0", "GARC_X_FP": "132",
-         "GARC_CONDITIONS": "만재 출항:8.0/8.0; 밸러스트 도착:6.5/4.0"}
+PROPS = {"BRC_LOA": "140", "BRC_L_LL": "132", "BRC_X_AP": "0", "BRC_X_FP": "132",
+         "BRC_CONDITIONS": "만재 출항:8.0/8.0; 밸러스트 도착:6.5/4.0"}
 
 
 def box(handle, x0, x1, z0, z1):
@@ -36,7 +36,7 @@ def raw(props=None, extra=(), bhd_x=124.5):
         {"handle": "U1", "layer": "GA_BULB", "type": "LWPOLYLINE", "points": [[132 * S, 1.5 * S], [135 * S, 3 * S], [132 * S, 5 * S]]},
         *extra,
     ]
-    return {"schema": "garc.raw/1", "insunits": 4, "props": dict(PROPS if props is None else props), "entities": ents}
+    return {"schema": "brc.raw/1", "insunits": 4, "props": dict(PROPS if props is None else props), "entities": ents}
 
 
 def elements(rep, rule_id=None):
@@ -83,7 +83,7 @@ class ElementChecks(unittest.TestCase):
         self.assertEqual(b["actual"], "11.00 m")
 
     def test_unknown_when_not_judged(self):
-        props = {k: v for k, v in PROPS.items() if k != "GARC_CONDITIONS"}
+        props = {k: v for k, v in PROPS.items() if k != "BRC_CONDITIONS"}
         rep = evaluate(raw_to_model(raw(props=props, extra=[box("C1", 100, 112, 13.5, 24.0)])))
         vis = elements(rep, VIS)
         self.assertTrue(vis)

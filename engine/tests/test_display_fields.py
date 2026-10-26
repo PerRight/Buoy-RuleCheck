@@ -9,12 +9,12 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
-from garc.engine import evaluate  # noqa: E402
-from garc.contract import raw_to_model  # noqa: E402
+from brc.engine import evaluate  # noqa: E402
+from brc.contract import raw_to_model  # noqa: E402
 
 try:
     import ezdxf  # noqa: F401
-    from garc.adapters.dxf import read_dxf
+    from brc.adapters.dxf import read_dxf
     HAVE_EZDXF = True
 except ImportError:
     HAVE_EZDXF = False
@@ -68,7 +68,7 @@ class DisplayFields(unittest.TestCase):
     def test_unknown_elements_have_no_anchor(self):
         """입력 누락으로 판정 못 한 객체에는 부표 자리가 없다(팔레트·로고에서 '확인 필요'로만)."""
         raw = read_dxf(SAMPLES / "S140_rev0_base.dxf")
-        raw["props"] = {k: v for k, v in raw["props"].items() if k != "GARC_CONDITIONS"}
+        raw["props"] = {k: v for k, v in raw["props"].items() if k != "BRC_CONDITIONS"}
         rep = evaluate(raw_to_model(raw))
         vis = next(r for r in rep.results if r.rule_id == "SOLAS-V-22.1.1")
         self.assertIn(vis.status, ("na", "review"))
@@ -86,7 +86,7 @@ class CompareDisplayFields(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        from garc.compare import compare_raws
+        from brc.compare import compare_raws
         cls.d = compare_raws(read_dxf(SAMPLES / "S140_v1_review.dxf"), read_dxf(SAMPLES / "S140_v2_fixed.dxf"), ("v1", "v2"))
         cls.by = {c["element_id"]: c for c in cls.d["changes"]}
 
@@ -109,11 +109,11 @@ class CompareDisplayFields(unittest.TestCase):
         self.assertIn("11.00 m → 9.00 m", c["desc_ko"])                # 기존 설명과 같은 거리
 
     def test_ship_and_conditions(self):
-        from garc.compare import compare_raws
+        from brc.compare import compare_raws
         a = read_dxf(SAMPLES / "S140_v2_fixed.dxf")
         b = read_dxf(SAMPLES / "S140_v2_fixed.dxf")
-        b["props"]["GARC_LOA"] = "150"
-        b["props"]["GARC_CONDITIONS"] = "밸러스트 도착:6.5/3.0"
+        b["props"]["BRC_LOA"] = "150"
+        b["props"]["BRC_CONDITIONS"] = "밸러스트 도착:6.5/3.0"
         d = compare_raws(a, b, ("A", "B"))
         kinds = {c["kind"]: c for c in d["changes"]}
         self.assertEqual((kinds["ship"]["title_ko"], kinds["ship"]["value_from_ko"], kinds["ship"]["value_to_ko"]), ("선박 정보 LOA", "140 m", "150 m"))

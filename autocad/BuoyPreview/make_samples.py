@@ -14,8 +14,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 sys.path.insert(0, str(ROOT / "engine"))
-from garc.adapters.dxf import read_dxf  # noqa: E402
-from garc.server import handle_check  # noqa: E402
+from brc.adapters.dxf import read_dxf  # noqa: E402
+from brc.server import handle_check  # noqa: E402
 
 S = ROOT / "samples"
 out = []
@@ -34,11 +34,11 @@ for n, label in [("S140_rev0_base", "rev0 · 처음"), ("S140_rev1_deck_containe
                  ("S140_rev4_three_tiers", "rev4 · 3단으로")]:
     run("A", label, read_dxf(S / f"{n}.dxf"))
 raw = read_dxf(S / "S140_rev4_three_tiers.dxf")
-raw["props"]["GARC_CONDITIONS"] = ""
+raw["props"]["BRC_CONDITIONS"] = ""
 run("A", "흘수 조건 지움 · 확인 필요", raw)
 raw = read_dxf(S / "S140_rev0_base.dxf")
-raw["props"].pop("GARC_LOA", None)
-raw["props"].pop("GARC_L_LL", None)
+raw["props"].pop("BRC_LOA", None)
+raw["props"].pop("BRC_L_LL", None)
 run("B", "LOA·L 없음 · 준비 상태", raw)
 for n, label in [("S140_v1_review", "v1 · 검토"), ("S140_v2_fixed", "v2 · 수정")]:
     run("C", label, read_dxf(S / f"{n}.dxf"))
@@ -46,7 +46,7 @@ for n, label in [("S140_v1_review", "v1 · 검토"), ("S140_v2_fixed", "v2 · �
 print(f"samples.json: {len(out)}개")
 
 # 버전 비교 미리보기(비교 창·A4 전달 시트): v1 → v2(해결 3건), rev0 → rev2(새 수정 소요)
-from garc.compare import compare_raws  # noqa: E402
+from brc.compare import compare_raws  # noqa: E402
 cmp = [{"name": "v1 → v2", "resp": compare_raws(read_dxf(S / "S140_v1_review.dxf"), read_dxf(S / "S140_v2_fixed.dxf"), ("v1", "v2"))},
        {"name": "rev0 → rev2", "resp": compare_raws(read_dxf(S / "S140_rev0_base.dxf"), read_dxf(S / "S140_rev2_bulkhead_moved.dxf"), ("v1", "현재"))}]
 (HERE / "samples_compare.json").write_text(json.dumps(cmp, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")

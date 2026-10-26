@@ -422,7 +422,7 @@ def compare_models(ma: dict[str, Any], mb: dict[str, Any], labels: tuple[str, st
     bounds = ([min(p[0] for p in all_pts), min(p[1] for p in all_pts), max(p[0] for p in all_pts), max(p[1] for p in all_pts)]
               if all_pts else None)
     return {
-        "schema": "garc.compare/1",
+        "schema": "brc.compare/1",
         "a": _version_summary(labels[0], ma, ra),
         "b": _version_summary(labels[1], mb, rb),
         "changes": changes,

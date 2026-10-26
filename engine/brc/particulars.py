@@ -1,7 +1,7 @@
 """주요 치수표·축척 문자 읽기 — 실도면의 TEXT/MTEXT에서 LOA·LBP·폭·깊이·흘수·축척 '후보'를 찾는다.
 
 결정론 규칙(정규식 + 같은 줄/같은 줄 번호 짝짓기)만 쓴다. AI·외부 전송 없음.
-결과는 후보일 뿐 — 사람이 확인해 도면 특성(GARC_*)에 넣는다. L(ICLL)·밸러스트 흘수는 GA에 없으므로 찾지 않는다.
+결과는 후보일 뿐 — 사람이 확인해 도면 특성(BRC_*)에 넣는다. L(ICLL)·밸러스트 흘수는 GA에 없으므로 찾지 않는다.
 
 입력 texts: [{"text": "LENGTH O. A", "x": 500.0, "y": 150.0, "h": 3.0}, ...]  (도면 단위, MTEXT는 줄바꿈 포함 평문)
 지원하는 표 모양 (실도면 5건에서 확인)
@@ -141,14 +141,14 @@ def find_particulars(texts: list[dict[str, Any]]) -> dict[str, Any]:
     # 도면 특성 제안(사람 확인 후 적용) — LOA·LBP·축척만. L(ICLL)·밸러스트 흘수는 GA에 없다.
     props: dict[str, str] = {}
     if out["loa"]["status"] == "found":
-        props["GARC_LOA"] = f"{out['loa']['value']:g}"
+        props["BRC_LOA"] = f"{out['loa']['value']:g}"
     if out["lbp"]["status"] == "found":
-        props["GARC_LBP"] = f"{out['lbp']['value']:g}"
+        props["BRC_LBP"] = f"{out['lbp']['value']:g}"
     if out["scale"]["status"] == "found":
-        props["GARC_SCALE"] = f"1/{out['scale']['value']:g}"
+        props["BRC_SCALE"] = f"1/{out['scale']['value']:g}"
     drafts = [(k, out[k]["value"]) for k in ("draft_design", "draft_scantling") if out[k]["status"] == "found"]
     return {
-        "schema": "garc.particulars/1",
+        "schema": "brc.particulars/1",
         "items": out,
         "suggested_props": props,
         # 등흘수 조건 후보(선미=선수). 가시거리는 밸러스트(선수 흘수 작음)가 보통 더 불리하므로 그 조건은 사람이 넣는다.

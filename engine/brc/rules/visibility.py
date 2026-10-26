@@ -211,7 +211,7 @@ def check_visibility(model: dict[str, Any], r: Rule) -> RuleResult:
     ship = model["ship"]
     missing = [k for k in ("loa", "x_ap", "x_fp") if ship.get(k) is None]
     if missing:
-        return r.result("na", f"선박 정보 누락: {', '.join(missing)} (도면 특성 GARC_LOA/GARC_X_AP/GARC_X_FP)")
+        return r.result("na", f"선박 정보 누락: {', '.join(missing)} (도면 특성 BRC_LOA/BRC_X_AP/BRC_X_FP)")
     loa = ship["loa"]
     hull = objects_by_role(model, "hull")
     hull_x = [p[0] for o in hull for p in o["points"]]
@@ -227,7 +227,7 @@ def check_visibility(model: dict[str, Any], r: Rule) -> RuleResult:
         if not (min(hull_x) - tol_len <= ship["x_ap"] and ship["x_fp"] <= max(hull_x) + tol_len):
             return r.result("review",
                             f"AP(x={ship['x_ap']:g} m)·FP(x={ship['x_fp']:g} m)가 도면 선체 범위 "
-                            f"{min(hull_x):.2f}~{max(hull_x):.2f} m 밖입니다 — GARC_X_AP/GARC_X_FP 확인.",
+                            f"{min(hull_x):.2f}~{max(hull_x):.2f} m 밖입니다 — BRC_X_AP/BRC_X_FP 확인.",
                             evidence={"hull_x_range": [round(min(hull_x), 3), round(max(hull_x), 3)]})
 
     # 적용 범위
@@ -261,7 +261,7 @@ def check_visibility(model: dict[str, Any], r: Rule) -> RuleResult:
     if not hull:
         return r.result("na", "선체 윤곽(GA_HULL)이 없어 선수 끝 위치를 알 수 없습니다.")
     if not model["conditions"]:
-        return r.result("na", "흘수 조건이 없습니다 (GARC_CONDITIONS, 예: 밸러스트 도착:6.5/4.0).")
+        return r.result("na", "흘수 조건이 없습니다 (BRC_CONDITIONS, 예: 밸러스트 도착:6.5/4.0).")
 
     x_bow = max(hull_x)
     hull_z = [p[1] for o in hull for p in o["points"]]
@@ -283,15 +283,15 @@ def check_visibility(model: dict[str, Any], r: Rule) -> RuleResult:
     mids = sorted(z for z in mids if z is not None)
     mid_bottom = mids[len(mids) // 2] if mids else None
     if mid_bottom is not None and ship["z_base"] > mid_bottom + tol_len:
-        return r.result("review", f"기선 z={ship['z_base']:g} m(GARC_Z_BASE)가 도면 선체 중앙부 바닥 z={mid_bottom:.2f} m보다 "
+        return r.result("review", f"기선 z={ship['z_base']:g} m(BRC_Z_BASE)가 도면 선체 중앙부 바닥 z={mid_bottom:.2f} m보다 "
                                   f"{tol_len:.1f} m 넘게 높습니다 — 기선 높이 확인.")
-    # 기선이 선체 최저점보다 한참 아래면(원점이 기선이 아닌 실도면에서 기선을 안 넣어 기본값 0을 쓰거나 GARCSETUP의 0이 남은 경우)
+    # 기선이 선체 최저점보다 한참 아래면(원점이 기선이 아닌 실도면에서 기선을 안 넣어 기본값 0을 쓰거나 BRCSETUP의 0이 남은 경우)
     # 수선이 배 아래 엉뚱한 높이에 놓여 판정 자체가 뜻이 없다(수선이 낮아지면 사각 거리가 커지므로 대개 '거짓 위반') → 멈춘다.
     # (선체 윤곽에 바닥·용골 쪽 선이 하나도 없으면 정상 도면도 여기서 멈춘다. 선체에 바닥선을 포함하면 풀린다.)
     if min(hull_z) > ship["z_base"] + tol_len:
         why = "입력되지 않아 기본값 0을 씁니다" if "z_base" in model.get("defaults", ()) else f"z={ship['z_base']:g} m입니다"
-        return r.result("review", f"기선(GARC_Z_BASE)이 {why} — 도면 선체 최저점 z={min(hull_z):.2f} m보다 {tol_len:.1f} m 넘게 아래. "
-                                  "도면 원점이 기선이 아니면 기선을 도면에서 지정하고(GARCPICK BASE), 선체 윤곽에 바닥선을 포함하세요.")
+        return r.result("review", f"기선(BRC_Z_BASE)이 {why} — 도면 선체 최저점 z={min(hull_z):.2f} m보다 {tol_len:.1f} m 넘게 아래. "
+                                  "도면 원점이 기선이 아니면 기선을 도면에서 지정하고(BRCPICK BASE), 선체 윤곽에 바닥선을 포함하세요.")
     for cond in model["conditions"]:
         top = ship["z_base"] + max(cond["t_aft"], cond["t_fwd"])
         if top > max(hull_z) + EPS:

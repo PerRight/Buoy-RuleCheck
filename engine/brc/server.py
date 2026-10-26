@@ -81,7 +81,7 @@ def handle_particulars(body: dict[str, Any]) -> dict[str, Any]:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "garc/" + __version__
+    server_version = "brc/" + __version__
 
     def _send(self, code: int, payload: dict[str, Any]) -> None:
         data = encode_payload(payload)
@@ -154,7 +154,7 @@ def encode_payload(payload: dict[str, Any]) -> bytes | None:
 
 def serve(port: int = 8765) -> None:
     httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    print(f"GA-RuleCheck 엔진 http://127.0.0.1:{port}  (규칙 {len(all_rules())}개)  Ctrl+C로 종료")
+    print(f"Buoy-RuleCheck 엔진 http://127.0.0.1:{port}  (규칙 {len(all_rules())}개)  Ctrl+C로 종료")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

@@ -18,9 +18,10 @@ from .engine import DISCLAIMER_KO, OVERALL_KO, STATUS_KO, all_rules
 ROLE_KO = {"hull": "선체 윤곽", "eye": "조종위치", "obstruction": "장애물",
            "collision_bhd": "충돌격벽", "bulb": "구상선수"}
 # 전체 판정 배지 문구 — 영문 PASS는 '통과 확정'처럼 읽힐 수 있어 한국어 후보 판정 표현만 쓴다.
-OVERALL_BADGE_KO = {"pass": "기준 충족", "fail": "위반", "incomplete": "검토 불가", "na": "판정 없음"}
-COLORS = {"pass": "#2e9e5b", "fail": "#d64545", "na": "#d98a1c", "review": "#d98a1c",
-          "skip": "#8a8f98", "info": "#4a7bd0", "incomplete": "#d98a1c"}
+OVERALL_BADGE_KO = {"pass": "문제없음", "fail": "수정 소요", "incomplete": "확인 필요", "na": "판정 없음"}
+# 라이트(흰 종이) 판정 색 — 플러그인 Theme.Paper와 같은 값(2026-10-26 Buoy UI 명세 4절). 판정이 아닌 선(info)은 흑백 잉크.
+COLORS = {"pass": "#2F6FE0", "fail": "#D93B34", "na": "#B86A00", "review": "#B86A00",
+          "skip": "#6F6F78", "info": "#6F6F78", "incomplete": "#B86A00"}
 
 
 def _e(v: Any) -> str:
@@ -73,34 +74,35 @@ def profile_svg(model: dict[str, Any], results: list[dict[str, Any]], *, x_range
                 f'{da} opacity="{opacity}" vector-effect="non-scaling-stroke"/>')
 
     out = [f'<svg viewBox="0 0 {W:.0f} {H:.0f}" class="profile" role="img" aria-label="{_e(title)}">']
-    style = {"hull": ("#9aa3ad", 1.6), "obstruction": ("#e08a2c", 1.6), "bulb": ("#6b8fd6", 1.4),
-             "collision_bhd": ("#3a7bd5", 2.2)}
+    # 형상은 흑백 잉크 단계(라이트 토큰 hi·edge·mid) — 색은 판정(수정 소요 빨강 등)에만
+    style = {"hull": ("#A4A4AC", 1.4), "obstruction": ("#232327", 1.4), "bulb": ("#C3C3C9", 1.4),
+             "collision_bhd": ("#232327", 2.0)}
     failed = {h for r in results if r["status"] in ("fail", "review") for h in r.get("targets", [])}
     for o in model.get("objects", []):
         if o["role"] == "eye":
             continue
-        color, w = style.get(o["role"], ("#999", 1))
+        color, w = style.get(o["role"], ("#C3C3C9", 1))
         if o["handle"] in failed:
             color, w = COLORS["fail"], 2.6
         if len(o["points"]) >= 2:
             out.append(poly(o["points"], color, w))
     for r in results:
         for ov in r.get("overlays", []):
-            c = COLORS.get(ov.get("status", "info"), "#4a7bd0")
+            c = COLORS.get(ov.get("status", "info"), COLORS["info"])
             kind = ov["kind"]
             if kind == "waterline":
-                out.append(poly(ov["points"], "#4aa3c7", 1.2, "6 4"))
+                out.append(poly(ov["points"], "#A4A4AC", 1.2, "6 4"))
             elif kind in ("limit_marker", "band_line"):
-                out.append(poly(ov["points"], "#c9a227", 1.4, "8 4"))
+                out.append(poly(ov["points"], "#6F6F78", 1.2, "8 4"))
             elif kind == "band":
                 (xa, za), (xb, _) = ov["points"]
                 out.append(f'<rect x="{X(xa):.1f}" y="{Y(za):.1f}" width="{abs(X(xb) - X(xa)):.1f}" '
-                           f'height="6" fill="#c9a227" opacity="0.35"/>')
+                           f'height="6" fill="#E0E0E4"/>')
             elif kind in ("sightline", "tick"):
                 out.append(poly(ov["points"], c, 1.8, None if kind == "tick" else "10 5"))
             elif kind in ("eye", "ref_point"):
                 x, z = ov["points"][0]
-                out.append(f'<circle cx="{X(x):.1f}" cy="{Y(z):.1f}" r="5" fill="{c if kind == "eye" else "#c9a227"}"/>')
+                out.append(f'<circle cx="{X(x):.1f}" cy="{Y(z):.1f}" r="5" fill="{c if kind == "eye" else "#6F6F78"}"/>')
             elif kind == "label":
                 x, z = ov["points"][0]
                 anchor = "end" if X(x) > W * 0.8 else "start"
@@ -114,7 +116,7 @@ def profile_svg(model: dict[str, Any], results: list[dict[str, Any]], *, x_range
 # ─── HTML ─────────────────────────────────────────────────────────────────
 
 CSS = """
-:root{--bg:#f6f7f9;--card:#fff;--ink:#1d232b;--muted:#6b7380;--line:#e3e6ea}
+:root{--bg:#f6f6f8;--card:#fff;--ink:#232327;--muted:#6F6F78;--line:#E0E0E4}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);
 font:14px/1.6 "Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif}
 main{max-width:1080px;margin:0 auto;padding:28px 20px 60px}
@@ -124,13 +126,13 @@ h1{font-size:22px;margin:0 0 4px}h2{font-size:17px;margin:28px 0 10px}h3{font-si
 .badge{display:inline-block;padding:2px 10px;border-radius:999px;color:#fff;font-size:12px;font-weight:700}
 .hero{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
 .hero .status{font-size:18px;font-weight:700}
-.disclaimer{border-left:4px solid #d98a1c;background:#fff8ec;padding:10px 14px;border-radius:6px;margin-top:12px}
+.disclaimer{border-left:4px solid #A4A4AC;background:#f6f6f8;padding:10px 14px;border-radius:6px;margin-top:12px}
 table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
 th{color:var(--muted);font-weight:600;font-size:12px;white-space:nowrap}
 .kv td:first-child{color:var(--muted);width:34%}
 .rule-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
 .formula{font-family:Consolas,monospace;background:#f1f3f6;padding:8px 10px;border-radius:6px;font-size:12.5px;overflow-x:auto}
-.sugg{background:#eef5ff;border-radius:6px;padding:8px 12px;margin:8px 0}
+.sugg{background:#f3f3f5;border-radius:6px;padding:8px 12px;margin:8px 0}
 ul.lim{margin:6px 0 0 18px;padding:0;color:var(--muted)}
 .profile{width:100%;height:auto;background:#fbfcfd;border:1px solid var(--line);border-radius:8px}
 footer{margin-top:40px;color:var(--muted);font-size:12px}
@@ -181,8 +183,8 @@ def build_html(model: dict[str, Any], report: dict[str, Any], history: list[dict
     s = report["summary"]
     parts.append(f"<div class='card'><div class='hero'>{_badge(ov, OVERALL_BADGE_KO[ov])}"
                  f"<span class='status'>{_e(report.get('overall_ko') or OVERALL_KO[ov])}</span></div>"
-                 f"<div class='muted small' style='margin-top:6px'>기준 충족 {s['pass']} · 위반 {s['fail']} · "
-                 f"입력 누락 {s['na']} · 검토 불가 {s['review']} · 적용 제외 {s['skip']}</div>"
+                 f"<div class='muted small' style='margin-top:6px'>문제없음 {s['pass']} · 수정 소요 {s['fail']} · "
+                 f"확인 필요 {s['na'] + s['review']}(입력 없음 {s['na']} · 판정 멈춤 {s['review']}) · 적용 제외 {s['skip']}</div>"
                  f"<div class='disclaimer'>{_e(DISCLAIMER_KO)}</div></div>")
 
     # 요약 표
@@ -274,8 +276,7 @@ def build_html(model: dict[str, Any], report: dict[str, Any], history: list[dict
         parts.append("<h2>변경 이력</h2><div class='card'><table><tr><th>rev</th><th>시각</th><th>변경</th>"
                      f"<th>판정 변화</th><th>전체</th></tr>{''.join(reversed(hrows))}</table></div>")
 
-    parts.append(f"<footer>GA-RuleCheck 엔진 {__version__} · 규칙 {len(rules)}개 · "
-                 "판정은 결정론적 규칙 엔진의 후보 판정이며, 선급 승인·적합 증명이 아닙니다.</footer>")
+    parts.append(f"<footer>Buoy-RuleCheck 엔진 {__version__} · 규칙 {len(rules)}개 · {_e(DISCLAIMER_KO)}</footer>")
     parts.append("</main></body></html>")
     return "".join(parts)
 
