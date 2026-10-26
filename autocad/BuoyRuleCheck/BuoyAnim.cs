@@ -79,6 +79,7 @@ namespace BuoyRuleCheck
         public void BeginEdit()
         {
             if (Phase is BuoyPhase.Vanish) return;
+            ApplyPending();   // 다시 검사 0.6 s를 다 채우기 전에 다음 명령이 시작돼도 최신 판정을 버리지 않는다
             Enter(BuoyPhase.Editing);
             Motion.SetPeriod(0);
         }
@@ -87,20 +88,24 @@ namespace BuoyRuleCheck
         public void BeginRecheck()
         {
             if (Phase is BuoyPhase.Vanish) return;
+            ApplyPending();
             Enter(BuoyPhase.Recheck);
             _recheckShown = 0;
-            _pendingStatus = null;
             Motion.SetPeriod(OrbStates.BuoyRecheck);
         }
 
         /// 새 판정 도착. 같은 자리의 부표가 계속 살아 있으면 상태 색만 바꾼다(다시 검사 중이면 0.6 s를 채운 뒤).
+        /// 같은 판정이 다시 와도 안전하다(등장 중이면 등장을 끊지 않음). 늦게 온 판정이 언제나 이긴다 — 보류 중인 옛 판정이 덮지 않는다
+        /// (2026-10-26 검증: 보류가 있는 채 '현재 색과 같은' 최신 판정을 건너뛰어, 확인 필요여야 할 부표가 파랑이 되던 경로).
         public void SetStatus(string status)
         {
             if (Phase == BuoyPhase.Recheck && _recheckShown < OrbStates.MinCheckSeconds)
             {
-                _pendingStatus = status;   // 색은 다시 검사를 다 보여 준 뒤에 바꾼다
+                _pendingStatus = status;   // 색은 다시 검사를 다 보여 준 뒤에 바꾼다(가장 늦게 온 판정으로)
                 return;
             }
+            _pendingStatus = null;
+            if (status == Status && Phase is not (BuoyPhase.Editing or BuoyPhase.Recheck)) return;
             ChangeStatus(status);
             Enter(Base(status));
             Motion.SetPeriod(PeriodFor(status));
@@ -110,9 +115,22 @@ namespace BuoyRuleCheck
         public void Vanish()
         {
             if (Phase == BuoyPhase.Vanish) return;
+            _pendingStatus = null;
             Enter(BuoyPhase.Vanish);
             Motion.SetPeriod(0);
         }
+
+        /// 보류 중인 판정을 지금 색으로(단계는 호출 쪽이 정한다)
+        private void ApplyPending()
+        {
+            if (_pendingStatus is not string p) return;
+            _pendingStatus = null;
+            ChangeStatus(p);
+            Motion.SetPeriod(PeriodFor(p));
+        }
+
+        /// 지금 보이는 판정이 아니라 '최종' 판정(보류 중이면 그 값) — 시험용
+        public string Target => _pendingStatus ?? Status;
 
         public void SetHover(bool on)
         {

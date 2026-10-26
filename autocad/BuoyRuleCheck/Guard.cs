@@ -13,6 +13,9 @@ namespace BuoyRuleCheck
         private static readonly HashSet<string> Seen = new();
         private static readonly Dictionary<string, int> Logged = new();
         private const int MaxLogPerLine = 3;   // 그리기·박자처럼 매 프레임 되풀이되는 오류가 로그 파일을 채우지 않게
+        private const int MaxLogTotal = 300;   // 메시지가 매번 달라도(좌표가 든 예외 등) 한 세션에 이만큼만
+        private const int MaxSinkLines = 20;   // 명령줄도 한 세션에 이만큼만, 넘으면 한 번 안내
+        private static int _logTotal, _sinkLines;
 
         /// 명령줄에 한 줄 쓰기(플러그인이 로드 때 지정). 없으면 로그 파일만.
         public static Action<string>? Sink { get; set; }
@@ -31,9 +34,10 @@ namespace BuoyRuleCheck
         {
             string line = $"{Product.Tag} 내부 오류({where}) — {Short(ex)}";
             Logged.TryGetValue(line, out int n);
-            Logged[line] = n + 1;
-            if (n < MaxLogPerLine)
+            if (Logged.Count < 1000 || n > 0) Logged[line] = n + 1;
+            if (n < MaxLogPerLine && _logTotal < MaxLogTotal)
             {
+                _logTotal++;
                 try
                 {
                     Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
@@ -41,8 +45,13 @@ namespace BuoyRuleCheck
                 }
                 catch { /* 로그를 못 써도 계속 */ }
             }
-            if (!Seen.Add(line)) return;   // 같은 오류는 한 번만 명령줄에
-            try { Sink?.Invoke(line + $" (자세한 내용: {LogPath})"); } catch { }
+            if (Seen.Contains(line) || _sinkLines > MaxSinkLines) return;   // 같은 오류는 한 번만 명령줄에
+            if (Seen.Count < 1000) Seen.Add(line);
+            _sinkLines++;
+            string text = _sinkLines > MaxSinkLines
+                ? $"{Product.Tag} 내부 오류가 계속 나서 명령줄에는 더 쓰지 않아요 — {LogPath}"
+                : line + $" (자세한 내용: {LogPath})";
+            try { Sink?.Invoke(text); } catch { }
         }
 
         /// 예외 종류: 메시지 [첫 스택 줄]

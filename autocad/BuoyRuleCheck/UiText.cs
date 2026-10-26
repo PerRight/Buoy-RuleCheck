@@ -337,6 +337,10 @@ namespace BuoyRuleCheck
 
         public static string OneLine(string s) => string.Join(" / ", s.Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.RemoveEmptyEntries));
 
+        /// 부표 카드: 그 객체가 도면에서 없어진 뒤(이 자리의 수정 소요가 없어짐 / 규칙이 입력 누락으로 판정 못 함)
+        public const string ElementGonePass = "이 객체가 없어져 이 자리의 수정 소요가 없어졌어요";
+        public const string ElementGoneWarn = "이 객체가 없어졌고, 이 항목은 지금 입력이 비어 판정하지 않아요";
+
         public const string ResolvedRule = "'해결'은 이후가 충족이거나, 판정할 수 있는 상태에서 객체가 지워진 경우만입니다. 판정 못 함으로 바뀌면 확인 필요(주황)로 따로 적습니다.";
 
         // ── 명령줄(명세 6-4) ────────────────────────────────────────────────────

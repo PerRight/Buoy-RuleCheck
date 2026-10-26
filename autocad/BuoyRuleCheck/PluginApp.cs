@@ -55,7 +55,7 @@ namespace BuoyRuleCheck
 
         public void Terminate()
         {
-            BuoyLayer.Clear();
+            Guard.Run("종료", BuoyLayer.Shutdown);
             Commands.DetachAll();
             StatusTray.Remove();
             FloatingUi.Shutdown();
@@ -263,7 +263,7 @@ namespace BuoyRuleCheck
             {
                 var d = Active;
                 if (d == null) return;
-                try { if (on) Overlay.ShowEvidence(d, rule, el); else Overlay.ClearEvidence(); } catch { }
+                try { if (on) Overlay.ShowEvidence(d, rule, el); else Overlay.ClearEvidence(); } catch (System.Exception ex) { Guard.Report("근거 선(부표)", ex); }
             };
             BuoyLayer.EvidenceRequested += (rule, el) =>
             {
@@ -450,33 +450,34 @@ namespace BuoyRuleCheck
             w = new DocWatcher(doc);
             w.Checked += x =>
             {
-                if (x.Last == null) return;
-                if (x.Doc == Active)
+                if (x.Last is not { } last) return;
+                // 로고·트레이를 먼저, 각각 따로 — 팔레트 쪽이 던져도 로고가 이전 판정(파랑일 수 있음)으로 남지 않게(2026-10-26 검증 M3)
+                if (x.Doc == Active) Guard.Run("로고", () => FloatingUi.SetResult(last));
+                Guard.Run("트레이", () => StatusTray.Update(last, DocName(x.Doc)));
+                if (x.Doc != Active) return;
+                Guard.Run("팔레트", () => ForPanels(p => p.ShowResult(last, DocName(x.Doc), seconds: x.LastSeconds)));
+                // 해결이 생기면 로고 옆 토스트(명세 6-4) — 같은 입력으로 되돌린 경우(Undo)도 해결로 센다
+                Guard.Run("토스트", () =>
                 {
-                    ForPanels(p => p.ShowResult(x.Last, DocName(x.Doc), seconds: x.LastSeconds));
-                    FloatingUi.SetResult(x.Last);
-                    // 해결이 생기면 로고 옆 토스트(명세 6-4) — 같은 입력으로 되돌린 경우(Undo)도 해결로 센다
-                    int solved = x.Last.Transitions.Count(t => t.Kind == "resolved");
+                    int solved = last.Transitions.Count(t => t.Kind == "resolved");
                     if (solved > 0) FloatingUi.Toast(UiText.ToastResolved(solved));
-                    // 명령줄(명세 6-4): [BRC] rev 2 · 수정 소요 2 — 선교 가시거리, 충돌격벽 위치
-                    try
-                    {
-                        var ed = x.Doc.Editor;
-                        foreach (var line in UiText.CommandLines(x.Last, x.LastSeconds)) ed.WriteMessage($"\n{Product.Tag} {line}");
-                        if (string.IsNullOrEmpty(x.Doc.CommandInProgress)) ed.PostCommandPrompt();
-                    }
-                    catch { /* 명령줄 문구는 부가 기능 */ }
-                }
-                StatusTray.Update(x.Last, DocName(x.Doc));
+                });
+                // 명령줄(명세 6-4): [BRC] rev 2 · 수정 소요 2 — 선교 가시거리, 충돌격벽 위치
+                Guard.Run("명령줄", () =>
+                {
+                    var ed = x.Doc.Editor;
+                    foreach (var line in UiText.CommandLines(last, x.LastSeconds)) ed.WriteMessage($"\n{Product.Tag} {line}");
+                    if (string.IsNullOrEmpty(x.Doc.CommandInProgress)) ed.PostCommandPrompt();
+                });
             };
-            w.Failed += (_, msg) =>
+            w.Failed += (x, msg) =>
             {
-                // 엔진 연결 문제와 플러그인 오류를 나눠 알린다(둘 다 판정하지 않음)
-                bool plugin = msg.StartsWith("검사하지 못함", StringComparison.Ordinal);
-                if (plugin) ForPanels(p => p.ShowCheckError(msg)); else ForPanels(p => p.ShowEngineDown(msg));
-                if (doc == Active) FloatingUi.SetState(plugin ? "error" : "down");
-                StatusTray.Set(plugin ? "error" : "down", plugin ? "검사하지 못함 — 판정하지 않음" : "연결 끊김 — 판정하지 않음");
-                doc.Editor.WriteMessage(plugin ? $"\n{Product.Tag} {msg}\n" : $"\n{Product.Tag} 연결 끊김 — 판정하지 않음: {msg}\n");
+                // 엔진 연결 문제와 플러그인 오류를 나눠 알린다(둘 다 판정하지 않음). 로고·트레이 먼저, 각각 따로(M3)
+                bool plugin = x.LastFailState == "error";
+                if (doc == Active) Guard.Run("로고", () => FloatingUi.SetState(plugin ? "error" : "down"));
+                Guard.Run("트레이", () => StatusTray.Set(plugin ? "error" : "down", plugin ? "검사하지 못함 — 판정하지 않음" : "연결 끊김 — 판정하지 않음"));
+                Guard.Run("팔레트", () => { if (plugin) ForPanels(p => p.ShowCheckError(msg)); else ForPanels(p => p.ShowEngineDown(msg)); });
+                Guard.Run("명령줄", () => doc.Editor.WriteMessage(plugin ? $"\n{Product.Tag} {msg}\n" : $"\n{Product.Tag} 연결 끊김 — 판정하지 않음: {msg}\n"));
             };
             var shownErrors = new HashSet<string>();
             w.DisplayFailed += (_, msg) =>
@@ -516,21 +517,29 @@ namespace BuoyRuleCheck
         internal static void OnActivated(Document? doc)
         {
             if (doc == null) return;
+            // 이전 도면의 부표를 먼저 내린다(아래에서 무엇이 던져도 다른 도면의 부표가 이 화면에 남지 않게 — 2026-10-26 검증 L2)
+            Guard.Run("도면 탭 바꿈(부표)", BuoyLayer.Clear);
             // 이 세션에서 검사를 한 번이라도 시작했으면, 선박 정보가 있는 도면은 팔레트가 닫혀 있어도 감시한다
             // (로고·부표가 주 화면이므로 — 전에는 팔레트가 닫혀 있으면 새로 연 도면을 감시하지 않았다)
-            if (_started && !Watchers.ContainsKey(doc) && DrawingProps.IsConfigured(doc.Database))
-                Attach(doc).MarkDirty();
-            // 부표·근거는 지금 도면의 마지막 판정으로(팔레트가 닫혀 있어도)
-            BuoyLayer.Clear();
-            if (Watchers.TryGetValue(doc, out var wb) && wb.Last != null)
+            Guard.Run("도면 탭 바꿈(감시)", () =>
             {
-                try { using (doc.LockDocument()) Overlay.Show(doc, wb.Last); } catch { }
-                BuoyLayer.Update(doc, wb.Last);
+                if (_started && !Watchers.ContainsKey(doc) && DrawingProps.IsConfigured(doc.Database))
+                    Attach(doc).MarkDirty();
+            });
+            // 로고는 팔레트가 닫혀 있어도 보이므로, 팔레트 표시 여부와 상관없이 그 도면의 상태로 바꾼다(먼저 — 아래가 던져도 이전 도면 상태가 남지 않게)
+            Watchers.TryGetValue(doc, out var w0);
+            Guard.Run("도면 탭 바꿈(로고)", () =>
+            {
+                if (w0?.Last != null) FloatingUi.SetResult(w0.Last);
+                else FloatingUi.SetState(w0 is { LastFailed: true } ? w0.LastFailState : "idle");   // 실패 원인은 그 도면의 명령줄 [BRC] 줄
+            });
+            // 부표·근거는 지금 도면의 마지막 판정으로(팔레트가 닫혀 있어도)
+            if (w0?.Last is { } wl)
+            {
+                try { using (doc.LockDocument()) Overlay.Show(doc, wl); } catch (System.Exception ex) { Guard.Report("도면 탭 바꿈(근거 표시)", ex); }
+                Guard.Run("도면 탭 바꿈(부표)", () => BuoyLayer.Update(doc, wl));
             }
-            else Overlay.Forget();
-            // 로고는 팔레트가 닫혀 있어도 보이므로, 팔레트 표시 여부와 상관없이 그 도면의 상태로 바꾼다
-            if (Watchers.TryGetValue(doc, out var w0) && w0.Last != null) FloatingUi.SetResult(w0.Last);
-            else FloatingUi.SetState(w0 is { LastFailed: true } ? "down" : "idle");   // 실패 원인은 그 도면의 명령줄 [BRC] 줄
+            else Guard.Run("도면 탭 바꿈(근거 표시)", Overlay.Forget);
             bool shown = _palette != null && _palette.Visible;
             if (!Panels().Any() || !shown)
             {
@@ -588,7 +597,7 @@ namespace BuoyRuleCheck
                 var d = Active;
                 if (d == null) return;
                 BuoyLayer.Highlight(rr.RuleId, on);
-                try { if (on) Overlay.ShowEvidence(d, rr.RuleId, el); else Overlay.ClearEvidence(); } catch { }
+                try { if (on) Overlay.ShowEvidence(d, rr.RuleId, el); else Overlay.ClearEvidence(); } catch (System.Exception ex) { Guard.Report("근거 선(팔레트)", ex); }
             };
             panel.BuoyRequested += (rr, el) =>
             {

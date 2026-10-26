@@ -227,6 +227,12 @@ namespace BuoyRuleCheck
                 y = TextBlock(g, paint, "빈 입력이 채워지기 전에는 판정하지 않아요", Tiny, Theme.Faint, y + 6, w);
                 return y + 10;
             }
+            if (fx == null && st == "pass" && el.Guide == UiText.ElementGonePass)   // 객체가 없어져 이 자리의 수정 소요가 없어짐(옛 수치는 보이지 않음)
+            {
+                y = TextBlock(g, paint, el.Guide, PassTitle, Theme.Text, y, w);
+                y = TextBlock(g, paint, "마우스를 떼면 표시가 사라져요", Tiny, Theme.Faint, y + 6, w);
+                return y + 10;
+            }
             if (fx == null)
             {
                 y = TextBlock(g, paint, el.Guide ?? el.Actual, Theme.Title, Theme.Text, y, w);

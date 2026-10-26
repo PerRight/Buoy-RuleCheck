@@ -46,6 +46,8 @@ namespace BuoyRuleCheck
         public bool Dirty => _dirty;
         /// 마지막 검사가 엔진 오류로 실패했음(배지 '엔진 응답 없음'용)
         public bool LastFailed { get; private set; }
+        /// 마지막 실패의 종류: "down"(엔진 연결) · "error"(플러그인 오류). 둘 다 판정하지 않음 — 문구만 다르다.
+        public string LastFailState { get; private set; } = "down";
         private HashSet<string> _lastHandles = new();
         private HashSet<string> _mappedLayers = new();   // BRC_LAYER_ROLES의 레이어(실도면 연결) — 바뀌면 다시 검사
         private Dictionary<string, string> _tips = new();   // handle → 마우스 툴팁 문구
@@ -134,7 +136,7 @@ namespace BuoyRuleCheck
         private void PointStep(PointMonitorEventArgs e)
         {
             // 부표 위면 부표 카드가 먼저(객체 툴팁·강조와 겹치지 않게)
-            try { if (BuoyLayer.Pointer(Doc, e.Context.RawPoint)) return; } catch { }
+            try { if (BuoyLayer.Pointer(Doc, e.Context.RawPoint)) return; } catch (Exception ex) { Guard.Report("부표 커서", ex); }
             if (_tips.Count == 0) return;
             try
             {
@@ -312,28 +314,18 @@ namespace BuoyRuleCheck
                 LastFailed = false;
                 // 판정은 받았다 — 아래 화면 표시(툴팁·근거·부표)가 실패해도 판정을 버리지 않는다(팔레트·로고·명령줄은 그대로).
                 // 실패는 '표시 오류'로 따로 알린다(2026-10-26 사용자 PC: 한 도면에서 '연결 끊김'만 보이고 원인이 가려짐).
-                Display("툴팁", () => BuildTips(raw));
+                Display("툴팁", () => BuildTips(raw), onFail: ClearTips);   // 실패하면 이전 판정의 툴팁·강조를 남기지 않는다
                 Display("근거 표시", () => { using (Doc.LockDocument()) Overlay.Show(Doc, Last); });
                 if (AcApp.DocumentManager.MdiActiveDocument == Doc) Display("부표", () => BuoyLayer.Update(Doc, Last));
                 Display("팔레트·로고", () => Checked?.Invoke(this));   // 화면 쪽 예외를 '검사 실패'로 바꾸지 않게
             }
             catch (EngineException ex)
             {
-                Last = null;
-                LastFailed = true;
-                ClearTips();
-                Overlay.Forget();
-                BuoyLayer.Clear();   // 판정하지 않으므로 부표를 내린다(로고가 '연결 끊김'으로 알림)
-                Failed?.Invoke(this, ex.Message);
+                Fail("down", ex.Message);
             }
             catch (Exception ex)
             {
-                Last = null;
-                LastFailed = true;
-                ClearTips();   // 이전 결과의 툴팁·강조가 남지 않게
-                Overlay.Forget();
-                BuoyLayer.Clear();
-                Failed?.Invoke(this, "검사하지 못함(플러그인 오류) — " + Describe(ex));
+                Fail("error", "검사하지 못함(플러그인 오류) — " + Describe(ex));
             }
             finally
             {
@@ -341,10 +333,27 @@ namespace BuoyRuleCheck
             }
         }
 
-        private void Display(string what, Action step)
+        private void Display(string what, Action step, Action? onFail = null)
         {
             try { step(); }
-            catch (Exception ex) { DisplayFailed?.Invoke(this, $"{what} 표시 오류 — {Describe(ex)}"); }
+            catch (Exception ex)
+            {
+                if (onFail != null) Guard.Run(what + " 정리", onFail);
+                DisplayFailed?.Invoke(this, $"{what} 표시 오류 — {Describe(ex)}");
+            }
+        }
+
+        /// 검사 실패: 판정을 버리고(검토 불가) 이전 판정의 툴팁·근거·부표를 내린 뒤 알린다.
+        /// 정리 하나가 던져도 알림(로고·팔레트를 '판정하지 않음'으로)은 반드시 간다 — 이전 파랑이 남지 않게(2026-10-26 검증 M3).
+        private void Fail(string state, string message)
+        {
+            Last = null;
+            LastFailed = true;
+            LastFailState = state;
+            Guard.Run("검사 실패 정리(툴팁)", ClearTips);
+            Guard.Run("검사 실패 정리(근거 표시)", Overlay.Forget);
+            Guard.Run("검사 실패 정리(부표)", BuoyLayer.Clear);   // 판정하지 않으므로 부표를 내린다(로고가 알림)
+            Guard.Run("검사 실패 알림", () => Failed?.Invoke(this, message));
         }
 
         /// 예외 한 줄 요약 + 어디서(첫 스택 줄) — 사용자가 명령줄을 그대로 붙여 주면 원인을 찾을 수 있게.

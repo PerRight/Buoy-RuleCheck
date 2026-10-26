@@ -115,13 +115,22 @@ namespace BuoyRuleCheck
             {
                 if (now.ContainsKey(b.Key) || b.Anim.Phase is BuoyPhase.Vanish) continue;
                 var rs = resp.Results.FirstOrDefault(x => x.RuleId == b.RuleId)?.Status;
-                if (rs is "pass" or "fail") { if (b.Anim.Status != "pass") b.Anim.SetStatus("pass"); }
-                else if (rs is "na" or "review") { if (b.Anim.Status != "warn") b.Anim.SetStatus("warn"); }
+                // SetStatus는 같은 판정이 다시 와도 안전하고, 보류 중인 옛 판정보다 이 최신 판정이 이긴다(현재 색과 비교해 건너뛰지 않는다)
+                if (rs is "pass" or "fail") { b.Anim.SetStatus("pass"); b.El = Gone(b.El, "pass"); }
+                else if (rs is "na" or "review") { b.Anim.SetStatus("warn"); b.El = Gone(b.El, "unknown"); }
                 else b.Anim.Vanish();
             }
             Ensure();
             Redraw();
         }
+
+        /// 없어진 객체의 카드 내용: 옛 '고칠 내용·현재·기준·차이'를 보이지 않게(그 판정은 더는 맞지 않음). 자리·이름만 남긴다.
+        private static ElementCheckDto Gone(ElementCheckDto e, string status) => e.Fix == null && e.Status == status ? e : new ElementCheckDto
+        {
+            ElementId = e.ElementId, RuleId = e.RuleId, RuleName = e.RuleName, Role = e.Role, RoleKo = e.RoleKo,
+            Status = status, Required = e.Required, Actual = "", Anchor = e.Anchor, Fix = null,
+            Guide = status == "pass" ? UiText.ElementGonePass : UiText.ElementGoneWarn,
+        };
 
         private static void SetAnchor(Buoy b, double[] a)
         {
@@ -213,6 +222,7 @@ namespace BuoyRuleCheck
         private static bool AddHost()
         {
             if (_hostFailed) return false;   // 같은 실패를 매 틱 되풀이하지 않게(도면이 바뀌면 다시 시도 — Clear)
+            Xline? host = null;
             try
             {
                 if (_overrule == null)
@@ -223,7 +233,7 @@ namespace BuoyRuleCheck
                     ov.SetCustomFilter();     // IsApplicable로 이 플러그인의 무한선 하나에만 걸린다(그리기에서도 한 번 더 확인)
                 }
                 Overrule.Overruling = true;
-                var host = new Xline { BasePoint = Point3d.Origin, UnitDir = Vector3d.XAxis };
+                host = new Xline { BasePoint = Point3d.Origin, UnitDir = Vector3d.XAxis };
                 BuoyOverrule.Host = host.UnmanagedObject;
                 bool ok = TransientManager.CurrentTransientManager.AddTransient(host, TransientDrawingMode.DirectTopmost, 140, new IntegerCollection());
                 if (!ok)
@@ -237,10 +247,22 @@ namespace BuoyRuleCheck
             }
             catch (Exception ex)
             {
+                // 포인터를 남기면, 이 무한선이 해제된 뒤 같은 주소에 생긴 사용자 XLINE이 숨겨질 수 있다(2026-10-26 검증 M4)
+                BuoyOverrule.Host = IntPtr.Zero;
+                if (host != null) Retire(host);
                 _hostFailed = true;
                 Guard.Report("부표 표시 준비", ex);
                 return false;
             }
+        }
+
+        /// 올렸는지 모르는(또는 지우지 못한) 무한선: Dispose하면 AutoCAD가 해제된 객체를 그릴 수 있어 살려 두고,
+        /// 오버룰이 아무것도 그리지 않게 한다(무한선이 화면에 나타나지 않게).
+        private static readonly List<Xline> Retired = new();
+        private static void Retire(Xline x)
+        {
+            try { BuoyOverrule.Hidden.Add(x.UnmanagedObject); } catch { }
+            Retired.Add(x);
         }
 
         private static bool _hostFailed;
@@ -248,12 +270,24 @@ namespace BuoyRuleCheck
         private static void RemoveHost()
         {
             _hostFailed = false;
-            if (_host == null) return;
-            try { TransientManager.CurrentTransientManager.EraseTransient(_host, new IntegerCollection()); }
-            catch (Exception ex) { Guard.Report("부표 표시 지우기", ex); }
             BuoyOverrule.Host = IntPtr.Zero;
-            try { _host.Dispose(); } catch { }
+            if (_host == null) return;
+            var h = _host;
             _host = null;
+            bool erased = false;
+            try { erased = TransientManager.CurrentTransientManager.EraseTransient(h, new IntegerCollection()); }
+            catch (Exception ex) { Guard.Report("부표 표시 지우기", ex); }
+            if (erased) { try { h.Dispose(); } catch { } }
+            else Retire(h);   // 지우지 못했으면 해제하지 않고 숨긴다(L3)
+        }
+
+        /// 플러그인 종료: 부표를 내리고 오버룰을 뗀다(다시 NETLOAD해도 두 번 걸리지 않게).
+        public static void Shutdown()
+        {
+            Clear();
+            if (_overrule == null) return;
+            try { Overrule.RemoveOverrule(RXObject.GetClass(typeof(Xline)), _overrule); } catch { }
+            _overrule = null;
         }
 
         private static void StopTick()
@@ -263,8 +297,13 @@ namespace BuoyRuleCheck
 
         private static void OnTick(double dt) => Guard.Run("부표 움직임", () => Tick(dt));
 
+        /// 그리기 콜백 안에서는 명령줄에 쓰지 않는다 — 다음 박자에서 알린다(2026-10-26 검증 L9)
+        private static Exception? _drawError;
+        internal static void DrawFailed(Exception ex) { _drawError ??= ex; }
+
         private static void Tick(double dt)
         {
+            if (_drawError is { } de) { _drawError = null; Guard.Report("부표 그리기", de); }
             if (_doc == null || AcApp.DocumentManager.MdiActiveDocument != _doc) return;
             bool red = Motion.Reduced;
             bool animating = false;
@@ -318,7 +357,7 @@ namespace BuoyRuleCheck
         /// BRCHEALTH용 한 줄: 부표가 안 보일 때 어디서 멈췄는지(올림 실패·그리기 호출 없음·배율 못 구함·표시 꺼짐)
         public static string Diagnose() =>
             $"부표 {Count}개 · 표시 {(Visible ? "켜짐" : "꺼짐")} · 그릴 자리 {(_host != null ? "있음" : _hostFailed ? "올리지 못함" : "없음")}"
-            + $" · 그리기 호출 {_drawCalls}회(그림 {_drawn}회)" + (LastUpp > 0 ? $" · 1 px = {LastUpp:g4} 도면 단위" : "");
+            + $" · 오버룰 적용 {BuoyOverrule.Applied}회 · 그리기 호출 {_drawCalls}회(그림 {_drawn}회)" + (LastUpp > 0 ? $" · 1 px = {LastUpp:g4} 도면 단위" : "");
 
         internal static void Draw(ViewportDraw vd)
         {
@@ -634,10 +673,20 @@ namespace BuoyRuleCheck
     {
         /// 부표용 무한선의 AutoCAD 쪽 포인터(없으면 0)
         internal static IntPtr Host;
+        /// 지우지 못해 살려 둔 옛 무한선 — 아무것도 그리지 않는다
+        internal static readonly HashSet<IntPtr> Hidden = new();
+        /// 진단(BRCHEALTH): 부표 무한선에 오버룰이 걸린 횟수
+        internal static long Applied;
 
         public override bool IsApplicable(RXObject overruledSubject)
         {
-            try { return Host != IntPtr.Zero && overruledSubject.UnmanagedObject == Host; }
+            try
+            {
+                var p = overruledSubject.UnmanagedObject;
+                if (p == IntPtr.Zero) return false;
+                if (p == Host) { Applied++; return true; }
+                return Hidden.Contains(p);
+            }
             catch { return false; }
         }
 
@@ -650,19 +699,30 @@ namespace BuoyRuleCheck
 
         /// 무한선 자체는 그리지 않는다. false → 뷰마다 ViewportDraw.
         /// 필터가 안 걸린 경우(다른 무한선이 들어옴)에도 도면의 XLINE이 사라지지 않게 한 번 더 확인하고 원래대로 그린다.
-        public override bool WorldDraw(Drawable drawable, WorldDraw wd) =>
-            !IsHost(drawable) && base.WorldDraw(drawable, wd);
+        public override bool WorldDraw(Drawable drawable, WorldDraw wd)
+        {
+            if (IsHidden(drawable)) return true;   // 옛 무한선: 아무것도 그리지 않음
+            return !IsHost(drawable) && base.WorldDraw(drawable, wd);
+        }
 
         public override void ViewportDraw(Drawable drawable, ViewportDraw vd)
         {
+            if (IsHidden(drawable)) return;
             if (!IsHost(drawable)) { base.ViewportDraw(drawable, vd); return; }
             try { BuoyLayer.Draw(vd); }
-            catch (Exception ex) { Guard.Report("부표 그리기", ex); }   // 그리기 실패가 AutoCAD를 멈추게 하지 않게, 대신 기록
+            catch (Exception ex) { BuoyLayer.DrawFailed(ex); }   // 그리기 실패가 AutoCAD를 멈추게 하지 않게, 대신 다음 박자에서 기록
         }
 
         private static bool IsHost(Drawable d)
         {
             try { return Host != IntPtr.Zero && d.UnmanagedObject == Host; }
+            catch { return false; }
+        }
+
+        private static bool IsHidden(Drawable d)
+        {
+            if (Hidden.Count == 0) return false;
+            try { return Hidden.Contains(d.UnmanagedObject); }
             catch { return false; }
         }
     }
