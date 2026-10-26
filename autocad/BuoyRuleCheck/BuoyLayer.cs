@@ -1,5 +1,8 @@
 // 도면 위 부표(명세 5절 '도면 위 부표'): 위반 후보가 있는 '고칠 자리'(엔진 element.anchor)에 오브가 떠서 자전하고, 고치면 사라진다.
 //   - Transient(임시 그래픽) 하나에 모든 부표를 그린다 — 도면 DB를 바꾸지 않는다(Undo·저장에 남지 않음).
+//     그리는 방법(2026-10-26 사용자 PC에서 부표가 안 보여 바꿈): .NET에서 Drawable을 직접 상속한 객체는 AutoCAD 쪽 실체가 없어
+//     TransientManager가 받지 못한다(예외를 삼켜 조용히 안 그려졌음). 그래서 도면에 넣지 않은 무한선(Xline) 하나를 Transient로 올리고,
+//     그 객체에만 걸리는 DrawableOverrule(BuoyOverrule)이 무한선 대신 부표를 그린다. 무한선은 범위가 무한이라 화면 밖으로 잘리지 않는다.
 //   - 화면 크기 고정: ViewportDraw에서 그 뷰의 '1 단위 = 몇 픽셀'을 받아 30 px 오브·3 px 고정점·16 px 지시선으로 그린다(줌과 무관).
 //   - 28 px 안에 겹치면 숫자로 묶는다. 커서를 올리면 ×1.25 + 카드(BuoyCard), 근거 선(시선 등)은 이때만(Overlay.ShowEvidence).
 //   - 명령 실행 중에는 멈추고 흐려지며, 끝나면 빠르게 돌다가(다시 검사) 새 판정으로. 문제없음은 파랑으로 멈추고, 확인(호버 후 이탈)하면 사라진다.
@@ -14,6 +17,8 @@ using Autodesk.AutoCAD.Colors;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.GraphicsInterface;
+using Autodesk.AutoCAD.Runtime;
+using Exception = System.Exception;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
 
 namespace BuoyRuleCheck
@@ -37,7 +42,8 @@ namespace BuoyRuleCheck
         }
 
         private static readonly Dictionary<string, Buoy> Buoys = new();
-        private static BuoyDrawable? _drawable;
+        private static Xline? _host;              // 부표를 그릴 자리(Transient). 실제 무한선은 그리지 않는다(BuoyOverrule)
+        private static BuoyOverrule? _overrule;
         private static Document? _doc;
         private static double _scale;            // 1 도면 단위 = _scale m
         private static bool _ticking;
@@ -137,12 +143,7 @@ namespace BuoyRuleCheck
             if (_hover != null) EvidenceHover?.Invoke(_hover.RuleId, _hover.ElementId, false);
             _hover = null;
             Buoys.Clear();
-            if (_drawable != null)
-            {
-                try { TransientManager.CurrentTransientManager.EraseTransient(_drawable, new IntegerCollection()); } catch { }
-                _drawable.Dispose();
-                _drawable = null;
-            }
+            RemoveHost();
             StopTick();
         }
 
@@ -204,16 +205,55 @@ namespace BuoyRuleCheck
         private static void Ensure()
         {
             if (_doc == null || Buoys.Count == 0) { StopTick(); return; }
-            if (_drawable == null)
-            {
-                _drawable = new BuoyDrawable();
-                try
-                {
-                    TransientManager.CurrentTransientManager.AddTransient(_drawable, TransientDrawingMode.DirectTopmost, 140, new IntegerCollection());
-                }
-                catch { _drawable.Dispose(); _drawable = null; return; }
-            }
+            if (_host == null) AddHost();   // 못 올려도 박자는 돈다(카드 닫기·사라짐 정리는 계속)
             if (!_ticking) { OrbClock.Add(TickAction); _ticking = true; }
+        }
+
+        /// 부표 Transient를 올린다. 실패하면 명령줄·error.log로 알리고(조용히 안 보이지 않게) false.
+        private static bool AddHost()
+        {
+            if (_hostFailed) return false;   // 같은 실패를 매 틱 되풀이하지 않게(도면이 바뀌면 다시 시도 — Clear)
+            try
+            {
+                if (_overrule == null)
+                {
+                    var ov = new BuoyOverrule();
+                    Overrule.AddOverrule(RXObject.GetClass(typeof(Xline)), ov, false);
+                    _overrule = ov;           // 아래가 실패해도 두 번 등록하지 않게
+                    ov.SetCustomFilter();     // IsApplicable로 이 플러그인의 무한선 하나에만 걸린다(그리기에서도 한 번 더 확인)
+                }
+                Overrule.Overruling = true;
+                var host = new Xline { BasePoint = Point3d.Origin, UnitDir = Vector3d.XAxis };
+                BuoyOverrule.Host = host.UnmanagedObject;
+                bool ok = TransientManager.CurrentTransientManager.AddTransient(host, TransientDrawingMode.DirectTopmost, 140, new IntegerCollection());
+                if (!ok)
+                {
+                    BuoyOverrule.Host = IntPtr.Zero;
+                    host.Dispose();
+                    throw new InvalidOperationException("TransientManager.AddTransient가 false를 돌려줌");
+                }
+                _host = host;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _hostFailed = true;
+                Guard.Report("부표 표시 준비", ex);
+                return false;
+            }
+        }
+
+        private static bool _hostFailed;
+
+        private static void RemoveHost()
+        {
+            _hostFailed = false;
+            if (_host == null) return;
+            try { TransientManager.CurrentTransientManager.EraseTransient(_host, new IntegerCollection()); }
+            catch (Exception ex) { Guard.Report("부표 표시 지우기", ex); }
+            BuoyOverrule.Host = IntPtr.Zero;
+            try { _host.Dispose(); } catch { }
+            _host = null;
         }
 
         private static void StopTick()
@@ -221,7 +261,9 @@ namespace BuoyRuleCheck
             if (_ticking) { OrbClock.Remove(TickAction); _ticking = false; }
         }
 
-        private static void OnTick(double dt)
+        private static void OnTick(double dt) => Guard.Run("부표 움직임", () => Tick(dt));
+
+        private static void Tick(double dt)
         {
             if (_doc == null || AcApp.DocumentManager.MdiActiveDocument != _doc) return;
             bool red = Motion.Reduced;
@@ -264,14 +306,23 @@ namespace BuoyRuleCheck
 
         private static void Redraw()
         {
-            if (_drawable == null) return;
-            try { TransientManager.CurrentTransientManager.UpdateTransient(_drawable, new IntegerCollection()); } catch { }
+            if (_host == null) return;
+            try { TransientManager.CurrentTransientManager.UpdateTransient(_host, new IntegerCollection()); }
+            catch (Exception ex) { Guard.Report("부표 다시 그리기", ex); }
         }
 
         // ── 그리기(뷰마다) ───────────────────────────────────────────────────────
 
+        private static long _drawCalls, _drawn;
+
+        /// BRCHEALTH용 한 줄: 부표가 안 보일 때 어디서 멈췄는지(올림 실패·그리기 호출 없음·배율 못 구함·표시 꺼짐)
+        public static string Diagnose() =>
+            $"부표 {Count}개 · 표시 {(Visible ? "켜짐" : "꺼짐")} · 그릴 자리 {(_host != null ? "있음" : _hostFailed ? "올리지 못함" : "없음")}"
+            + $" · 그리기 호출 {_drawCalls}회(그림 {_drawn}회)" + (LastUpp > 0 ? $" · 1 px = {LastUpp:g4} 도면 단위" : "");
+
         internal static void Draw(ViewportDraw vd)
         {
+            _drawCalls++;
             if (!Visible || Buoys.Count == 0 || _doc == null) return;
             double upp;
             try
@@ -283,6 +334,7 @@ namespace BuoyRuleCheck
             catch { return; }
             if (upp <= 0 || double.IsNaN(upp)) return;
             LastUpp = upp;
+            _drawn++;
             bool red = Motion.Reduced;
             foreach (var b in Layout(upp)) DrawBuoy(vd, b, upp, red);
         }
@@ -404,9 +456,11 @@ namespace BuoyRuleCheck
         /// 커서 아래 부표를 찾고 호버 상태·카드를 맞춘다. 부표 위면 true(객체 툴팁과 겹치지 않게).
         public static bool Pointer(Document doc, Point3d world)
         {
-            if (doc != _doc || !Visible || Buoys.Count == 0 || LastUpp <= 0) { Leave(); return false; }
+            if (doc != _doc || !Visible || Buoys.Count == 0) { Leave(); return false; }
             double upp = PointerUpp(doc);
             if (upp <= 0) upp = LastUpp;
+            // 배율을 못 구함(아직 한 번도 못 그림 등): 객체 위 호버 카드는 닫지 않는다 — 전에는 여기서 매번 닫혀 카드가 깜박였다
+            if (upp <= 0) { if (!_hoverFromObject) Leave(); return false; }
             Layout(upp);   // 커서가 있는 뷰의 배율로 중심·묶음을 다시(다른 뷰포트를 마지막에 그렸어도 맞게)
             Buoy? hit = null;
             double best = double.MaxValue;
@@ -574,18 +628,42 @@ namespace BuoyRuleCheck
         }
     }
 
-    /// 부표 전체를 그리는 Transient 하나. 뷰마다(ViewportDraw) 픽셀 크기를 받아 화면 크기 고정으로 그린다.
-    internal sealed class BuoyDrawable : Drawable
+    /// 부표 전체를 그린다: BuoyLayer의 무한선(Transient) 하나에만 걸려서, 무한선 대신 뷰마다(ViewportDraw) 픽셀 크기를 받아 화면 크기 고정으로 그린다.
+    /// 다른 무한선(도면의 XLINE·다른 플러그인)은 IsApplicable이 false라 그대로 그려진다.
+    internal sealed class BuoyOverrule : DrawableOverrule
     {
-        public BuoyDrawable() : base(IntPtr.Zero, false) { }
-        public override bool IsPersistent => false;
-        public override ObjectId Id => ObjectId.Null;
-        protected override int SubSetAttributes(DrawableTraits traits) => (int)DrawableAttributes.ViewDependentViewportDraw;
-        protected override bool SubWorldDraw(WorldDraw wd) => false;
-        protected override void SubViewportDraw(ViewportDraw vd)
+        /// 부표용 무한선의 AutoCAD 쪽 포인터(없으면 0)
+        internal static IntPtr Host;
+
+        public override bool IsApplicable(RXObject overruledSubject)
         {
-            try { BuoyLayer.Draw(vd); } catch { /* 그리기 실패가 AutoCAD를 멈추게 하지 않게 */ }
+            try { return Host != IntPtr.Zero && overruledSubject.UnmanagedObject == Host; }
+            catch { return false; }
         }
-        protected override int SubViewportDrawLogicalFlags(ViewportDraw vd) => 0;
+
+        public override int SetAttributes(Drawable drawable, DrawableTraits traits)
+        {
+            int a = 0;
+            try { a = base.SetAttributes(drawable, traits); } catch { }
+            return IsHost(drawable) ? a | (int)DrawableAttributes.ViewDependentViewportDraw : a;   // 줌마다 다시 그림(화면 크기 고정)
+        }
+
+        /// 무한선 자체는 그리지 않는다. false → 뷰마다 ViewportDraw.
+        /// 필터가 안 걸린 경우(다른 무한선이 들어옴)에도 도면의 XLINE이 사라지지 않게 한 번 더 확인하고 원래대로 그린다.
+        public override bool WorldDraw(Drawable drawable, WorldDraw wd) =>
+            !IsHost(drawable) && base.WorldDraw(drawable, wd);
+
+        public override void ViewportDraw(Drawable drawable, ViewportDraw vd)
+        {
+            if (!IsHost(drawable)) { base.ViewportDraw(drawable, vd); return; }
+            try { BuoyLayer.Draw(vd); }
+            catch (Exception ex) { Guard.Report("부표 그리기", ex); }   // 그리기 실패가 AutoCAD를 멈추게 하지 않게, 대신 기록
+        }
+
+        private static bool IsHost(Drawable d)
+        {
+            try { return Host != IntPtr.Zero && d.UnmanagedObject == Host; }
+            catch { return false; }
+        }
     }
 }

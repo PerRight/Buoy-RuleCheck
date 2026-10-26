@@ -141,6 +141,7 @@ namespace BuoyRuleCheck
                 ForPanels(p => p.SetEngine(ok));
             }
             catch (EngineException ex) { ed?.WriteMessage($"\n{Product.Tag} " + ex.Message + "\n"); ForPanels(p => p.SetEngine(false)); }
+            ed?.WriteMessage($"{Product.Tag} {BuoyLayer.Diagnose()}\n");
         }
 
         // ── 입력 ────────────────────────────────────────────────────────────

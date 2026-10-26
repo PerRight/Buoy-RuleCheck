@@ -170,7 +170,11 @@ namespace BuoyRuleCheck
                 foreach (var s in new List<Action<double>>(Subs))
                 {
                     try { s(dt); }
-                    catch { Subs.Remove(s); }   // 닫힌 컨트롤 등 — 한 구독자 때문에 매 틱 예외 창이 뜨지 않게 빼낸다
+                    catch (Exception ex)
+                    {
+                        Subs.Remove(s);   // 닫힌 컨트롤 등 — 한 구독자 때문에 매 틱 예외 창이 뜨지 않게 빼낸다
+                        Guard.Report("오브 박자", ex);   // 조용히 멈추지 않게 기록(도면 부표는 자기 박자 안에서 잡으므로 여기 오지 않음)
+                    }
                 }
                 if (Subs.Count == 0) Timer.Stop();
             };
