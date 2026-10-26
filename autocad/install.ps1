@@ -36,6 +36,14 @@ Copy-Item (Join-Path $PSScriptRoot "bundle\PackageContents.xml") $bundle -Force
 Write-Host "    $bundle"
 
 Write-Host "[3/3] 엔진 자동 실행 설정..." -ForegroundColor Cyan
+# 이미 떠 있는 엔진(옛 python -m garc serve 또는 이전 코드의 brc)은 끈다 — 남아 있으면 새 플러그인이 옛 코드에 붙는다.
+# (플러그인도 엔진 버전을 보고 옛 엔진이면 판정하지 않지만, 설치 때 정리해 두면 다음 검사에서 새 엔진이 자동으로 켜진다)
+$running = Get-CimInstance Win32_Process -Filter "Name LIKE 'python%'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -match '-m\s+(garc|brc)\s+serve' }
+foreach ($p in $running) {
+    Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+    Write-Host "    켜져 있던 엔진 종료: PID $($p.ProcessId)"
+}
 $py = Get-Command python -ErrorAction SilentlyContinue | Where-Object { $_.Source -notlike "*WindowsApps*" } | Select-Object -First 1
 if (-not $py) { $py = Get-Command py -ErrorAction SilentlyContinue | Select-Object -First 1 }
 [Environment]::SetEnvironmentVariable("BRC_ENGINE_DIR", $engine, "User")

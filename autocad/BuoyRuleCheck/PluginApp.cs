@@ -89,7 +89,8 @@ namespace BuoyRuleCheck
             var doc = Active;
             if (doc == null) return;
             EnsurePalette();
-            DrawingProps.EnsureSetup(doc, props: false);   // 라벨 스타일·레이어가 없으면 만든다
+            // 검사 시작은 도면을 바꾸지 않는다(레이어·문자 스타일을 만들지 않음 — 명세 완료 기준 'DB 변경 없음').
+            // GA_ 레이어가 필요하면 BRCSETUP(리본 '초기 설정'), 라벨은 MText 글꼴 코드로 그려 문자 스타일이 없어도 된다.
             if (!EngineClient.EnsureRunning())
                 doc.Editor.WriteMessage($"\n{Product.Tag} 검사 엔진을 켤 수 없어요 — engine 폴더에서 'python -m brc serve'를 실행하세요.\n");
             Attach(doc).MarkDirty();
@@ -125,7 +126,15 @@ namespace BuoyRuleCheck
         public void Health()
         {
             var ed = Active?.Editor;
-            try { ed?.WriteMessage($"\n{Product.Tag} 엔진 응답: " + EngineClient.Health() + "\n"); ForPanels(p => p.SetEngine(true)); }
+            try
+            {
+                var text = EngineClient.Health();
+                var ver = EngineClient.EngineVersionOf(text);
+                bool ok = ver != null && ver >= System.Version.Parse(EngineClient.MinEngineVersion);
+                ed?.WriteMessage($"\n{Product.Tag} 엔진 응답: " + text + "\n");
+                if (!ok) ed?.WriteMessage($"{Product.Tag} 옛 엔진({ver?.ToString() ?? "버전 모름"})입니다 — 엔진 {EngineClient.MinEngineVersion} 이상이 필요해요. 엔진 창을 닫고 다시 검사하세요.\n");
+                ForPanels(p => p.SetEngine(ok));
+            }
             catch (EngineException ex) { ed?.WriteMessage($"\n{Product.Tag} " + ex.Message + "\n"); ForPanels(p => p.SetEngine(false)); }
         }
 
@@ -169,10 +178,10 @@ namespace BuoyRuleCheck
         internal static void PlaceEye(Document doc, Point3d pt)
         {
             var ed = doc.Editor;
-            DrawingProps.EnsureSetup(doc, props: false);
             var db = doc.Database;
             using (var tr = db.TransactionManager.StartTransaction())
             {
+                DrawingProps.EnsureLayer(tr, db, "GA_EYE");   // 사용자가 고른 조종위치 점에 필요한 레이어 하나만(다른 GA_ 레이어·문자 스타일은 만들지 않음)
                 var ms = (BlockTableRecord)tr.GetObject(SymbolUtilityServices.GetBlockModelSpaceId(db), OpenMode.ForWrite);
                 var eyes = new List<DBPoint>();
                 foreach (ObjectId id in ms)
@@ -192,8 +201,8 @@ namespace BuoyRuleCheck
                 }
                 tr.Commit();
             }
-            if (db.Pdmode == 0) db.Pdmode = 35;   // 점이 보이도록 (도면 설정 변경, Undo 가능)
-            ed.WriteMessage($"\n{Product.Tag} 조종위치를 지정했습니다.\n");
+            // 점 표시 모양(PDMODE)은 도면 전체 설정이라 바꾸지 않는다 — 조종위치는 BRCROLESHOW·부표 근거 선에서 보인다.
+            ed.WriteMessage($"\n{Product.Tag} 조종위치를 GA_EYE 점으로 지정했습니다(점이 안 보이면 BRCROLESHOW).\n");
         }
 
         [CommandMethod("BRCPICK")]

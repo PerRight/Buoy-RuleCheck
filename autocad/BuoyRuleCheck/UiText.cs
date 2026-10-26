@@ -79,9 +79,10 @@ namespace BuoyRuleCheck
         /// 규칙 판정 개수. 확인 필요 = 입력 누락(na) + 판정 멈춤(review)
         public readonly record struct Counts(int Fail, int Warn, int Pass, int Skip);
 
+        /// 모르는 상태 문자열(새 엔진의 새 상태·오타)은 확인 필요로 센다 — 문제없음으로 세지 않는다(모르면 멈춘다).
         public static Counts Count(CheckResponse r) => new(
             r.Results.Count(x => x.Status == "fail"),
-            r.Results.Count(x => x.Status is "na" or "review"),
+            r.Results.Count(x => x.Status is not ("fail" or "pass" or "skip")),
             r.Results.Count(x => x.Status == "pass"),
             r.Results.Count(x => x.Status == "skip"));
 
@@ -311,13 +312,14 @@ namespace BuoyRuleCheck
         public static (int FailBefore, int FailAfter, int Changes, int WarnAfter) CompareCounts(CompareResponse d) =>
             (d.Violations.Before, d.Violations.After, d.Changes.Count, d.Unknown.After + d.NeedsCheckRules.Count);
 
-        /// 전체 판정 키(엔진 overall → fail/warn/pass/none)
+        /// 전체 판정 키(엔진 overall → fail/warn/pass/none). 엔진의 'na'는 '판정한 항목 없음'(모두 적용 제외) — StateKey의 none과 같게.
+        /// 모르는 값은 확인 필요(문제없음으로 보이지 않게).
         public static string OverallKey(string overall) => overall switch
         {
             "fail" => "fail",
             "pass" => "pass",
-            "incomplete" or "na" => "warn",
-            _ => "none",
+            "na" or "" => "none",
+            _ => "warn",
         };
 
         public static string OverallName(string overall) => OverallKey(overall) switch
@@ -356,7 +358,7 @@ namespace BuoyRuleCheck
             var resolved = r.Transitions.Where(t => t.Kind == "resolved").Select(t => t.RuleId).ToList();
             foreach (var id in resolved) lines.Add($"{rev} · 문제없음 — {Short(id)} 기준 충족");
             var fails = r.Results.Where(x => x.Status == "fail").Select(x => x.RuleId).ToList();
-            var warns = r.Results.Where(x => x.Status is "na" or "review").Select(x => x.RuleId).ToList();
+            var warns = r.Results.Where(x => x.Status is not ("fail" or "pass" or "skip")).Select(x => x.RuleId).ToList();
             string warnTail = warns.Count > 0 ? $" · 확인 필요 {warns.Count} — {Names(warns)}" : "";
             if (resolved.Count > 0)
                 lines.Add($"남은 수정 소요 {c.Fail}" + (c.Fail > 0 ? $" — {Names(fails)}" : "") + warnTail);

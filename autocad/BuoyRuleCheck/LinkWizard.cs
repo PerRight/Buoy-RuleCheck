@@ -9,7 +9,7 @@
 //   그리고 첫 검사 + 준비 상태(엔진 readiness)를 명령줄·팔레트에 보여 준다.
 // 화면(명세 6-5, 디자인 보드 06): 1단계는 대화창(ParticularsDialog), 2~5단계는 도면에서 고르는 동안 위쪽에 안내 띠(LinkProgress).
 // 판정·단위 변환은 엔진이 한다. 여기서는 입력을 받고 도면 특성·도면 사전에 기록만 한다.
-// 기존 레이어·객체는 바꾸지 않는다(새로 만드는 것: 조종위치 점과 GA_ 레이어 5개·라벨 문자 스타일, 점 표시 모양 PDMODE).
+// 기존 레이어·객체는 바꾸지 않는다(새로 만드는 것: 사용자가 5단계에서 찍은 조종위치 점 하나와 그 GA_EYE 레이어뿐).
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -70,7 +70,7 @@ namespace BuoyRuleCheck
             if (doc == null) return;
             var ed = doc.Editor;
             var db = doc.Database;
-            ed.WriteMessage($"\n{Product.Tag} 실도면 연결 — 레이어와 객체는 바꾸지 않고 축척·측면도 영역·기준점·역할만 기록합니다(조종위치 점·GA_ 레이어만 새로 만듦)." +
+            ed.WriteMessage($"\n{Product.Tag} 실도면 연결 — 레이어와 객체는 바꾸지 않고 축척·측면도 영역·기준점·역할만 기록합니다(새로 만드는 것은 5단계 조종위치 점과 GA_EYE 레이어뿐)." +
                             "\n각 단계는 Enter로 건너뛸 수 있고, Esc로 멈춰도 그때까지 입력한 것은 남습니다. 다시 실행하면 이어서 고칩니다.\n");
             bool engine = EngineClient.EnsureRunning();
             if (!engine) ed.WriteMessage($"\n{Product.Tag} 검사 엔진에 연결할 수 없어 도면 문자 읽기·검사를 못 합니다. 'python -m brc serve' 후 다시 실행하세요.\n");

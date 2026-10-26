@@ -262,8 +262,13 @@ namespace BuoyRuleCheck
             if (upp <= 0 || double.IsNaN(upp)) return;
             LastUpp = upp;
             bool red = Motion.Reduced;
+            foreach (var b in Layout(upp)) DrawBuoy(vd, b, upp, red);
+        }
 
-            // 묶음: 위반 → 확인 필요 → 문제없음 순으로 대표를 정하고, 28 px 안의 부표를 그 대표에 묶는다(사라지는 부표는 묶지 않음)
+        /// 그 배율(1 px = upp 도면 단위)에서 오브 중심·묶음을 정한다. 뷰마다 배율이 다르므로 그리기와 커서 판정이 각자 부른다.
+        /// 묶음: 위반 → 확인 필요 → 문제없음 순으로 대표를 정하고, 28 px 안의 부표를 그 대표에 묶는다(사라지는 부표는 묶지 않음).
+        private static List<Buoy> Layout(double upp)
+        {
             var order = Buoys.Values.OrderBy(b => b.Anim.Phase == BuoyPhase.Vanish ? 1 : 0)
                                     .ThenBy(b => Rank(b.Anim.Status)).ThenBy(b => b.Key, StringComparer.Ordinal).ToList();
             var leaders = new List<Buoy>();
@@ -280,7 +285,27 @@ namespace BuoyRuleCheck
                 }
                 leaders.Add(b);
             }
-            foreach (var b in leaders) DrawBuoy(vd, b, upp, red);
+            return leaders;
+        }
+
+        /// 커서가 있는 뷰(현재 뷰포트)의 배율. 타일 뷰포트가 여럿이면 마지막으로 그린 뷰의 배율(LastUpp)과 다를 수 있어
+        /// 커서 판정은 현재 뷰로 한다(2026-10-26 검증 의심). 100 ms 동안 기억, 못 구하면 0.
+        private static double _ptrUpp;
+        private static DateTime _ptrUppAt;
+        private static double PointerUpp(Document doc)
+        {
+            var now = DateTime.UtcNow;
+            if (_ptrUpp > 0 && (now - _ptrUppAt).TotalMilliseconds < 100) return _ptrUpp;
+            try
+            {
+                using var view = doc.Editor.GetCurrentView();
+                var ss = (Point2d)AcApp.GetSystemVariable("SCREENSIZE");
+                double upp = ss.Y >= 1 ? view.Height / ss.Y : 0;
+                _ptrUpp = upp > 0 && !double.IsNaN(upp) && !double.IsInfinity(upp) ? upp : 0;
+            }
+            catch { _ptrUpp = 0; }
+            _ptrUppAt = now;
+            return _ptrUpp;
         }
 
         private static int Rank(string status) => status switch { "fail" => 0, "warn" => 1, _ => 2 };
@@ -356,12 +381,15 @@ namespace BuoyRuleCheck
         public static bool Pointer(Document doc, Point3d world)
         {
             if (doc != _doc || !Visible || Buoys.Count == 0 || LastUpp <= 0) { Leave(); return false; }
+            double upp = PointerUpp(doc);
+            if (upp <= 0) upp = LastUpp;
+            Layout(upp);   // 커서가 있는 뷰의 배율로 중심·묶음을 다시(다른 뷰포트를 마지막에 그렸어도 맞게)
             Buoy? hit = null;
             double best = double.MaxValue;
             foreach (var b in Buoys.Values)
             {
                 if (b.Leader != null || b.Anim.Phase == BuoyPhase.Vanish) continue;
-                double r = OrbStates.HitRadius * LastUpp * (b.Anim.Hover ? OrbStates.HoverScale : 1);
+                double r = OrbStates.HitRadius * upp * (b.Anim.Hover && !Motion.Reduced ? OrbStates.HoverScale : 1);
                 double dist = b.Center.DistanceTo(new Point3d(world.X, world.Y, 0));
                 if (dist <= r && dist < best) { best = dist; hit = b; }
             }

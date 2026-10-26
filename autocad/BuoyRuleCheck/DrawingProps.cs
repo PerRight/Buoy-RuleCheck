@@ -57,7 +57,24 @@ namespace BuoyRuleCheck
             db.SummaryInfo = b.ToDatabaseSummaryInfo();
         }
 
-        /// GA_ 레이어, 라벨용 문자 스타일, 빈 특성 틀을 만든다. 이미 있으면 건드리지 않는다.
+        /// 레이어 하나가 없으면 만든다(색은 LayerColors). 사용자가 명시적으로 고른 동작(조종위치 지정)에서만 부른다.
+        public static void EnsureLayer(Transaction tr, Database db, string name)
+        {
+            var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
+            if (lt.Has(name)) return;
+            lt.UpgradeOpen();
+            var rec = new LayerTableRecord
+            {
+                Name = name,
+                Color = Autodesk.AutoCAD.Colors.Color.FromColorIndex(Autodesk.AutoCAD.Colors.ColorMethod.ByAci,
+                                                                     LayerColors.TryGetValue(name, out var aci) ? aci : (short)7),
+            };
+            lt.Add(rec);
+            tr.AddNewlyCreatedDBObject(rec, true);
+        }
+
+        /// BRCSETUP(초기 설정) 전용: GA_ 레이어, 라벨용 문자 스타일, 빈 특성 틀을 만든다. 이미 있으면 건드리지 않는다.
+        /// 검사·표시·연결 마법사는 이것을 부르지 않는다(도면을 바꾸지 않음).
         public static void EnsureSetup(Document doc, bool props)
         {
             var db = doc.Database;

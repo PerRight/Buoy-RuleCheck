@@ -370,7 +370,8 @@ namespace BuoyRuleCheck
             T("수정 소요", Theme.Body, Theme.Faint);
             T(fb.ToString(), MonoBold, fb > 0 ? Theme.FailInk : Theme.Text);
             T("→", Theme.Body, Theme.Faint);
-            var afterInk = fa > 0 ? Theme.FailInk : UiText.OverallKey(d.B.Overall) == "pass" ? PassInk : Theme.Warn;
+            var afterKey = UiText.OverallKey(d.B.Overall);
+            var afterInk = fa > 0 ? Theme.FailInk : afterKey == "pass" ? PassInk : afterKey == "warn" ? Theme.Warn : Theme.Text;
             T(fa.ToString(), MonoBold, afterInk, 26);
             T("변경", Theme.Body, Theme.Faint);
             T($"{n}건", MonoBold, Theme.Text, 26);

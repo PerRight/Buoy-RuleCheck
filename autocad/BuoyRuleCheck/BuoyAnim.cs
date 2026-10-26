@@ -153,7 +153,8 @@ namespace BuoyRuleCheck
                 else if (Phase == BuoyPhase.Vanish)
                     s = 1 + (OrbStates.VanishScale - 1) * CubicBezier.Appear.Ease(_t * 1000 / OrbStates.VanishMs);
             }
-            return s * (1 + (OrbStates.HoverScale - 1) * _hoverK);
+            // 동작 줄이기면 호버해도 크기를 바꾸지 않는다(멈춘 자세 — 호버는 카드로만 알린다)
+            return reduced ? s : s * (1 + (OrbStates.HoverScale - 1) * _hoverK);
         }
 
         /// 오브 투명도(1 = 불투명)

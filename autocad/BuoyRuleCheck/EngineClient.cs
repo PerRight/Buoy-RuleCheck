@@ -50,6 +50,12 @@ namespace BuoyRuleCheck
 
         private static bool _startTried;
 
+        /// 이 플러그인이 기대하는 엔진의 최소 버전 — 표시용 필드(anchor·fix·비교 제목)와 새 특성 이름 BRC_*를 아는 엔진.
+        /// 업그레이드 뒤 옛 엔진(python -m garc serve)이 떠 있으면 BRC_ 특성을 못 읽어 '입력 누락'으로 잘못 안내하므로
+        /// 처음 연결할 때 /v1/health의 version을 보고, 옛 엔진이면 판정하지 않고 엔진을 다시 켜라고 알린다.
+        public const string MinEngineVersion = "0.5.0";
+        private static volatile bool _compatible;
+
         public static CheckResponse Check(string docId, RawDrawing raw)
         {
             var body = JsonSerializer.Serialize(new CheckRequest { DocId = docId, Raw = raw }, Contract.Json);
@@ -106,8 +112,37 @@ namespace BuoyRuleCheck
             }
         }
 
+        /// 엔진 버전 확인(한 번 맞으면 기억, 연결이 끊기면 다시 확인). 연결 실패는 여기서 다루지 않는다(Post가 같은 방식으로 처리).
+        private static void EnsureCompatible()
+        {
+            if (_compatible) return;
+            string text;
+            try { text = Health(); } catch (EngineException) { return; }
+            var ver = EngineVersionOf(text);
+            if (ver != null && ver >= Version.Parse(MinEngineVersion)) { _compatible = true; return; }
+            throw new EngineException(
+                $"옛 엔진({(ver?.ToString() ?? "버전 모름")})이 켜져 있어 판정하지 않습니다 — 이 플러그인은 엔진 {MinEngineVersion} 이상이 필요합니다. " +
+                "엔진 창(python -m garc serve)을 닫고 [다시 검사]를 누르세요. 새 엔진(python -m brc serve)이 자동으로 켜집니다.");
+        }
+
+        /// /v1/health 응답의 version("0.5.0") → Version. 읽을 수 없으면 null(= 옛 엔진으로 본다).
+        public static Version? EngineVersionOf(string healthJson)
+        {
+            try
+            {
+                using var d = JsonDocument.Parse(healthJson);
+                if (!d.RootElement.TryGetProperty("version", out var v) || v.ValueKind != JsonValueKind.String) return null;
+                var s = v.GetString() ?? "";
+                int end = 0;
+                while (end < s.Length && (char.IsDigit(s[end]) || s[end] == '.')) end++;   // "0.5.0rc1" → "0.5.0"
+                return Version.TryParse(s[..end].TrimEnd('.'), out var got) ? got : null;
+            }
+            catch (JsonException) { return null; }
+        }
+
         private static string Post(string path, string json, TimeSpan? timeout = null)
         {
+            EnsureCompatible();
             try
             {
                 using var content = new StringContent(json, Encoding.UTF8, "application/json");
@@ -121,6 +156,7 @@ namespace BuoyRuleCheck
             catch (EngineException) { throw; }
             catch (Exception ex)
             {
+                _compatible = false;   // 다시 켜진 엔진의 버전을 다음에 다시 본다
                 TryStartEngine();
                 throw new EngineException(
                     $"엔진 서버({BaseUrl})에 연결할 수 없습니다. 'python -m brc serve'를 실행하세요.", ex);
