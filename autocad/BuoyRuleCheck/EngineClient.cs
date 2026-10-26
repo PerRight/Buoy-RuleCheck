@@ -134,7 +134,7 @@ namespace BuoyRuleCheck
 
         /// 응답마다 Server 헤더(엔진: 'brc/0.5.0', 옛 엔진: 'garc/0.4.0')로 엔진을 다시 확인한다 — 버전 확인 뒤 같은 포트의
         /// 엔진이 옛 것으로 바뀌었거나, health가 느려 확인을 건너뛴 경우에도 옛 엔진 판정을 쓰지 않게.
-        /// 헤더가 없거나 읽을 수 없으면: 이미 health로 확인했으면 그대로, 아니면 엔진이 아닌 것으로 본다.
+        /// 헤더가 없거나 읽을 수 없으면 health로 확인했어도 엔진이 아닌 것으로 본다(판정을 쓰지 않음).
         private static void CheckServer(HttpResponseMessage resp)
         {
             string? name = null;

@@ -68,6 +68,8 @@ docs/
   mentoring/2026-10-12_1차-준비-피드백.md
   review/2026-10-12_오류수정_검증기록.md   오류 수정 + Sonnet 검증(1~7차) 결과, 남은 한계
   review/2026-10-18_기능3종_검증기록.md    기능 3종(v0.4.0) Sonnet 검증 1~3차, AutoCAD 실기에서 볼 남은 한계
+  review/2026-10-18_실도면연결_검증기록.md  실도면 연결(v0.5.0) Sonnet 검증 1~7차
+  review/2026-10-26_BuoyUI_검증기록.md     Buoy UI·이름 변경(v0.6.0) Sonnet 검증 1~4차, 완료 기준 확인표
   input-contract.md            단위·좌표·레이어·도면 특성 명세
   rule-definitions.md          L·관측점·수선·흘수 정의, 원문, 판본, 미검토 범위
   test-cases.md                24건 기대 결과표 (자동 생성 — 직접 고치지 말 것)
