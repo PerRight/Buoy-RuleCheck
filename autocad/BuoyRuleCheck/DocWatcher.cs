@@ -280,8 +280,12 @@ namespace BuoyRuleCheck
         {
             _busy = true;
             _dirty = false;
-            BuoyLayer.CheckStarting(Doc);
-            if (AcApp.DocumentManager.MdiActiveDocument == Doc) FloatingUi.BeginCheck();
+            try   // 화면 표시가 실패해도 검사는 계속(여기서 던지면 _busy가 true로 남아 이 도면을 다시 검사하지 않게 된다)
+            {
+                BuoyLayer.CheckStarting(Doc);
+                if (AcApp.DocumentManager.MdiActiveDocument == Doc) FloatingUi.BeginCheck();
+            }
+            catch { /* 부표·로고는 부가 표시 */ }
             var clock = Stopwatch.StartNew();
             try
             {

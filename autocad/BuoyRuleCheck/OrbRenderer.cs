@@ -164,7 +164,12 @@ namespace BuoyRuleCheck
                 long now = Environment.TickCount64;
                 double dt = _last == 0 ? 0.033 : Math.Min((now - _last) / 1000.0, 0.1);
                 _last = now;
-                foreach (var s in new List<Action<double>>(Subs)) s(dt);
+                foreach (var s in new List<Action<double>>(Subs))
+                {
+                    try { s(dt); }
+                    catch { Subs.Remove(s); }   // 닫힌 컨트롤 등 — 한 구독자 때문에 매 틱 예외 창이 뜨지 않게 빼낸다
+                }
+                if (Subs.Count == 0) Timer.Stop();
             };
         }
 

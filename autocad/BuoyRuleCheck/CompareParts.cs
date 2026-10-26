@@ -70,7 +70,11 @@ namespace BuoyRuleCheck
                 it.Click += (_, _) => SelectedIndex = k;
                 menu.Items.Add(it);
             }
-            menu.Closed += (_, _) => BeginInvoke(new Action(menu.Dispose));
+            menu.Closed += (_, _) =>
+            {
+                if (IsHandleCreated && !IsDisposed) BeginInvoke(new Action(menu.Dispose));
+                else menu.Dispose();   // 창이 먼저 닫힌 경우
+            };
             menu.Show(this, new Point(0, Height + 2));
         }
 

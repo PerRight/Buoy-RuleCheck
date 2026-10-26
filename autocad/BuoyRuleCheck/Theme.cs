@@ -141,8 +141,12 @@ namespace BuoyRuleCheck
         public static float DrawWordmark(Graphics g, PointF at, float sizePt, Color ink, Color? first = null)
         {
             g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-            using var bold = new Font(WordmarkFamily, sizePt, FontStyle.Bold);
-            using var reg = new Font(WordmarkFamily, sizePt, FontStyle.Regular);
+            var fam = WordmarkFamily;
+            // 글꼴에 그 굵기가 없으면 GDI+가 ArgumentException — 있는 굵기로 바꾼다(Bold 없으면 Regular, Regular 없으면 Bold)
+            var boldStyle = fam.IsStyleAvailable(FontStyle.Bold) ? FontStyle.Bold : fam.IsStyleAvailable(FontStyle.Regular) ? FontStyle.Regular : FontStyle.Bold;
+            var regStyle = fam.IsStyleAvailable(FontStyle.Regular) ? FontStyle.Regular : boldStyle;
+            using var bold = new Font(fam, sizePt, boldStyle);
+            using var reg = new Font(fam, sizePt, regStyle);
             using var b1 = new SolidBrush(first ?? ink);
             using var b2 = new SolidBrush(ink);
             var fmt = StringFormat.GenericTypographic;

@@ -89,8 +89,9 @@ namespace BuoyRuleCheck
             var clip = g.Clip;
             g.SetClip(area);
             var changed = d.Changes.SelectMany(c => c.Handles.Select(h => (h, c))).GroupBy(x => x.h).ToDictionary(x => x.Key, x => x.First().c);
-            var a = d.Geometry.A.ToDictionary(x => x.Handle);
-            var b = d.Geometry.B.ToDictionary(x => x.Handle);
+            // handle이 겹친 도형이 와도(엔진 버그·손상 도면) 죽지 않게 첫 것만
+            var a = d.Geometry.A.GroupBy(x => x.Handle).ToDictionary(x => x.Key, x => x.First());
+            var b = d.Geometry.B.GroupBy(x => x.Handle).ToDictionary(x => x.Key, x => x.First());
 
             switch (mode)
             {

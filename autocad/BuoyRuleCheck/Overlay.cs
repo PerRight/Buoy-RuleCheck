@@ -373,10 +373,14 @@ namespace BuoyRuleCheck
                     double len = v.Length;
                     if (len <= 0) continue;
                     var u = v / len;
-                    for (double t = 0; t < len; t += dash + gap)
+                    // 아주 확대한 화면에서 긴 선이면 조각이 수십만 개가 될 수 있다 → 선분당 400조각까지(넘으면 파선 간격을 늘림)
+                    double dl = dash, gl = gap, step = dl + gl;   // 이 선분에서만 쓰는 간격
+                    if (!(step > 0) || double.IsInfinity(step)) { dl = len; gl = 0; step = len; }
+                    if (len / step > 400) { double k = len / step / 400; dl *= k; gl *= k; step = dl + gl; }
+                    for (double t = 0; t < len; t += step)
                     {
                         var s0 = pts[i] + u * t;
-                        var s1 = pts[i] + u * Math.Min(t + dash, len);
+                        var s1 = pts[i] + u * Math.Min(t + dl, len);
                         var seg = new Polyline();
                         seg.AddVertexAt(0, s0, 0, 0, 0);
                         seg.AddVertexAt(1, s1, 0, 0, 0);

@@ -57,6 +57,7 @@ namespace BuoyRuleCheck
                 string key = ToNewName(kv.Key);
                 foreach (var old in existing)
                     if (table.Contains(old) && ToNewName(old).Equals(key, StringComparison.OrdinalIgnoreCase)) table.Remove(old);
+                if (table.Contains(key)) table.Remove(key);   // 같은 호출에 옛·새 이름이 둘 다 와도 중복 Add 예외 없이 뒤 값
                 if (!string.IsNullOrWhiteSpace(kv.Value)) table.Add(key, kv.Value.Trim());
             }
             db.SummaryInfo = b.ToDatabaseSummaryInfo();
