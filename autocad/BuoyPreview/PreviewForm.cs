@@ -42,8 +42,11 @@ namespace GaRuleCheck
             var top = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 34, FlowDirection = FlowDirection.RightToLeft, BackColor = Theme.Bg, Padding = new Padding(0, 6, 16, 0) };
             var restart = Theme.RingButton("처음부터");
             restart.Click += (_, _) => Restart();
+            var cards = Theme.PrimaryButton("부표 카드 보기");
+            cards.Click += (_, _) => ShowSampleCards();
             top.Controls.Add(_reduce);
             top.Controls.Add(restart);
+            top.Controls.Add(cards);
             Controls.Add(_canvas);
             Controls.Add(top);
             _canvas.Paint += (_, e) => PaintAll(e.Graphics);
@@ -74,6 +77,45 @@ namespace GaRuleCheck
             _tick = Step;
             OrbClock.Add(_tick);
             FormClosed += (_, _) => OrbClock.Remove(_tick);
+        }
+
+        /// S140 예시 숫자로 카드 네 가지(수정 소요·문제없음·확인 필요·묶음)를 띄운다. 숫자는 엔진 출력 형식 그대로.
+        private void ShowSampleCards()
+        {
+            static System.Text.Json.JsonElement J(string s) => System.Text.Json.JsonDocument.Parse(s).RootElement.Clone();
+            var fail = new ElementCheckDto
+            {
+                ElementId = "9A", RuleId = "SOLAS-V-22.1.1", RoleKo = "장애물", Status = "fail", Anchor = new[] { 112.0, 24.0 },
+                Fix = new FixDto { Quantity = "z", Current = J("24.0"), Limit = J("22.45"), Op = "≤", Delta = 1.55, ActionKo = "상단을 1.55 m 낮추세요", ConditionKo = "z ≤ 22.45 m 이면 기준 충족", Condition = "밸러스트 도착" },
+            };
+            var ok = new ElementCheckDto
+            {
+                ElementId = "97", RuleId = "SOLAS-V-22.1.1", RoleKo = "장애물", Status = "pass", Anchor = new[] { 112.0, 21.4 },
+                Fix = new FixDto { Quantity = "z", Current = J("21.4"), Limit = J("22.45"), Op = "≤", Delta = -1.05, ActionKo = "상단 z 21.40 m — 기준 안쪽", ConditionKo = "여유 1.05 m · 기준 z ≤ 22.45 m", Condition = "밸러스트 도착" },
+            };
+            var warn = new ElementCheckDto { ElementId = "9A", RuleId = "SOLAS-V-22.1.1", RoleKo = "장애물", Status = "unknown", Guide = "흘수 조건이 없습니다 — 선박 정보 탭에서 밸러스트 도착 흘수를 넣으세요." };
+            var bhd = new ElementCheckDto
+            {
+                ElementId = "92", RuleId = "SOLAS-II1-12", RoleKo = "충돌격벽", Status = "fail", Anchor = new[] { 122.5, 14.5 },
+                Fix = new FixDto { Quantity = "d", Current = J("11.0"), Limit = J("[6.6, 10.56]"), Op = "range", Delta = 0.44, ActionKo = "격벽을 선수 쪽으로 0.44 m 옮기세요", ConditionKo = "기준점(연장부 중점)에서 6.60~10.56 m 이면 기준 충족" },
+            };
+            var sets = new[]
+            {
+                new[] { new BuoyCardItem("fail", "SOLAS-V-22.1.1", "밸러스트 도착", fail) },
+                new[] { new BuoyCardItem("pass", "SOLAS-V-22.1.1", "밸러스트 도착", ok) },
+                new[] { new BuoyCardItem("warn", "SOLAS-V-22.1.1", null, warn) },
+                new[] { new BuoyCardItem("fail", "SOLAS-V-22.1.1", "밸러스트 도착", fail), new BuoyCardItem("fail", "SOLAS-II1-12", null, bhd), new BuoyCardItem("warn", "SOLAS-V-22.1.1", null, warn) },
+            };
+            int x = Right + 8;
+            foreach (var s in sets)
+            {
+                var card = new BuoyCard(s);
+                card.Show(this);
+                card.Location = new Point(Math.Min(x, Screen.FromControl(this).WorkingArea.Right - card.Width - 8), Top + 40 + Array.IndexOf(sets, s) * 10);
+                card.Opacity = 1;
+                card.Pinned2();
+                x += card.Width + 8;
+            }
         }
 
         private void Restart()

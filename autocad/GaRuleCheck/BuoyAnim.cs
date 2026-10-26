@@ -52,6 +52,15 @@ namespace GaRuleCheck
         };
 
         public bool Gap => Status is not ("fail" or "pass");
+
+        /// 다시 그려야 하는 중인가(돌고 있거나, 등장·사라짐·호버 전환·물결 중). 아니면 그리기 갱신을 건너뛴다.
+        public bool IsAnimating(bool reduced)
+        {
+            if (Phase is BuoyPhase.Appear or BuoyPhase.Vanish || _hoverT < 1) return true;
+            if (_pendingStatus != null) return true;
+            if (reduced) return false;
+            return !Motion.Stopped || _rippleClock < OrbStates.RippleSeconds * OrbStates.RippleCount;
+        }
         public bool Done => Phase == BuoyPhase.Vanish && _t * 1000 >= OrbStates.VanishMs;
 
         /// 명령 실행 시작(도면을 고치는 중): 멈추고 흐려진다

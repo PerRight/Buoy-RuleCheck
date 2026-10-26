@@ -22,5 +22,7 @@
     <Compile Include="..\GaRuleCheck\BuoyAnim.cs" Link="Shared\BuoyAnim.cs" />
     <Compile Include="..\GaRuleCheck\UiState.cs" Link="Shared\UiState.cs" />
     <Compile Include="..\GaRuleCheck\Dto.cs" Link="Shared\Dto.cs" />
+    <Compile Include="..\GaRuleCheck\UiText.cs" Link="Shared\UiText.cs" />
+    <Compile Include="..\GaRuleCheck\BuoyCard.cs" Link="Shared\BuoyCard.cs" />
   </ItemGroup>
 </Project>

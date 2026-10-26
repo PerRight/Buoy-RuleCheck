@@ -63,6 +63,9 @@ namespace GaRuleCheck
             db.ObjectModified += OnObject;
             db.ObjectErased += OnErased;
             doc.CommandEnded += OnCommandEnded;
+            doc.CommandWillStart += OnCommandWillStart;
+            doc.CommandCancelled += OnCommandStopped;
+            doc.CommandFailed += OnCommandStopped;
             doc.Editor.PointMonitor += OnPointMonitor;
             db.SaveComplete += OnSaveComplete;
             AcApp.Idle += OnIdle;
@@ -78,6 +81,9 @@ namespace GaRuleCheck
                 db.ObjectModified -= OnObject;
                 db.ObjectErased -= OnErased;
                 Doc.CommandEnded -= OnCommandEnded;
+                Doc.CommandWillStart -= OnCommandWillStart;
+                Doc.CommandCancelled -= OnCommandStopped;
+                Doc.CommandFailed -= OnCommandStopped;
                 Doc.Editor.PointMonitor -= OnPointMonitor;
                 db.SaveComplete -= OnSaveComplete;
             }
@@ -121,6 +127,8 @@ namespace GaRuleCheck
         /// 판정 대상 객체 위에 커서를 올리면 요소 판정(충족·미충족·확인 필요)을 툴팁으로, 객체를 상태 색으로 강조.
         private void OnPointMonitor(object sender, PointMonitorEventArgs e)
         {
+            // 부표 위면 부표 카드가 먼저(객체 툴팁·강조와 겹치지 않게)
+            try { if (BuoyLayer.Pointer(Doc, e.Context.RawPoint)) return; } catch { }
             if (_tips.Count == 0) return;
             try
             {
@@ -243,7 +251,13 @@ namespace GaRuleCheck
         private void OnCommandEnded(object sender, CommandEventArgs e)
         {
             if (RecheckCommands.Contains(e.GlobalCommandName)) MarkDirty();
+            BuoyLayer.CommandFinished(Doc, _dirty);
         }
+
+        /// 명령 시작: 부표는 멈추고 흐려진다(도면을 고치는 중)
+        private void OnCommandWillStart(object sender, CommandEventArgs e) => BuoyLayer.CommandStarted(Doc, e.GlobalCommandName);
+
+        private void OnCommandStopped(object sender, CommandEventArgs e) => BuoyLayer.CommandFinished(Doc, _dirty);
 
         private void OnIdle(object? sender, EventArgs e)
         {
@@ -264,6 +278,7 @@ namespace GaRuleCheck
         {
             _busy = true;
             _dirty = false;
+            BuoyLayer.CheckStarting(Doc);
             try
             {
                 RawDrawing raw;
@@ -281,6 +296,7 @@ namespace GaRuleCheck
                 {
                     Overlay.Show(Doc, Last);
                 }
+                if (AcApp.DocumentManager.MdiActiveDocument == Doc) BuoyLayer.Update(Doc, Last);
                 LastFailed = false;
                 Checked?.Invoke(this);
             }
@@ -289,7 +305,8 @@ namespace GaRuleCheck
                 Last = null;
                 LastFailed = true;
                 ClearTips();
-                Overlay.Clear();
+                Overlay.Forget();
+                BuoyLayer.Clear();   // 판정하지 않으므로 부표를 내린다(로고가 '연결 끊김'으로 알림)
                 Failed?.Invoke(this, ex.Message);
             }
             catch (Exception ex)
@@ -297,7 +314,8 @@ namespace GaRuleCheck
                 Last = null;
                 LastFailed = true;
                 ClearTips();   // 이전 결과의 툴팁·강조가 남지 않게
-                Overlay.Clear();
+                Overlay.Forget();
+                BuoyLayer.Clear();
                 Failed?.Invoke(this, "플러그인 오류: " + ex.Message);
             }
             finally

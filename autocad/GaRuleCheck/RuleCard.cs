@@ -150,6 +150,17 @@ namespace GaRuleCheck
             HookHover(this);
         }
 
+        public string RuleId => _r.RuleId;
+
+        /// 근거(이 판정이 다루지 않는 것 등) 펼치기
+        public void Expand()
+        {
+            if (_expanded) return;
+            _expanded = true;
+            _details.Visible = true;
+            Relayout();
+        }
+
         private void HookHover(Control c)
         {
             if (c is ElementRow) return;   // 점검 항목 줄은 자기 hover(객체 강조)를 따로 낸다

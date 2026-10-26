@@ -139,7 +139,15 @@ namespace GaRuleCheck
             foreach (var (k, b) in _tabButtons) { b.ForeColor = k == id ? Theme.Text : Theme.Muted; b.Invalidate(); }
         }
 
-        public void SetOverlayState(bool on) => _overlayBtn.Text = on ? "도면 표시: 켜짐" : "도면 표시: 꺼짐";
+        public void SetOverlayState(bool on) => _overlayBtn.Text = on ? "부표 표시 ●" : "부표 표시";
+
+        /// '근거 ›'(부표 카드) → 검토 탭에서 그 항목으로
+        public void FocusRule(string ruleId)
+        {
+            ShowTab("review");
+            foreach (Control c in _cards.Controls)
+                if (c is RuleCard rc && rc.RuleId == ruleId) { _cards.ScrollControlIntoView(rc); rc.Expand(); break; }
+        }
 
         private void OnFailOnlyChanged()
         {

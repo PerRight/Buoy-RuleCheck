@@ -1,5 +1,8 @@
 // 도면 위 표시: Transient(임시 그래픽)만 쓴다. 도면 DB를 고치지 않으므로 Undo 기록을 오염시키지 않고
 // 저장 파일에도 남지 않는다. 매 검사마다 전부 지우고 새로 그린다(증분 갱신 없음 → 동기화 오류 없음).
+// Buoy UI(10-26): 평소에는 부표(BuoyLayer)만 떠 있고, 근거 선(시선·허용선·라벨)과 대상 강조는
+// 부표나 팔레트 카드에 커서를 올린 동안만 그린다(ShowEvidence). 색은 판정 색(수정 소요 빨강·문제없음 파랑·확인 필요 주황)과
+// 흑백 잉크(가이드)만 — 노랑·하늘색 같은 다른 색은 쓰지 않는다.
 //
 // 엔진 overlays(m 좌표) 종류
 //   sightline/tick : 시선·허용 높이 (pass 파랑 / fail 빨강) — 색 규칙: 충족 파랑·미충족 빨강·확인 필요 주황
@@ -28,7 +31,6 @@ namespace GaRuleCheck
 {
     public static class Overlay
     {
-        private const short Red = 1, Yellow = 2, Green = 3, Cyan = 4, Orange = 30, Gray = 8;
         private static readonly List<Entity> Items = new();
 
         private static readonly List<Entity> HoverItems = new();
@@ -58,34 +60,65 @@ namespace GaRuleCheck
             Items.Clear();
         }
 
+        private static CheckResponse? _resp;
+        private static Document? _respDoc;
+        private static (string rule, string? element)? _evidence;
+
+        /// 새 판정: 저장만 하고(근거 선은 커서를 올렸을 때만), 보고 있던 근거가 있으면 새 값으로 다시 그린다.
         public static void Show(Document doc, CheckResponse resp)
         {
             Clear();
-            if (!Enabled) return;
+            _resp = resp;
+            _respDoc = doc;
+            if (_evidence is { } ev) ShowEvidence(doc, ev.rule, ev.element);
+        }
+
+        /// 근거 보기: 그 규칙의 시선·허용선·라벨 + 대상 객체(판정 색). 부표·팔레트 카드에 커서를 올린 동안만.
+        public static void ShowEvidence(Document doc, string ruleId, string? elementId)
+        {
+            Clear();
+            _evidence = (ruleId, elementId);
+            if (!Enabled || _resp == null || _respDoc != doc) return;
+            var r = _resp.Results.FirstOrDefault(x => x.RuleId == ruleId);
+            if (r == null) return;
             var db = doc.Database;
-            double scale = resp.UnitsScale ?? 0;   // 1 도면 단위 = scale m
-            using var tr = db.TransactionManager.StartOpenCloseTransaction();
-            var style = DrawingProps.LabelStyleId(tr, db);
-            foreach (var r in resp.Results)
+            double scale = _resp.UnitsScale ?? 0;   // 1 도면 단위 = scale m
+            using (doc.LockDocument())
+            using (var tr = db.TransactionManager.StartOpenCloseTransaction())
             {
-                if (r.Status is "fail" or "review")
+                var style = DrawingProps.LabelStyleId(tr, db);
+                var el = elementId == null ? null : r.Elements.FirstOrDefault(e => e.ElementId == elementId);
+                var targets = el != null ? new List<string> { el.ElementId } : r.Targets;
+                var col = StatusColor(el?.Status ?? r.Status);
+                // 펼친 블록의 하위 객체 handle('1F3.12')은 원래 블록 하나로 — 같은 블록을 수백 번 복제하지 않게
+                foreach (var h in targets.Select(Extractor.BaseHandle).Distinct())
                 {
-                    short color = r.Status == "fail" ? Red : Orange;
-                    // 펼친 블록의 하위 객체 handle('1F3.12')은 원래 블록 하나로 — 같은 블록을 수백 번 복제하지 않게
-                    foreach (var h in r.Targets.Select(Extractor.BaseHandle).Distinct())
-                    {
-                        var id = Extractor.HandleToId(db, h);
-                        if (id.IsNull || id.IsErased) continue;
-                        if (tr.GetObject(id, OpenMode.ForRead) is not Entity ent) continue;
-                        var clone = (Entity)ent.Clone();
-                        clone.ColorIndex = color;
-                        Add(clone);
-                    }
+                    var id = Extractor.HandleToId(db, h);
+                    if (id.IsNull || id.IsErased) continue;
+                    if (tr.GetObject(id, OpenMode.ForRead) is not Entity ent) continue;
+                    var clone = (Entity)ent.Clone();
+                    clone.Color = col;
+                    if (clone is Polyline pl0) pl0.ConstantWidth = 1.5 * UnitsPerPixel(doc);
+                    Add(clone);
                 }
-                if (scale <= 0) continue;
-                foreach (var ov in r.Overlays) Draw(ov, scale, style, db);
+                if (scale > 0)
+                    foreach (var ov in r.Overlays) Draw(ov, scale, style, db);
+                tr.Commit();
             }
-            tr.Commit();
+        }
+
+        /// 검사 실패·문서 닫힘: 이전 판정으로 근거를 그리지 않게 잊는다.
+        public static void Forget()
+        {
+            _resp = null;
+            _respDoc = null;
+            ClearEvidence();
+        }
+
+        public static void ClearEvidence()
+        {
+            _evidence = null;
+            Clear();
         }
 
         private static Point3d P(double[] p, double scale) => new(p[0] / scale, p[1] / scale, 0);
@@ -96,8 +129,6 @@ namespace GaRuleCheck
         private static void Draw(OverlayDto ov, double scale, ObjectId style, Database db)
         {
             if (ov.Points.Count == 0) return;
-            short statusColor = ov.Status switch { "fail" => Red, "pass" => Green, _ => Gray };
-            bool passTrue = ov.Status == "pass";   // 충족은 ACI 초록 대신 파랑 트루컬러
             switch (ov.Kind)
             {
                 case "label":
@@ -111,8 +142,7 @@ namespace GaRuleCheck
                     t.TextHeight = (ov.Height ?? 1.0) * Scale / scale;
                     t.Attachment = AttachmentPoint.BottomLeft;
                     t.Contents = "{\\fMalgun Gothic|b0|i0|c129|p34;" + Esc(ov.Text) + "}";
-                    if (ov.Status == "pass") t.Color = PassColor;
-                    else t.ColorIndex = ov.Status == "fail" ? Red : Yellow;
+                    t.Color = ov.Status switch { "pass" => PassColor, "fail" => FailColor, _ => Ac(Theme.Muted) };
                     // 선 위에 겹쳐도 읽히도록 배경 가림
                     t.BackgroundFill = true;
                     t.UseBackgroundColor = true;
@@ -123,22 +153,23 @@ namespace GaRuleCheck
                 case "ref_point":
                     var c = new Circle(P(ov.Points[0], scale), Vector3d.ZAxis, 0.6 * Scale / scale)
                     {
-                        ColorIndex = ov.Kind == "eye" ? Cyan : Yellow,
+                        Color = Ac(ov.Kind == "eye" ? Theme.Text : Theme.Muted),
                     };
                     Add(c);
                     return;
             }
             if (ov.Points.Count < 2) return;
-            short color = ov.Kind switch
+            // 근거 선은 판정 색, 수선·허용 한계·허용 구간은 흑백 잉크(가이드)
+            var color = ov.Kind switch
             {
-                "waterline" => Cyan,
-                "limit_marker" or "band_line" or "band" => Yellow,
-                _ => statusColor,
+                "waterline" => Ac(Theme.Faint),
+                "limit_marker" or "band_line" or "band" => Ac(Theme.Muted),
+                _ => ov.Status switch { "fail" => FailColor, "pass" => PassColor, _ => UnknownColor },
             };
             var pl = new Polyline();
             for (int i = 0; i < ov.Points.Count; i++)
                 pl.AddVertexAt(i, new Point2d(ov.Points[i][0] / scale, ov.Points[i][1] / scale), 0, 0, 0);
-            if (passTrue && color == Green) pl.Color = PassColor; else pl.ColorIndex = color;
+            pl.Color = color;
             if (ov.Kind is "sightline" or "band")
             {
                 double w = (ov.Kind == "band" ? 0.5 : 0.15) * Scale / scale;   // 도면에서 잘 보이게 폭을 준다
@@ -168,7 +199,7 @@ namespace GaRuleCheck
                     if (id.IsNull || id.IsErased) continue;
                     if (tr.GetObject(id, OpenMode.ForRead) is not Entity ent) continue;
                     var clone = (Entity)ent.Clone();
-                    clone.ColorIndex = 6;   // 자홍
+                    clone.Color = Ac(Theme.Text);   // 흰 잉크(판정 색과 겹치지 않게)
                     tm.AddTransient(clone, TransientDrawingMode.Highlight, 129, new IntegerCollection());
                     HoverItems.Add(clone);
                 }

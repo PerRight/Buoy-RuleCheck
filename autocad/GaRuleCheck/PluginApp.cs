@@ -38,6 +38,7 @@ namespace GaRuleCheck
             try { RibbonUi.Install(); } catch { /* 리본 없는 환경(콘솔 등) */ }
             StatusTray.Install();
             StatusTray.Clicked += Commands.OpenFromTray;
+            Commands.HookBuoys();
             // 떠 있는 로고는 메인 창이 준비된 뒤(첫 Idle)에 만든다
             AcApp.Idle += InitFloatingOnce;
         }
@@ -50,6 +51,7 @@ namespace GaRuleCheck
 
         public void Terminate()
         {
+            BuoyLayer.Clear();
             Commands.DetachAll();
             StatusTray.Remove();
             FloatingUi.Shutdown();
@@ -227,14 +229,31 @@ namespace GaRuleCheck
 
         // ── 표시·기록 ───────────────────────────────────────────────────────
 
+        /// 부표 표시 켜기/끄기(판정·검사는 계속, 도면은 그대로)
         [CommandMethod("GARCTOGGLE")]
         public void Toggle()
         {
             var doc = Active;
-            Overlay.Enabled = !Overlay.Enabled;
-            ForPanels(p => p.SetOverlayState(Overlay.Enabled));
-            Redraw(doc);
-            doc?.Editor.WriteMessage($"\n도면 표시 {(Overlay.Enabled ? "켜짐" : "꺼짐")}\n");
+            bool on = !BuoyLayer.Visible;
+            BuoyLayer.SetVisible(on);
+            ForPanels(p => p.SetOverlayState(on));
+            doc?.Editor.WriteMessage($"\n{Product.Tag} 부표 표시 {(on ? "켜짐" : "꺼짐")}\n");
+        }
+
+        /// 부표 ↔ 도면 근거·팔레트 연결(플러그인 로드 때 한 번)
+        internal static void HookBuoys()
+        {
+            BuoyLayer.EvidenceHover += (rule, el, on) =>
+            {
+                var d = Active;
+                if (d == null) return;
+                try { if (on) Overlay.ShowEvidence(d, rule, el); else Overlay.ClearEvidence(); } catch { }
+            };
+            BuoyLayer.EvidenceRequested += (rule, el) =>
+            {
+                EnsurePalette();
+                ForPanels(p => p.FocusRule(rule));
+            };
         }
 
         [CommandMethod("GARCLARGE")]
@@ -413,7 +432,8 @@ namespace GaRuleCheck
             if (!Watchers.TryGetValue(doc, out var w)) return;
             w.Dispose();
             Watchers.Remove(doc);
-            Overlay.Clear();
+            Overlay.Forget();
+            BuoyLayer.Clear();
             try { EngineClient.Reset(Extractor.DocId(doc)); } catch { }
         }
 
@@ -434,6 +454,14 @@ namespace GaRuleCheck
         internal static void OnActivated(Document? doc)
         {
             if (doc == null) return;
+            // 부표·근거는 지금 도면의 마지막 판정으로(팔레트가 닫혀 있어도)
+            BuoyLayer.Clear();
+            if (Watchers.TryGetValue(doc, out var wb) && wb.Last != null)
+            {
+                try { using (doc.LockDocument()) Overlay.Show(doc, wb.Last); } catch { }
+                BuoyLayer.Update(doc, wb.Last);
+            }
+            else Overlay.Forget();
             // 로고 배지는 패널이 접혀 있어도 보이므로, 패널 표시 여부와 상관없이 그 도면의 상태로 바꾼다
             if (Watchers.TryGetValue(doc, out var w0) && w0.Last != null)
             {

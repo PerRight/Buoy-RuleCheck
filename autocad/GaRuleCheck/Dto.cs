@@ -134,6 +134,32 @@ namespace GaRuleCheck
         public string? Diff { get; set; }
         public string? Guide { get; set; }
         public double? Margin { get; set; }
+        /// 표시용(엔진 0.4.1+): 고칠 자리 [x, z] m — 부표를 이 점에 띄운다. 없으면 부표 없음
+        public double[]? Anchor { get; set; }
+        /// 표시용: 카드 숫자(현재·기준·차이·제목·조건)
+        public FixDto? Fix { get; set; }
+    }
+
+    /// 부표 카드 숫자. 판정이 아니라 엔진이 계산한 값을 그대로 보여 주기만 한다.
+    public sealed class FixDto
+    {
+        /// "z"(상단 높이) · "d"(기준점에서 거리)
+        public string Quantity { get; set; } = "";
+        /// 수 또는 [최소, 최대]
+        public JsonElement? Current { get; set; }
+        /// 수(≤) 또는 [하한, 상한](range)
+        public JsonElement? Limit { get; set; }
+        /// "≤" · "≥" · "range"
+        public string Op { get; set; } = "";
+        /// +면 초과(고칠 양), −면 여유
+        public double? Delta { get; set; }
+        public string Unit { get; set; } = "m";
+        /// 카드 제목(예: 상단을 1.55 m 낮추세요)
+        public string ActionKo { get; set; } = "";
+        /// 조건 줄(예: z ≤ 22.45 m 이면 기준 충족)
+        public string ConditionKo { get; set; } = "";
+        /// 그 수치를 정한 흘수 조건 이름
+        public string? Condition { get; set; }
     }
 
     public sealed class DiffDto
