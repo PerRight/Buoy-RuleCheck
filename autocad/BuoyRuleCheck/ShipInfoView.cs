@@ -118,7 +118,7 @@ namespace BuoyRuleCheck
             flow.Controls.Add(_msg);
 
             var actions = new FlowLayoutPanel { AutoSize = true, BackColor = Theme.Bg, Margin = new Padding(0, 8, 0, 0) };
-            var save = Theme.FlatButton("저장 후 검사", Theme.Pass);
+            var save = Theme.PrimaryButton("저장 후 검사");
             save.Click += (_, _) => Save();
             var reload = Theme.FlatButton("도면에서 다시 읽기");
             reload.Click += (_, _) => ReloadRequested?.Invoke();
@@ -190,11 +190,11 @@ namespace BuoyRuleCheck
 
             if (errors.Count > 0)
             {
-                _msg.ForeColor = Theme.Fail;
+                _msg.ForeColor = Theme.Warn;   // 입력을 다시 확인할 것 — 판정 빨강은 쓰지 않는다
                 _msg.Text = "저장 안 함: " + string.Join(" / ", errors.Distinct());
                 return;
             }
-            _msg.ForeColor = Theme.Pass;
+            _msg.ForeColor = Theme.Muted;  // 저장 알림은 판정이 아니므로 잉크로
             _msg.Text = $"저장함 {DateTime.Now:HH:mm:ss} — 다시 검사합니다.";
             SaveRequested?.Invoke(values);
         }

@@ -5,10 +5,10 @@
 // 흑백 잉크(가이드)만 — 노랑·하늘색 같은 다른 색은 쓰지 않는다.
 //
 // 엔진 overlays(m 좌표) 종류
-//   sightline/tick : 시선·허용 높이 (pass 파랑 / fail 빨강) — 색 규칙: 충족 파랑·미충족 빨강·확인 필요 주황
+//   sightline/tick : 시선·허용 높이 (문제없음 파랑 / 수정 소요 빨강 / 확인 필요 주황)
 //   (버전 비교 표시는 별도 목록: 추가 초록·삭제 빨강 파선·변경 노랑, ShowDiff)
-//   waterline      : 최악 조건 수선 (하늘색)
-//   limit_marker, band_line, band : 허용 한계·허용 구간 (노랑)
+//   waterline      : 최악 조건 수선 (흐린 잉크 Faint)
+//   limit_marker, band_line, band : 허용 한계·허용 구간 (보조 잉크 Muted)
 //   eye, ref_point : 점 표식 (원)
 //   label          : 글자 (height[m])
 using System;
@@ -178,7 +178,7 @@ namespace BuoyRuleCheck
             Add(pl);
         }
 
-        /// 팔레트 카드에 마우스를 올린 동안 대상 객체를 자홍색으로 강조한다.
+        /// 팔레트 카드에 마우스를 올린 동안 대상 객체를 흰 잉크로 강조한다.
         public static void Hover(Document doc, IEnumerable<string> handles, bool on)
         {
             var tm = TransientManager.CurrentTransientManager;
