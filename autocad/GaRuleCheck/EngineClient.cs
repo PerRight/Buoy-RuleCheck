@@ -1,4 +1,4 @@
-// 로컬 엔진 서버(python -m garc serve) 호출. 연결 실패는 예외로 올려 '검토 불가'로 표시한다(초록 금지).
+// 로컬 엔진 서버(python -m brc serve) 호출. 연결 실패는 예외로 올려 '검토 불가'로 표시한다(초록 금지).
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -18,13 +18,20 @@ namespace GaRuleCheck
     {
         private const string DefaultUrl = "http://127.0.0.1:8765";
 
-        /// 엔진 주소. GARC_ENGINE_URL은 루프백(127.0.0.1·localhost·::1) http 주소일 때만 쓴다 —
+        /// 환경변수: 새 이름 BRC_*, 없으면 옛 이름 GARC_*(2026-10-26 이전 설치)
+        private static string? Env(string name)
+        {
+            var v = Environment.GetEnvironmentVariable("BRC_" + name);
+            return string.IsNullOrEmpty(v) ? Environment.GetEnvironmentVariable("GARC_" + name) : v;
+        }
+
+        /// 엔진 주소. BRC_ENGINE_URL(옛 GARC_ENGINE_URL)은 루프백(127.0.0.1·localhost·::1) http 주소일 때만 쓴다 —
         /// 도면 데이터가 PC 밖 서버로 나가지 않게 하는 원칙(엔진은 127.0.0.1 전용)을 설정으로 깨지 못하게 한다.
         public static readonly string BaseUrl = ResolveBaseUrl();
 
         private static string ResolveBaseUrl()
         {
-            var env = Environment.GetEnvironmentVariable("GARC_ENGINE_URL");
+            var env = Env("ENGINE_URL");
             if (string.IsNullOrWhiteSpace(env)) return DefaultUrl;
             // Uri.IsLoopback은 127.x 전체 등 범위가 넓어서 이름을 직접 고정한다
             if (Uri.TryCreate(env.Trim(), UriKind.Absolute, out var u) && u.Scheme == Uri.UriSchemeHttp
@@ -116,12 +123,12 @@ namespace GaRuleCheck
             {
                 TryStartEngine();
                 throw new EngineException(
-                    $"엔진 서버({BaseUrl})에 연결할 수 없습니다. 'python -m garc serve'를 실행하세요.", ex);
+                    $"엔진 서버({BaseUrl})에 연결할 수 없습니다. 'python -m brc serve'를 실행하세요.", ex);
             }
         }
 
-        /// 엔진이 꺼져 있으면 GARC_ENGINE_DIR(engine 폴더)에서 자동 실행하고 최대 ~5초 기다린다.
-        /// install.ps1이 GARC_ENGINE_DIR·GARC_PYTHON 환경변수를 설정한다.
+        /// 엔진이 꺼져 있으면 BRC_ENGINE_DIR(engine 폴더, 옛 GARC_ENGINE_DIR)에서 자동 실행하고 최대 ~5초 기다린다.
+        /// install.ps1이 BRC_ENGINE_DIR·BRC_PYTHON 환경변수를 설정한다.
         public static bool EnsureRunning()
         {
             if (IsUp()) return true;
@@ -144,13 +151,15 @@ namespace GaRuleCheck
         {
             if (_startTried) return;
             _startTried = true;
-            var dir = Environment.GetEnvironmentVariable("GARC_ENGINE_DIR");
+            var dir = Env("ENGINE_DIR");
             if (string.IsNullOrEmpty(dir)) return;
-            var python = Environment.GetEnvironmentVariable("GARC_PYTHON");
+            var python = Env("PYTHON");
             if (string.IsNullOrEmpty(python)) python = "python";
+            // 새 패키지 brc가 있으면 그것을, 옛 엔진 폴더면 garc(같은 서버)
+            string pkg = System.IO.Directory.Exists(System.IO.Path.Combine(dir, "brc")) ? "brc" : "garc";
             try
             {
-                Process.Start(new ProcessStartInfo(python, "-m garc serve")
+                Process.Start(new ProcessStartInfo(python, $"-m {pkg} serve")
                 {
                     WorkingDirectory = dir,
                     UseShellExecute = true,

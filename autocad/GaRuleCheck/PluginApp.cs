@@ -1,15 +1,16 @@
 // 진입점과 명령. 리본 'Buoy-RuleCheck' 탭의 버튼도 아래 명령을 실행한다. 명령줄 문구는 '[BRC] …'(명세 6-4).
-//   GARC        검사 시작(팔레트 + 현재 도면 감시)        GARCCHECK  지금 다시 검사
-//   GARCOFF     감시 중지 + 표시 지우기                    GARCHEALTH 엔진 연결 확인
-//   GARCSETUP   GA_ 레이어·라벨 스타일·특성 틀 만들기      GARCSHIP   선박 정보 탭 열기
-//   GARCEYE     조종위치(GA_EYE 점) 지정                   GARCPICK   AP/FP/기선을 도면에서 지정
-//   GARCTOGGLE  부표 표시 켜기/끄기                        GARCREPORT HTML 검토 리포트 저장·열기
-//   GARCMOTION  동작 줄이기 켜기/끄기(회전·물결 멈춤, 색은 그대로)
-//   GARCLARGE   라벨 확대(라벨 글자·선 두께·표식 크기 2.5배 — 판정·도면은 그대로)
-//   GARCVERSION 지금 상태를 버전으로 기록(저장할 때도 자동으로 묻는다)   GARCCOMPARE 버전 비교 창
-//   GARCPANEL   떠 있는 로고의 수정 소요 목록 열기/닫기(Ctrl+.)         GARCLOGO   로고 보이기/숨기기
-//   GARCLINK    실도면 연결 마법사(치수표·축척 → 측면도 영역 → AP/FP/기선 → 역할 지정 → 조종위치)   [LinkWizard.cs]
-//   GARCROLE    고른 객체에 역할(선체·장애물·충돌격벽·구상선수·조종위치) 붙이기/해제   GARCROLESHOW 판정에 쓰인 객체 역할별 색 표시
+//   BRC         검사 시작(팔레트 + 현재 도면 감시)        BRCCHECK  지금 다시 검사
+//   BRCOFF     감시 중지 + 표시 지우기                    BRCHEALTH 엔진 연결 확인
+//   BRCSETUP   GA_ 레이어·라벨 스타일·특성 틀 만들기      BRCSHIP   선박 정보 탭 열기
+//   BRCEYE     조종위치(GA_EYE 점) 지정                   BRCPICK   AP/FP/기선을 도면에서 지정
+//   BRCTOGGLE  부표 표시 켜기/끄기                        BRCREPORT HTML 검토 리포트 저장·열기
+//   BRCMOTION  동작 줄이기 켜기/끄기(회전·물결 멈춤, 색은 그대로)
+//   BRCLARGE   라벨 확대(라벨 글자·선 두께·표식 크기 2.5배 — 판정·도면은 그대로)
+//   BRCVERSION 지금 상태를 버전으로 기록(저장할 때도 자동으로 묻는다)   BRCCOMPARE 버전 비교 창
+//   BRCPANEL   떠 있는 로고의 수정 소요 목록 열기/닫기(Ctrl+.)         BRCLOGO   로고 보이기/숨기기
+//   BRCLINK    실도면 연결 마법사(치수표·축척 → 측면도 영역 → AP/FP/기선 → 역할 지정 → 조종위치)   [LinkWizard.cs]
+//   BRCROLE    고른 객체에 역할(선체·장애물·충돌격벽·구상선수·조종위치) 붙이기/해제   BRCROLESHOW 판정에 쓰인 객체 역할별 색 표시
+//   옛 이름 GARC*도 한동안 별칭으로 된다(LegacyCommands.cs).
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -33,7 +34,7 @@ namespace GaRuleCheck
         public void Initialize()
         {
             AcApp.DocumentManager.MdiActiveDocument?.Editor.WriteMessage(
-                $"\n{Product.Tag} {Product.Name} 로드됨 — 리본 '{Product.Name}' 탭 또는 GARC 명령으로 시작하세요.\n");
+                $"\n{Product.Tag} {Product.Name} 로드됨 — 리본 '{Product.Name}' 탭 또는 BRC 명령으로 시작하세요.\n");
             AcApp.DocumentManager.DocumentToBeDestroyed += (_, e) => Commands.Forget(e.Document);
             AcApp.DocumentManager.DocumentActivated += (_, e) => Commands.OnActivated(e.Document);
             try { RibbonUi.Install(); } catch { /* 리본 없는 환경(콘솔 등) */ }
@@ -82,7 +83,7 @@ namespace GaRuleCheck
 
         // ── 검사 ────────────────────────────────────────────────────────────
 
-        [CommandMethod("GARC")]
+        [CommandMethod("BRC")]
         public void Start()
         {
             var doc = Active;
@@ -90,9 +91,9 @@ namespace GaRuleCheck
             EnsurePalette();
             DrawingProps.EnsureSetup(doc, props: false);   // 라벨 스타일·레이어가 없으면 만든다
             if (!EngineClient.EnsureRunning())
-                doc.Editor.WriteMessage($"\n{Product.Tag} 검사 엔진을 켤 수 없어요 — engine 폴더에서 'python -m garc serve'를 실행하세요.\n");
+                doc.Editor.WriteMessage($"\n{Product.Tag} 검사 엔진을 켤 수 없어요 — engine 폴더에서 'python -m brc serve'를 실행하세요.\n");
             Attach(doc).MarkDirty();
-            _panel!.Ship.Load(DrawingProps.Read(doc.Database));
+            _panel!.Ship.Load(DrawingProps.ReadCanonical(doc.Database));
             if (!DrawingProps.IsConfigured(doc.Database))
             {
                 _panel.ShowTab("ship");
@@ -101,7 +102,7 @@ namespace GaRuleCheck
             doc.Editor.WriteMessage($"\n{Product.Tag} 감시 시작 — 도면이 바뀌면 바뀐 입력에 걸린 규칙만 다시 검사합니다.\n");
         }
 
-        [CommandMethod("GARCCHECK")]
+        [CommandMethod("BRCCHECK")]
         public void CheckNow()
         {
             var doc = Active;
@@ -111,7 +112,7 @@ namespace GaRuleCheck
             Attach(doc).RunCheck();
         }
 
-        [CommandMethod("GARCOFF")]
+        [CommandMethod("BRCOFF")]
         public void Stop()
         {
             var doc = Active;
@@ -120,7 +121,7 @@ namespace GaRuleCheck
             FloatingUi.SetState("idle");   // 로고 칩에 이전 개수가 남지 않게
         }
 
-        [CommandMethod("GARCHEALTH")]
+        [CommandMethod("BRCHEALTH")]
         public void Health()
         {
             var ed = Active?.Editor;
@@ -130,30 +131,30 @@ namespace GaRuleCheck
 
         // ── 입력 ────────────────────────────────────────────────────────────
 
-        [CommandMethod("GARCSETUP")]
+        [CommandMethod("BRCSETUP")]
         public void Setup()
         {
             var doc = Active;
             if (doc == null) return;
             DrawingProps.EnsureSetup(doc, props: true);
-            var props = DrawingProps.Read(doc.Database);
+            var props = DrawingProps.ReadCanonical(doc.Database);
             ForPanels(p => p.Ship.Load(props));
             doc.Editor.WriteMessage(
-                $"\n{Product.Tag} GA_ 레이어 5개, 라벨 문자 스타일(GARC_LABEL), GARC_* 특성 틀을 만들었습니다." +
+                $"\n{Product.Tag} GA_ 레이어 5개, 라벨 문자 스타일(BRC_LABEL), BRC_* 특성 틀을 만들었습니다." +
                 "\n좌표 규약: 측면도, X = 선수 방향 +, Y = 위 +. 선박 정보는 팔레트 '선박 정보' 탭에서 입력.\n");
         }
 
-        [CommandMethod("GARCSHIP")]
+        [CommandMethod("BRCSHIP")]
         public void Ship()
         {
             var doc = Active;
             if (doc == null) return;
             EnsurePalette();
-            _panel!.Ship.Load(DrawingProps.Read(doc.Database));
+            _panel!.Ship.Load(DrawingProps.ReadCanonical(doc.Database));
             _panel.ShowTab("ship");
         }
 
-        [CommandMethod("GARCEYE")]
+        [CommandMethod("BRCEYE")]
         public void Eye()
         {
             var doc = Active;
@@ -195,7 +196,7 @@ namespace GaRuleCheck
             ed.WriteMessage($"\n{Product.Tag} 조종위치를 지정했습니다.\n");
         }
 
-        [CommandMethod("GARCPICK")]
+        [CommandMethod("BRCPICK")]
         public void Pick()
         {
             var doc = Active;
@@ -208,7 +209,7 @@ namespace GaRuleCheck
             double? scale = Watchers.TryGetValue(doc, out var w) ? w.Last?.UnitsScale : null;
             if (scale is not double s || s <= 0)
             {
-                ed.WriteMessage($"\n{Product.Tag} 도면 단위를 아직 모릅니다. 먼저 GARC로 한 번 검사하세요(단위 해석은 엔진이 합니다).\n");
+                ed.WriteMessage($"\n{Product.Tag} 도면 단위를 아직 모릅니다. 먼저 BRC로 한 번 검사하세요(단위 해석은 엔진이 합니다).\n");
                 return;
             }
             var label = k.StringResult switch { "AP" => "AP(선미수선)", "FP" => "FP(선수수선)", _ => "기선(baseline)" };
@@ -217,9 +218,9 @@ namespace GaRuleCheck
             var pt = res.Value.TransformBy(ed.CurrentUserCoordinateSystem);
             var (key, value) = k.StringResult switch
             {
-                "AP" => ("GARC_X_AP", pt.X * s),
-                "FP" => ("GARC_X_FP", pt.X * s),
-                _ => ("GARC_Z_BASE", pt.Y * s),
+                "AP" => ("BRC_X_AP", pt.X * s),
+                "FP" => ("BRC_X_FP", pt.X * s),
+                _ => ("BRC_Z_BASE", pt.Y * s),
             };
             DrawingProps.Write(doc.Database, new Dictionary<string, string> { [key] = DrawingProps.M(value) });
             ForPanels(p => p.Ship.SetField(key, DrawingProps.M(value)));
@@ -230,7 +231,7 @@ namespace GaRuleCheck
         // ── 표시·기록 ───────────────────────────────────────────────────────
 
         /// 부표 표시 켜기/끄기(판정·검사는 계속, 도면은 그대로)
-        [CommandMethod("GARCTOGGLE")]
+        [CommandMethod("BRCTOGGLE")]
         public void Toggle()
         {
             var doc = Active;
@@ -257,7 +258,7 @@ namespace GaRuleCheck
         }
 
         /// 동작 줄이기(명세 5절 '공통 움직임'): 오브·부표·로고의 회전·물결·크기 변화를 멈춘다. 상태 색은 그대로.
-        [CommandMethod("GARCMOTION")]
+        [CommandMethod("BRCMOTION")]
         public void ToggleMotion()
         {
             UiState.SetReduceMotion(!UiState.Current.ReduceMotion);
@@ -265,7 +266,7 @@ namespace GaRuleCheck
             Active?.Editor.WriteMessage($"\n{Product.Tag} 동작 줄이기 {(on ? "켜짐 — 회전·물결을 멈추고 상태 색은 그대로" : Motion.Reduced ? "꺼짐(Windows '애니메이션 표시'가 꺼져 있어 계속 멈춰 있음)" : "꺼짐")}\n");
         }
 
-        [CommandMethod("GARCLARGE")]
+        [CommandMethod("BRCLARGE")]
         public void LargeLabels()
         {
             var doc = Active;
@@ -275,14 +276,14 @@ namespace GaRuleCheck
             doc?.Editor.WriteMessage($"\n{Product.Tag} 라벨 확대 {(Overlay.Scale > 1.0 ? "켜짐 (라벨 글자·선 두께·표식 크기 2.5배, 판정은 그대로)" : "꺼짐")}\n");
         }
 
-        [CommandMethod("GARCREPORT")]
+        [CommandMethod("BRCREPORT")]
         public void Report()
         {
             var doc = Active;
             if (doc == null) return;
             if (!Watchers.TryGetValue(doc, out var w) || w.Last == null)
             {
-                doc.Editor.WriteMessage($"\n{Product.Tag} 먼저 GARC로 검사하세요.\n");
+                doc.Editor.WriteMessage($"\n{Product.Tag} 먼저 BRC로 검사하세요.\n");
                 return;
             }
             try
@@ -304,7 +305,7 @@ namespace GaRuleCheck
 
         // ── 버전 기록·비교 (기능 1) ─────────────────────────────────────────
 
-        [CommandMethod("GARCVERSION")]
+        [CommandMethod("BRCVERSION")]
         public void Version()
         {
             var doc = Active;
@@ -369,7 +370,7 @@ namespace GaRuleCheck
             }
         }
 
-        [CommandMethod("GARCCOMPARE")]
+        [CommandMethod("BRCCOMPARE")]
         public void Compare()
         {
             var doc = Active;
@@ -377,7 +378,7 @@ namespace GaRuleCheck
             if (CompareForms.TryGetValue(doc, out var open) && !open.IsDisposed) { open.Activate(); return; }
             if (!EngineClient.EnsureRunning())
             {
-                doc.Editor.WriteMessage($"\n{Product.Tag} 엔진 서버에 연결할 수 없어 비교할 수 없습니다. 'python -m garc serve'를 실행하세요.\n");
+                doc.Editor.WriteMessage($"\n{Product.Tag} 엔진 서버에 연결할 수 없어 비교할 수 없습니다. 'python -m brc serve'를 실행하세요.\n");
                 return;
             }
             // 비교 창은 연 도면(doc)에 묶인다 — 다른 도면 탭이 활성일 때는 그 도면에 표시·이동하지 않는다
@@ -393,8 +394,8 @@ namespace GaRuleCheck
                 {
                     try
                     {
-                        var p = DrawingProps.Read(doc.Database);
-                        if (p.TryGetValue("GARC_DWG_NO", out var v) && !string.IsNullOrWhiteSpace(v)) return v.Trim();
+                        var p = DrawingProps.ReadCanonical(doc.Database);
+                        if (p.TryGetValue("BRC_DWG_NO", out var v) && !string.IsNullOrWhiteSpace(v)) return v.Trim();
                     }
                     catch { /* 특성 읽기 실패 → 파일 이름 */ }
                     return Path.GetFileNameWithoutExtension(doc.Name);
@@ -420,10 +421,10 @@ namespace GaRuleCheck
 
         // ── 떠 있는 로고 패널 (기능 2) ───────────────────────────────────────
 
-        [CommandMethod("GARCPANEL")]
+        [CommandMethod("BRCPANEL")]
         public void TogglePanel() => FloatingUi.Toggle();
 
-        [CommandMethod("GARCLOGO")]
+        [CommandMethod("BRCLOGO")]
         public void ToggleLogo() => FloatingUi.ToggleLogo();
 
         // ── 내부 ────────────────────────────────────────────────────────────
@@ -512,7 +513,7 @@ namespace GaRuleCheck
             }
             Overlay.Clear();
             Overlay.ClearDiff();
-            var props = DrawingProps.Read(doc.Database);
+            var props = DrawingProps.ReadCanonical(doc.Database);
             ForPanels(p => { p.Ship.Load(props); p.ClearHistory(); });
             if (Watchers.TryGetValue(doc, out var w) && w.Last != null)
             {
@@ -550,10 +551,10 @@ namespace GaRuleCheck
         {
             var panel = new ResultPanel();
             panel.RecheckRequested += () => { var d = Active; if (d != null) { EngineClient.EnsureRunning(); Attach(d).RunCheck(); } };
-            panel.StartRequested += () => Send("_GARCSETUP _GARC ");
-            panel.LinkRequested += () => Send("_GARCLINK ");
-            panel.ToggleOverlayRequested += () => Send("_GARCTOGGLE ");
-            panel.ReportRequested += () => Send("_GARCREPORT ");
+            panel.StartRequested += () => Send("_BRCSETUP _BRC ");
+            panel.LinkRequested += () => Send("_BRCLINK ");
+            panel.ToggleOverlayRequested += () => Send("_BRCTOGGLE ");
+            panel.ReportRequested += () => Send("_BRCREPORT ");
             // 항목 카드 hover → 도면에 근거(시선·허용선·대상)와 그 항목 부표 키우기, [부표로 이동] → 고칠 자리 + 카드 고정
             panel.RuleHoverRequested += (rr, el, on) =>
             {
@@ -570,7 +571,7 @@ namespace GaRuleCheck
                 if (!BuoyLayer.OpenFromList(d, sc, rr, el))
                     FocusTargets(el != null ? new List<string> { el.ElementId } : rr.Targets);
             };
-            panel.LargeLabelsRequested += () => Send("_GARCLARGE ");
+            panel.LargeLabelsRequested += () => Send("_BRCLARGE ");
             // 점검 항목 hover → 도면에서 그 객체를 상태 색으로 강조, 클릭 → 그 객체로 확대·이동
             panel.ElementHoverRequested += (el, on) =>
             {
@@ -580,10 +581,10 @@ namespace GaRuleCheck
                 Overlay.ElementHover(d, on ? shape?.pts : null, shape?.closed ?? false, el.Status, shape?.bulges);
             };
             panel.ElementFocusRequested += el => FocusTargets(new List<string> { el.ElementId });
-            panel.Ship.PickRequested += what => Send($"_GARCPICK {what} ");
-            panel.Ship.EyeRequested += () => Send("_GARCEYE ");
-            panel.Ship.SetupRequested += () => Send("_GARCSETUP ");
-            panel.Ship.ReloadRequested += () => { var d = Active; if (d != null) panel.Ship.Load(DrawingProps.Read(d.Database)); };
+            panel.Ship.PickRequested += what => Send($"_BRCPICK {what} ");
+            panel.Ship.EyeRequested += () => Send("_BRCEYE ");
+            panel.Ship.SetupRequested += () => Send("_BRCSETUP ");
+            panel.Ship.ReloadRequested += () => { var d = Active; if (d != null) panel.Ship.Load(DrawingProps.ReadCanonical(d.Database)); };
             panel.Ship.SaveRequested += values =>
             {
                 var d = Active;
@@ -596,7 +597,7 @@ namespace GaRuleCheck
             var doc = Active;
             if (doc != null)
             {
-                panel.Ship.Load(DrawingProps.Read(doc.Database));
+                panel.Ship.Load(DrawingProps.ReadCanonical(doc.Database));
                 if (Watchers.TryGetValue(doc, out var w) && w.Last != null) panel.ShowResult(w.Last, DocName(doc), record: false);
             }
             panel.SetOverlayState(Overlay.Enabled);
@@ -645,7 +646,7 @@ namespace GaRuleCheck
         internal static void OpenFromTray()
         {
             if (_palette != null) { _palette.Visible = true; return; }
-            Send("_GARC ");
+            Send("_BRC ");
         }
 
         /// 모달리스 팔레트에서 명령을 실행할 때는 명령 문자열로 보낸다(문서 잠금·Undo가 명령 단위로 정리됨).

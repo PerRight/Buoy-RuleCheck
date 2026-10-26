@@ -1,4 +1,4 @@
-// 버전 비교 창(GARCCOMPARE, 명세 6-6, 디자인 보드 07): 이전/이후 버전 고르기 · 나란히 · 겹쳐 · 차이만 · 도면에 표시 · 생산팀 전달.
+// 버전 비교 창(BRCCOMPARE, 명세 6-6, 디자인 보드 07): 이전/이후 버전 고르기 · 나란히 · 겹쳐 · 차이만 · 도면에 표시 · 생산팀 전달.
 //   요약 줄: 수정 소요 3 → 0 · 변경 4건 · 전체 ● 수정 소요 → ● 문제없음 · 확인 필요 0
 //   그림: 바뀌지 않은 형상 회색, 추가 초록 빗금 ○ · 삭제 빨강 파선 □ · 변경 노랑(이전 점선 · 이후 실선) ◇, 번호 표식
 //   변경 내역: 번호 · 제목 · 해결/기준 충족 · 수치 변화(z 24.00 → 21.40 m) · 덧붙임. 고른 칸 ↔ 그림의 점선 틀
@@ -27,7 +27,7 @@ namespace GaRuleCheck
         /// 저장 전 상태를 포함한 지금 도면
         public Func<RawDrawing> ExtractLive = () => new RawDrawing();
         public Func<RawDrawing, RawDrawing, string, string, CompareResponse> Compare = (a, b, la, lb) => EngineClient.Compare(a, b, la, lb);
-        /// 도면 번호(특성 GARC_DWG_NO, 없으면 파일 이름)
+        /// 도면 번호(특성 BRC_DWG_NO, 없으면 파일 이름)
         public Func<string> DwgNumber = () => "";
     }
 
@@ -242,7 +242,7 @@ namespace GaRuleCheck
             if (_loading || _a.Selected == null || _b.Selected == null) return;
             if (_index.Versions.Count == 0)
             {
-                _summary.SetMessage("아직 버전 기록이 없어요. 도면을 저장하면(또는 GARCVERSION) 버전이 생깁니다. 지금은 '현재 도면'만 있습니다.", warn: false);
+                _summary.SetMessage("아직 버전 기록이 없어요. 도면을 저장하면(또는 BRCVERSION) 버전이 생깁니다. 지금은 '현재 도면'만 있습니다.", warn: false);
                 return;
             }
             Cursor = Cursors.WaitCursor;

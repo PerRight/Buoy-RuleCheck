@@ -594,7 +594,7 @@ namespace GaRuleCheck
         }
     }
 
-    /// 역할 표시 범례(GARCROLESHOW 동안): 선체·장애물·충돌격벽·구상선수·조종위치 색과 객체 수. 판정 색과 겹치지 않는 색.
+    /// 역할 표시 범례(BRCROLESHOW 동안): 선체·장애물·충돌격벽·구상선수·조종위치 색과 객체 수. 판정 색과 겹치지 않는 색.
     public sealed class RoleLegendCard : Control, IFits
     {
         private readonly Dictionary<string, int> _counts;
@@ -630,7 +630,7 @@ namespace GaRuleCheck
             Ink.Card(g, ClientRectangle, false);
             int w = Width - Pad * 2;
             TextRenderer.DrawText(g, "역할 표시", Theme.Bold, new Point(Pad, Pad), Theme.Text, Ink.Line);
-            const string cmd = "GARCROLESHOW";
+            const string cmd = "BRCROLESHOW";
             int cw = Ink.Width(cmd, Ink.Tiny);
             TextRenderer.DrawText(g, cmd, Ink.Tiny, new Point(Width - Pad - cw, Pad + 2), Theme.Faint, Ink.Line);
             int colW = w / 2, y0 = Pad + 28;

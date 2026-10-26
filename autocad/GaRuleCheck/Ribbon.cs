@@ -52,46 +52,46 @@ namespace GaRuleCheck
             tab.Panels.Add(Panel("검토",
                 new[]
                 {
-                    Big("검사 시작", "GARC", new Ico("", Orb: true), "팔레트를 열고 이 도면을 감시합니다. 도면이 바뀌면 바뀐 입력에 걸린 규칙만 다시 검사해 고칠 자리에 부표를 띄웁니다."),
-                    Big("지금 검사", "GARCCHECK", Icons.Recheck, "지금 도면으로 바로 다시 검사합니다."),
-                    Big("감시 중지", "GARCOFF", Icons.Stop, "자동 검사를 멈추고 부표·표시를 지웁니다(도면은 그대로)."),
+                    Big("검사 시작", "BRC", new Ico("", Orb: true), "팔레트를 열고 이 도면을 감시합니다. 도면이 바뀌면 바뀐 입력에 걸린 규칙만 다시 검사해 고칠 자리에 부표를 띄웁니다."),
+                    Big("지금 검사", "BRCCHECK", Icons.Recheck, "지금 도면으로 바로 다시 검사합니다."),
+                    Big("감시 중지", "BRCOFF", Icons.Stop, "자동 검사를 멈추고 부표·표시를 지웁니다(도면은 그대로)."),
                 },
                 new[]
                 {
-                    Big("엔진 확인", "GARCHEALTH", Icons.Pulse, "로컬 검사 엔진(127.0.0.1)이 응답하는지 확인합니다."),
+                    Big("엔진 확인", "BRCHEALTH", Icons.Pulse, "로컬 검사 엔진(127.0.0.1)이 응답하는지 확인합니다."),
                 }));
             tab.Panels.Add(Panel("입력",
                 new[]
                 {
-                    Big("선박 정보", "GARCSHIP", Icons.Ship, "LOA·L·AP·FP·흘수 조건 편집(팔레트 '선박 정보' 탭)"),
-                    Big("조종위치", "GARCEYE", Icons.Eye, "조종위치 점(선교 갑판 높이)을 찍습니다."),
-                    Big("실도면 연결", "GARCLINK", Icons.Link,
+                    Big("선박 정보", "BRCSHIP", Icons.Ship, "LOA·L·AP·FP·흘수 조건 편집(팔레트 '선박 정보' 탭)"),
+                    Big("조종위치", "BRCEYE", Icons.Eye, "조종위치 점(선교 갑판 높이)을 찍습니다."),
+                    Big("실도면 연결", "BRCLINK", Icons.Link,
                         "GA_ 레이어가 없는 실제 도면을 레이어와 객체를 바꾸지 않고 연결: 치수·축척 → 측면도 영역 → AP·FP·기선 → 역할 지정 → 조종위치."),
                 },
                 new[]
                 {
-                    Big("역할 지정", "GARCROLE", Icons.Tag, "고른 객체에 선체·장애물·충돌격벽·구상선수 역할을 붙이거나 해제(레이어는 그대로)"),
-                    Big("역할 보기", "GARCROLESHOW", Icons.Layers, "엔진이 판정에 쓴 객체를 역할별 색으로 잠시 표시(도면은 그대로)"),
-                    Big("초기 설정", "GARCSETUP", Icons.Plus, "GA_ 레이어 5개·라벨 문자 스타일·특성 틀 생성"),
+                    Big("역할 지정", "BRCROLE", Icons.Tag, "고른 객체에 선체·장애물·충돌격벽·구상선수 역할을 붙이거나 해제(레이어는 그대로)"),
+                    Big("역할 보기", "BRCROLESHOW", Icons.Layers, "엔진이 판정에 쓴 객체를 역할별 색으로 잠시 표시(도면은 그대로)"),
+                    Big("초기 설정", "BRCSETUP", Icons.Plus, "GA_ 레이어 5개·라벨 문자 스타일·특성 틀 생성"),
                 }));
             tab.Panels.Add(Panel("표시 · 기록",
                 new[]
                 {
-                    Big("부표 표시", "GARCTOGGLE", Icons.Buoy, "도면 위 부표 켜기/끄기(검사는 계속, 도면은 그대로)"),
-                    Big("라벨 확대", "GARCLARGE", Icons.Large, "도면 위 라벨 글자·선 두께·표식 크기만 2.5배로(프로젝터·화면 공유용, 판정·도면은 그대로)"),
-                    Big("리포트", "GARCREPORT", Icons.Report, "근거·측면도·이력을 HTML로 저장하고 엽니다."),
+                    Big("부표 표시", "BRCTOGGLE", Icons.Buoy, "도면 위 부표 켜기/끄기(검사는 계속, 도면은 그대로)"),
+                    Big("라벨 확대", "BRCLARGE", Icons.Large, "도면 위 라벨 글자·선 두께·표식 크기만 2.5배로(프로젝터·화면 공유용, 판정·도면은 그대로)"),
+                    Big("리포트", "BRCREPORT", Icons.Report, "근거·측면도·이력을 HTML로 저장하고 엽니다."),
                 },
                 new[]
                 {
-                    Big("로고 목록", "GARCPANEL", Icons.LogoList, "떠 있는 로고의 수정 소요 목록 열기/닫기 (Ctrl+.)"),
-                    Big("로고 보이기", "GARCLOGO", Icons.LogoShow, "떠 있는 로고 보이기/숨기기"),
-                    Big("동작 줄이기", "GARCMOTION", Icons.Motion, "오브·부표의 회전·물결·크기 변화를 멈춥니다(상태 색은 그대로). Windows '애니메이션 표시'를 끄면 자동으로 켜집니다."),
+                    Big("로고 목록", "BRCPANEL", Icons.LogoList, "떠 있는 로고의 수정 소요 목록 열기/닫기 (Ctrl+.)"),
+                    Big("로고 보이기", "BRCLOGO", Icons.LogoShow, "떠 있는 로고 보이기/숨기기"),
+                    Big("동작 줄이기", "BRCMOTION", Icons.Motion, "오브·부표의 회전·물결·크기 변화를 멈춥니다(상태 색은 그대로). Windows '애니메이션 표시'를 끄면 자동으로 켜집니다."),
                 }));
             tab.Panels.Add(Panel("버전",
                 new[]
                 {
-                    Big("버전 기록", "GARCVERSION", Icons.Bookmark, "지금 상태를 버전으로 기록(작성자·사유·관련 규정). 저장할 때도 자동으로 묻습니다."),
-                    Big("버전 비교", "GARCCOMPARE", Icons.Compare, "두 버전 비교: 나란히·겹쳐·차이만, 변경 목록, 생산팀 전달"),
+                    Big("버전 기록", "BRCVERSION", Icons.Bookmark, "지금 상태를 버전으로 기록(작성자·사유·관련 규정). 저장할 때도 자동으로 묻습니다."),
+                    Big("버전 비교", "BRCCOMPARE", Icons.Compare, "두 버전 비교: 나란히·겹쳐·차이만, 변경 목록, 생산팀 전달"),
                 },
                 Array.Empty<RibbonButton>()));
 

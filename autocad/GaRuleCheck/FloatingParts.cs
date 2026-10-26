@@ -308,7 +308,7 @@ namespace GaRuleCheck
                         "'수정 소요만'을 끄면 모두 보여요", c.Warn > 0 ? "warn" : null) { Enabled = false });
             }
             else if (state == "down")
-                _rows.Controls.Add(new ListRowButton("검사 엔진에 연결할 수 없어요", "'python -m garc serve' 실행 후 다시 검사", "down") { Enabled = false });
+                _rows.Controls.Add(new ListRowButton("검사 엔진에 연결할 수 없어요", "'python -m brc serve' 실행 후 다시 검사", "down") { Enabled = false });
             Relayout();
         }
 

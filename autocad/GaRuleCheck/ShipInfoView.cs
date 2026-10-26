@@ -1,4 +1,4 @@
-// '선박 정보' 탭: DWGPROPS 대신 여기서 GARC_* 특성과 흘수 조건을 편집한다.
+// '선박 정보' 탭: DWGPROPS 대신 여기서 BRC_* 특성과 흘수 조건을 편집한다.
 // 값은 문자열로 도면에 저장하고, 해석·검증은 엔진이 한다(잘못된 값 → 검토 불가로 표시).
 using System;
 using System.Collections.Generic;
@@ -62,7 +62,7 @@ namespace GaRuleCheck
                 _boxes[key] = tb;
                 grid.Controls.Add(l, 0, row);
                 grid.Controls.Add(tb, 1, row);
-                string? pick = key switch { "GARC_X_AP" => "AP", "GARC_X_FP" => "FP", "GARC_Z_BASE" => "BASE", _ => null };
+                string? pick = key switch { "BRC_X_AP" => "AP", "BRC_X_FP" => "FP", "BRC_Z_BASE" => "BASE", _ => null };
                 if (pick != null)
                 {
                     var b = Theme.FlatButton("도면에서");
@@ -134,10 +134,10 @@ namespace GaRuleCheck
         {
             foreach (var (key, tb) in _boxes)
                 tb.Text = props.TryGetValue(key, out var v) ? v : "";
-            var u = props.TryGetValue("GARC_UNITS", out var uu) ? uu.ToLowerInvariant() : "";
+            var u = props.TryGetValue("BRC_UNITS", out var uu) ? uu.ToLowerInvariant() : "";
             _units.SelectedIndex = u switch { "mm" => 1, "cm" => 2, "m" => 3, _ => 0 };
             _conds.Rows.Clear();
-            foreach (var c in DrawingProps.ParseConditions(props.TryGetValue("GARC_CONDITIONS", out var cs) ? cs : ""))
+            foreach (var c in DrawingProps.ParseConditions(props.TryGetValue("BRC_CONDITIONS", out var cs) ? cs : ""))
                 _conds.Rows.Add(c.Name, c.TAft, c.TFwd);
             _msg.Text = "";
         }
@@ -155,13 +155,13 @@ namespace GaRuleCheck
             {
                 var t = tb.Text.Trim();
                 tb.BackColor = Theme.Input;
-                if (key == "GARC_SCALE")
+                if (key == "BRC_SCALE")
                 {
                     // '1/1000'·'1:1000'·'1000' — 해석·범위 검사는 엔진이 한다(여기서는 형식만)
                     if (t.Length > 0 && !System.Text.RegularExpressions.Regex.IsMatch(t.Replace(" ", ""), @"^(1[/:])?\d+(\.\d+)?$"))
                     { errors.Add("도면 축척은 1/N 형식"); tb.BackColor = Theme.Over(Color.FromArgb(70, Theme.Warn), Theme.Input); }
                 }
-                else if (key == "GARC_KEEL_LAID")
+                else if (key == "BRC_KEEL_LAID")
                 {
                     if (t.Length > 0 && !DateTime.TryParseExact(t, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
                     { errors.Add("용골 거치일은 YYYY-MM-DD"); tb.BackColor = Theme.Over(Color.FromArgb(70, Theme.Warn), Theme.Input); }
@@ -173,7 +173,7 @@ namespace GaRuleCheck
                 }
                 values[key] = t;
             }
-            values["GARC_UNITS"] = _units.SelectedIndex switch { 1 => "mm", 2 => "cm", 3 => "m", _ => "" };
+            values["BRC_UNITS"] = _units.SelectedIndex switch { 1 => "mm", 2 => "cm", 3 => "m", _ => "" };
 
             var rows = new List<ConditionRow>();
             foreach (DataGridViewRow r in _conds.Rows)
@@ -186,7 +186,7 @@ namespace GaRuleCheck
                     errors.Add($"흘수 조건 '{name}' 값 확인");
                 rows.Add(new ConditionRow(name.Length == 0 ? "조건" : name, aft, fwd));
             }
-            values["GARC_CONDITIONS"] = DrawingProps.FormatConditions(rows);
+            values["BRC_CONDITIONS"] = DrawingProps.FormatConditions(rows);
 
             if (errors.Count > 0)
             {

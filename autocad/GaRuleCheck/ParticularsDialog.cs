@@ -1,6 +1,6 @@
 // 실도면 연결 1단계(명세 6-5, 디자인 보드 06): 치수·축척 확인 창.
 //   머리 '실도면 연결' · '레이어와 객체는 바꾸지 않습니다' / 5단계 진행 줄 / 표(항목 · 도면에서 찾은 값 · 적용 값) / 흘수 조건 표 / [취소] [적용하고 다음]
-// 도면 문자에서 엔진이 찾은 후보(/v1/particulars)를 보여 주고, 사람이 확인·수정한 값만 도면 특성(GARC_*)에 쓴다.
+// 도면 문자에서 엔진이 찾은 후보(/v1/particulars)를 보여 주고, 사람이 확인·수정한 값만 도면 특성(BRC_*)에 쓴다.
 // 이미 입력된 값이 있으면 그 값을 먼저 보여 준다(조용히 덮어쓰지 않음). L(ICLL)·밸러스트 흘수는 도면에 없으므로 비워 두고 주황 테로 알린다.
 // 확인하지 않은 값으로는 판정하지 않는다 — 빈 칸은 엔진이 '확인 필요'로 멈춘다.
 using System;
@@ -22,12 +22,12 @@ namespace GaRuleCheck
 
         private static readonly RowSpec[] Rows =
         {
-            new("GARC_LOA", "LOA", "loa", "m", true, "도면에 없음 — 직접 입력"),
-            new("GARC_LBP", "LBP", "lbp", "m", false, "도면에 없음 · 참고값(AP–FP 간격 대조)"),
-            new("GARC_L_LL", "L (ICLL)", "", "m", true, "도면에 없음 · LBP 참고, 선급 계산서 값"),
-            new("GARC_SCALE", "축척", "scale", "", true, "도면에 없음 — 1/N로 입력(예: 1/1000)", Confirm: true, Placeholder: "1/1000"),
-            new("GARC_SHIP_TYPE", "선종", "ship_type", "", false, "도면에 없음", Confirm: true),
-            new("GARC_KEEL_LAID", "용골 거치일", "", "", false, "도면에 없음 · 비우면 1998-07-01 이후로 봄", Placeholder: "YYYY-MM-DD"),
+            new("BRC_LOA", "LOA", "loa", "m", true, "도면에 없음 — 직접 입력"),
+            new("BRC_LBP", "LBP", "lbp", "m", false, "도면에 없음 · 참고값(AP–FP 간격 대조)"),
+            new("BRC_L_LL", "L (ICLL)", "", "m", true, "도면에 없음 · LBP 참고, 선급 계산서 값"),
+            new("BRC_SCALE", "축척", "scale", "", true, "도면에 없음 — 1/N로 입력(예: 1/1000)", Confirm: true, Placeholder: "1/1000"),
+            new("BRC_SHIP_TYPE", "선종", "ship_type", "", false, "도면에 없음", Confirm: true),
+            new("BRC_KEEL_LAID", "용골 거치일", "", "", false, "도면에 없음 · 비우면 1998-07-01 이후로 봄", Placeholder: "YYYY-MM-DD"),
         };
 
         private readonly Dictionary<string, ValueCell> _cells = new();
@@ -77,7 +77,7 @@ namespace GaRuleCheck
             // ── 표: 항목 · 도면에서 찾은 값 · 적용 값 ──
             if (unitless)
             {
-                _units = current.TryGetValue("GARC_UNITS", out var u) && u.Trim().Length > 0 ? u.Trim().ToLowerInvariant() : null;
+                _units = current.TryGetValue("BRC_UNITS", out var u) && u.Trim().Length > 0 ? u.Trim().ToLowerInvariant() : null;
                 var seg = new FlowLayoutPanel { AutoSize = true, BackColor = Theme.Bg, WrapContents = false, Margin = Padding.Empty };
                 foreach (var name in new[] { "mm", "cm", "m" })
                 {
@@ -90,7 +90,7 @@ namespace GaRuleCheck
                 }
                 SyncUnits();
                 _grid.Controls.Add(seg);
-                _rows.Add((new RowSpec("GARC_UNITS", "도면 단위", "", "", true, ""), "단위 없음 ($INSUNITS = 0)", true, seg));
+                _rows.Add((new RowSpec("BRC_UNITS", "도면 단위", "", "", true, ""), "단위 없음 ($INSUNITS = 0)", true, seg));
             }
             foreach (var spec in Rows)
             {
@@ -101,12 +101,12 @@ namespace GaRuleCheck
                 {
                     if (it.Status == "found")
                     {
-                        candValue = spec.Key == "GARC_SCALE" ? "1/" + it.ValueText : it.ValueText;
+                        candValue = spec.Key == "BRC_SCALE" ? "1/" + it.ValueText : it.ValueText;
                         foundText = candValue + (spec.Unit.Length > 0 ? " " + spec.Unit : "");
                     }
                     else if (it.Status == "conflict") { foundText = "값이 여러 개 — 직접 확인"; conflict = true; }
                 }
-                if (spec.Key == "GARC_L_LL" && found != null && found.Items.TryGetValue("lbp", out var lbp) && lbp.Status == "found")
+                if (spec.Key == "BRC_L_LL" && found != null && found.Items.TryGetValue("lbp", out var lbp) && lbp.Status == "found")
                     foundText = $"도면에 없음 · LBP {lbp.ValueText} m 참고, 선급 계산서 값";
                 if (found == null && spec.Cand.Length > 0) foundText = "도면 문자를 읽지 못함";
 
@@ -125,7 +125,7 @@ namespace GaRuleCheck
             _body.Controls.Add(_condGrid);
             _condGrid.Paint += PaintCondHead;
             IEnumerable<ConditionRow> start;
-            if (current.TryGetValue("GARC_CONDITIONS", out var conds) && !string.IsNullOrWhiteSpace(conds))
+            if (current.TryGetValue("BRC_CONDITIONS", out var conds) && !string.IsNullOrWhiteSpace(conds))
                 start = DrawingProps.ParseConditions(conds);
             else
             {
@@ -297,8 +297,8 @@ namespace GaRuleCheck
         private void Apply()
         {
             foreach (var (k, c) in _cells) Result[k] = c.Value;
-            Result["GARC_CONDITIONS"] = DrawingProps.FormatConditions(_conds.Select(r => r.Row).Where(r => !string.IsNullOrWhiteSpace(r.Name)));
-            if (_unitButtons.Count > 0 && _units != null) Result["GARC_UNITS"] = _units;
+            Result["BRC_CONDITIONS"] = DrawingProps.FormatConditions(_conds.Select(r => r.Row).Where(r => !string.IsNullOrWhiteSpace(r.Name)));
+            if (_unitButtons.Count > 0 && _units != null) Result["BRC_UNITS"] = _units;
             DialogResult = DialogResult.OK;
         }
 

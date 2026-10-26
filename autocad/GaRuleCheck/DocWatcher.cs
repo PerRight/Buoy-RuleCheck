@@ -45,7 +45,7 @@ namespace GaRuleCheck
         /// 마지막 검사가 엔진 오류로 실패했음(배지 '엔진 응답 없음'용)
         public bool LastFailed { get; private set; }
         private HashSet<string> _lastHandles = new();
-        private HashSet<string> _mappedLayers = new();   // GARC_LAYER_ROLES의 레이어(실도면 연결) — 바뀌면 다시 검사
+        private HashSet<string> _mappedLayers = new();   // BRC_LAYER_ROLES의 레이어(실도면 연결) — 바뀌면 다시 검사
         private Dictionary<string, string> _tips = new();   // handle → 마우스 툴팁 문구
         private Dictionary<string, List<ElementCheckDto>> _elements = new();
         private Dictionary<string, (List<double[]> pts, bool closed, List<double>? bulges)> _shapes = new();   // 마지막 스냅샷의 도면 단위 좌표
@@ -105,7 +105,7 @@ namespace GaRuleCheck
         {
             try
             {
-                if (obj is Xrecord) { MarkDirty(); return; }   // 역할 지정(GARC_ROLES)이 바뀜 — 판단은 엔진
+                if (obj is Xrecord) { MarkDirty(); return; }   // 역할 지정(BRC_ROLES)이 바뀜 — 판단은 엔진
                 if (obj is not Entity ent) return;
                 // 감시 레이어에 있거나, 직전 스냅샷에 있던 객체(= 다른 레이어로 옮겨진 경우)면 다시 검사.
                 // 'GA'로 시작하는 다른 레이어(GA-OBST·전각 ＧＡ＿OBST 같은 비슷한 이름)도 신호로 쓴다 — 판단은 엔진(layer_counts)이 한다.

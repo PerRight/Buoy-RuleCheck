@@ -1,6 +1,6 @@
-// 도면 버전 기록: 도면 옆 <도면이름>.garc\ 폴더에 versions.json(목록) + v{n}.raw.json(GA_ 레이어 스냅샷).
+// 도면 버전 기록: 도면 옆 <도면이름>.brc\ 폴더(옛 이름 .garc는 옮겨 씀)에 versions.json(목록) + v{n}.raw.json(GA_ 레이어 스냅샷).
 // 스냅샷은 엔진에 보내는 raw와 같은 형식이라, 비교는 엔진(/v1/compare)이 두 스냅샷으로 계산한다.
-// 도면 내용(GA_ 레이어 좌표)이 들어 있으므로 PC 밖으로 보내지 않는다(.gitignore가 *.garc/를 막음).
+// 도면 내용(GA_ 레이어 좌표)이 들어 있으므로 PC 밖으로 보내지 않는다(.gitignore가 *.brc/·*.garc/를 막음).
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -22,15 +22,26 @@ namespace GaRuleCheck
 
         public static string ReasonText(string code) => ReasonKo.TryGetValue(code, out var k) ? k : code;
 
-        /// 저장된 도면: 도면 폴더\<이름>.garc. 아직 저장 안 된 도면: 내 문서\GaRuleCheck\<이름>.garc
+        /// 저장된 도면: 도면 폴더\<이름>.brc. 아직 저장 안 된 도면: 내 문서\BuoyRuleCheck\<이름>.brc
         /// drawingPath = Document.Name, named = Document.IsNamedDrawing (AutoCAD 없이도 쓰게 값으로 받는다)
+        /// 이름 변경(2026-10-26) 전 폴더 <이름>.garc(내 문서\GaRuleCheck)만 있으면 새 이름으로 옮긴다 — 버전 기록이 두 곳으로
+        /// 갈라지지 않게. 옮기지 못하면(권한·사용 중) 옛 폴더를 그대로 쓴다.
         public static string FolderFor(string drawingPath, bool named)
         {
             var name = Path.GetFileNameWithoutExtension(drawingPath);
             var dir = Path.GetDirectoryName(drawingPath);
-            if (!named || string.IsNullOrEmpty(dir) || !Directory.Exists(dir))
-                dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "GaRuleCheck");
-            return Path.Combine(dir, name + ".garc");
+            string docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            bool local = !named || string.IsNullOrEmpty(dir) || !Directory.Exists(dir);
+            var fresh = Path.Combine(local ? Path.Combine(docs, "BuoyRuleCheck") : dir!, name + ".brc");
+            var legacy = Path.Combine(local ? Path.Combine(docs, "GaRuleCheck") : dir!, name + ".garc");
+            if (Directory.Exists(fresh) || !Directory.Exists(legacy)) return fresh;
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(fresh)!);
+                Directory.Move(legacy, fresh);
+                return fresh;
+            }
+            catch { return legacy; }
         }
 
         public static VersionIndex Load(string folder)

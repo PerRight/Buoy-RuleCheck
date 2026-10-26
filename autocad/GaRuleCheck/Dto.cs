@@ -1,5 +1,5 @@
 // 엔진(Python)과 주고받는 JSON. 필드 이름은 snake_case로 자동 변환된다(JsonNamingPolicy.SnakeCaseLower).
-// 명세: docs/input-contract.md, engine/garc/contract.py
+// 명세: docs/input-contract.md, engine/brc/contract.py
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,7 +10,7 @@ namespace GaRuleCheck
 {
     public static class Contract
     {
-        // 레이어 → 역할 (engine/garc/contract.py LAYER_ROLES와 같아야 한다)
+        // 레이어 → 역할 (engine/brc/contract.py LAYER_ROLES와 같아야 한다)
         public static readonly Dictionary<string, string> LayerRoles = new()
         {
             ["GA_HULL"] = "hull",
@@ -37,17 +37,18 @@ namespace GaRuleCheck
 
         public static string RoleKo(string role) => Roles.FirstOrDefault(r => r.Role == role).Ko ?? role;
 
-        /// 도면 특성 GARC_LAYER_ROLES('컨테이너=장애물; …')의 레이어 이름만 — 어떤 객체를 보낼지 고르는 용도.
-        /// 역할 해석·형식 검사는 엔진이 한다.
+        /// 도면 특성 BRC_LAYER_ROLES(옛 이름 GARC_LAYER_ROLES도)('컨테이너=장애물; …')의 레이어 이름만 — 어떤 객체를 보낼지 고르는 용도.
+        /// 둘 다 있으면 양쪽 레이어를 모두 보낸다(어느 쪽을 쓸지·값이 다를 때 멈추는 판단은 엔진). 역할 해석·형식 검사도 엔진이 한다.
         public static HashSet<string> LayerRoleNames(IReadOnlyDictionary<string, string> props)
         {
             var set = new HashSet<string>(StringComparer.Ordinal);
-            var text = props.FirstOrDefault(kv => kv.Key.Trim().Equals("GARC_LAYER_ROLES", StringComparison.OrdinalIgnoreCase)).Value ?? "";
-            foreach (var chunk in text.Replace("\n", ";").Split(';'))
-            {
-                int eq = chunk.LastIndexOf('=');
-                if (eq > 0) set.Add(chunk[..eq].Trim().ToUpperInvariant());
-            }
+            foreach (var kv in props.Where(kv => kv.Key.Trim().Equals("BRC_LAYER_ROLES", StringComparison.OrdinalIgnoreCase)
+                                                || kv.Key.Trim().Equals("GARC_LAYER_ROLES", StringComparison.OrdinalIgnoreCase)))
+                foreach (var chunk in (kv.Value ?? "").Replace("\n", ";").Split(';'))
+                {
+                    int eq = chunk.LastIndexOf('=');
+                    if (eq > 0) set.Add(chunk[..eq].Trim().ToUpperInvariant());
+                }
             return set;
         }
 
@@ -77,7 +78,7 @@ namespace GaRuleCheck
 
     public sealed class RawDrawing
     {
-        public string Schema { get; set; } = "garc.raw/1";
+        public string Schema { get; set; } = "brc.raw/1";
         public Dictionary<string, string> Source { get; set; } = new();
         public int Insunits { get; set; }
         public Dictionary<string, string> Props { get; set; } = new();
@@ -394,7 +395,7 @@ namespace GaRuleCheck
         public bool Same { get; set; }
     }
 
-    // ── 버전 기록 (<도면이름>.garc/versions.json) ─────────────────────────────
+    // ── 버전 기록 (<도면이름>.brc/versions.json, 옛 .garc) ─────────────────────────────
 
     public sealed class VersionEntry
     {
@@ -415,7 +416,7 @@ namespace GaRuleCheck
 
     public sealed class VersionIndex
     {
-        public string Schema { get; set; } = "garc.versions/1";
+        public string Schema { get; set; } = "brc.versions/1";
         public string Drawing { get; set; } = "";
         public List<VersionEntry> Versions { get; set; } = new();
     }

@@ -191,7 +191,7 @@ namespace GaRuleCheck
             SetEngine(false);
             ClearCards();
             var card = new InfoCard("검사 엔진에 연결할 수 없어요 — 판정하지 않습니다",
-                message + "\n\n엔진 폴더에서 'python -m garc serve'를 실행한 뒤 [다시 검사]를 누르세요.", "down");
+                message + "\n\n엔진 폴더에서 'python -m brc serve'를 실행한 뒤 [다시 검사]를 누르세요.", "down");
             card.Add(Theme.RingButton("다시 검사")).Click += (_, _) => RecheckRequested?.Invoke();
             _cards.Controls.Add(card);
             FitCards();
@@ -250,7 +250,7 @@ namespace GaRuleCheck
             if (record) AddHistory(r);
         }
 
-        /// 역할 보기(GARCROLESHOW) 범례 카드 켜기(객체 수)/끄기(null)
+        /// 역할 보기(BRCROLESHOW) 범례 카드 켜기(객체 수)/끄기(null)
         public void ShowRoleLegend(Dictionary<string, int>? counts)
         {
             _roleCounts = counts;

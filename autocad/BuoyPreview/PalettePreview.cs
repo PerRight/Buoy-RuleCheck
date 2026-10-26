@@ -135,7 +135,7 @@ namespace GaRuleCheck
                     ["scale"] = new ParticularItemDto { NameKo = "축척", Status = "found", Value = J("1000") },
                     ["ship_type"] = new ParticularItemDto { NameKo = "선종", Status = "conflict" },
                 },
-                SuggestedProps = new() { ["GARC_LOA"] = "140", ["GARC_LBP"] = "132", ["GARC_SCALE"] = "1/1000" },
+                SuggestedProps = new() { ["BRC_LOA"] = "140", ["BRC_LBP"] = "132", ["BRC_SCALE"] = "1/1000" },
                 SuggestedConditions = new() { new ConditionDto { Name = "설계 흘수", TAft = 7.2, TFwd = 7.2 }, new ConditionDto { Name = "구조 흘수", TAft = 8.0, TFwd = 8.0 } },
                 HumanInputsKo = new() { "L(ICLL)은 선급 계산서 값", "밸러스트 도착 흘수는 복원성 계산서 값" },
             };

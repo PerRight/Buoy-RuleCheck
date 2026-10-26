@@ -1,8 +1,8 @@
-// 실도면 연결 (GARCLINK·GARCROLE·GARCROLESHOW) — GA_ 레이어가 없는 실제 GA 도면을 검사할 수 있게 만든다.
+// 실도면 연결 (BRCLINK·BRCROLE·BRCROLESHOW) — GA_ 레이어가 없는 실제 GA 도면을 검사할 수 있게 만든다.
 //
 // 실도면 5건 분석(10-16)에서 나온 문제에 맞춘 순서:
-//   1) 치수표·축척 확인 — 도면 문자에서 엔진이 찾은 후보(/v1/particulars)를 사람이 확인 → GARC_SCALE·LOA·LBP·L·흘수 조건
-//   2) 측면도 영역 — 한 시트에 평면도·단면도가 같이 있어서(GARC_REGION)
+//   1) 치수표·축척 확인 — 도면 문자에서 엔진이 찾은 후보(/v1/particulars)를 사람이 확인 → BRC_SCALE·LOA·LBP·L·흘수 조건
+//   2) 측면도 영역 — 한 시트에 평면도·단면도가 같이 있어서(BRC_REGION)
 //   3) AP·FP·기선 — 원점이 AP·기선이 아니어서(FP는 AP + LBP로도)
 //   4) 역할 지정 — 레이어를 옮기지 않고 객체에 역할(선체·충돌격벽·장애물·구상선수)을 붙인다(RoleMap, 도면 사전)
 //   5) 조종위치 — GA_EYE 점
@@ -57,7 +57,7 @@ namespace GaRuleCheck
             _linkProgress = null;
         }
 
-        [CommandMethod("GARCLINK")]
+        [CommandMethod("BRCLINK")]
         public void Link()
         {
             try { RunLink(); }
@@ -73,7 +73,7 @@ namespace GaRuleCheck
             ed.WriteMessage($"\n{Product.Tag} 실도면 연결 — 레이어와 객체는 바꾸지 않고 축척·측면도 영역·기준점·역할만 기록합니다(조종위치 점·GA_ 레이어만 새로 만듦)." +
                             "\n각 단계는 Enter로 건너뛸 수 있고, Esc로 멈춰도 그때까지 입력한 것은 남습니다. 다시 실행하면 이어서 고칩니다.\n");
             bool engine = EngineClient.EnsureRunning();
-            if (!engine) ed.WriteMessage($"\n{Product.Tag} 검사 엔진에 연결할 수 없어 도면 문자 읽기·검사를 못 합니다. 'python -m garc serve' 후 다시 실행하세요.\n");
+            if (!engine) ed.WriteMessage($"\n{Product.Tag} 검사 엔진에 연결할 수 없어 도면 문자 읽기·검사를 못 합니다. 'python -m brc serve' 후 다시 실행하세요.\n");
             EnsurePalette();
 
             // ── 1) 주요 치수·축척·흘수 조건 ──
@@ -83,14 +83,14 @@ namespace GaRuleCheck
                 try { found = EngineClient.Particulars(Extractor.ExtractTexts(doc)); }
                 catch (System.Exception ex) { ed.WriteMessage($"\n{Product.Tag} 도면 문자 읽기 실패: {ex.Message} — 값을 직접 입력하세요.\n"); }
             }
-            var cur = DrawingProps.Read(db);
+            var cur = DrawingProps.ReadCanonical(db);
             using (var dlg = new ParticularsDialog(found, cur, db.Insunits == UnitsValue.Undefined, DocName(doc)))
             {
                 var res = AcApp.ShowModalDialog(dlg);
                 if (res == System.Windows.Forms.DialogResult.OK)
                 {
                     DrawingProps.Write(db, dlg.Result);
-                    ForPanels(p => p.Ship.Load(DrawingProps.Read(db)));
+                    ForPanels(p => p.Ship.Load(DrawingProps.ReadCanonical(db)));
                     ed.WriteMessage($"\n{Product.Tag} [1/5] 치수·축척·흘수 조건을 도면 특성에 기록했습니다.");
                 }
                 else if (res == System.Windows.Forms.DialogResult.Ignore) ed.WriteMessage($"\n{Product.Tag} [1/5] 치수·축척 확인을 건너뛰었습니다.");
@@ -113,7 +113,7 @@ namespace GaRuleCheck
                     var b = c2.Value.TransformBy(ucs);
                     DrawingProps.Write(db, new Dictionary<string, string>
                     {
-                        ["GARC_REGION"] = $"{Inv(Math.Min(a.X, b.X))},{Inv(Math.Min(a.Y, b.Y))},{Inv(Math.Max(a.X, b.X))},{Inv(Math.Max(a.Y, b.Y))}",
+                        ["BRC_REGION"] = $"{Inv(Math.Min(a.X, b.X))},{Inv(Math.Min(a.Y, b.Y))},{Inv(Math.Max(a.X, b.X))},{Inv(Math.Max(a.Y, b.Y))}",
                     });
                     ed.WriteMessage($"\n{Product.Tag} 측면도 영역을 기록했습니다(레이어 단위 역할은 이 영역 안의 객체만 씁니다).");
                 }
@@ -165,7 +165,7 @@ namespace GaRuleCheck
                 foreach (var p in r.ProblemsKo.Take(5)) ed.WriteMessage($"\n  ○ {p}");
             }
             else if (w.Last == null) ed.WriteMessage("검사하지 못했습니다(엔진 연결 확인).");
-            ed.WriteMessage("\n역할 보기(GARCROLESHOW)로 판정에 쓰인 객체를 역할 색으로 확인하세요.\n");
+            ed.WriteMessage("\n역할 보기(BRCROLESHOW)로 판정에 쓰인 객체를 역할 색으로 확인하세요.\n");
         }
 
         /// AP·FP·기선 클릭 → m 값(도면 좌표 × 엔진이 알려 준 단위 배율). false = Esc.
@@ -173,7 +173,7 @@ namespace GaRuleCheck
         {
             var ed = doc.Editor;
             var db = doc.Database;
-            var props = DrawingProps.Read(db);
+            var props = DrawingProps.ReadCanonical(db);
             var ucs = ed.CurrentUserCoordinateSystem;
             var write = new Dictionary<string, string>();
 
@@ -181,10 +181,10 @@ namespace GaRuleCheck
             var ap = ed.GetPoint(new PromptPointOptions("\n[3/5] AP(선미 수선, 보통 타두재 중심) 위치 클릭 (Enter: 건너뛰기): ") { AllowNone = true });
             if (ap.Status == PromptStatus.Cancel) return false;
             double? xAp = null;
-            if (ap.Status == PromptStatus.OK) { xAp = ap.Value.TransformBy(ucs).X * scale; write["GARC_X_AP"] = DrawingProps.M(xAp.Value); }
-            else if (props.TryGetValue("GARC_X_AP", out var oldAp) && double.TryParse(oldAp, NumberStyles.Float, CultureInfo.InvariantCulture, out var v)) xAp = v;
+            if (ap.Status == PromptStatus.OK) { xAp = ap.Value.TransformBy(ucs).X * scale; write["BRC_X_AP"] = DrawingProps.M(xAp.Value); }
+            else if (props.TryGetValue("BRC_X_AP", out var oldAp) && double.TryParse(oldAp, NumberStyles.Float, CultureInfo.InvariantCulture, out var v)) xAp = v;
 
-            double? lbp = props.TryGetValue("GARC_LBP", out var lb) && double.TryParse(lb, NumberStyles.Float, CultureInfo.InvariantCulture, out var lv) ? lv : null;
+            double? lbp = props.TryGetValue("BRC_LBP", out var lb) && double.TryParse(lb, NumberStyles.Float, CultureInfo.InvariantCulture, out var lv) ? lv : null;
             var fpOpt = new PromptPointOptions(xAp != null && lbp != null
                 ? $"\nFP(선수 수선) 위치 클릭 또는 [Lbp: AP + LBP {Inv(lbp.Value)} m] (Enter: 건너뛰기): "
                 : "\nFP(선수 수선) 위치 클릭 (Enter: 건너뛰기): ") { AllowNone = true };
@@ -192,17 +192,17 @@ namespace GaRuleCheck
             LinkStep(3, xAp != null && lbp != null ? "FP(선수 수선) 위치를 클릭하세요 — 또는 Lbp 입력으로 AP + LBP" : "FP(선수 수선) 위치를 클릭하세요");
             var fp = ed.GetPoint(fpOpt);
             if (fp.Status == PromptStatus.Cancel) return false;
-            if (fp.Status == PromptStatus.OK) write["GARC_X_FP"] = DrawingProps.M(fp.Value.TransformBy(ucs).X * scale);
+            if (fp.Status == PromptStatus.OK) write["BRC_X_FP"] = DrawingProps.M(fp.Value.TransformBy(ucs).X * scale);
             else if (fp.Status == PromptStatus.Keyword && xAp != null && lbp != null)
             {
-                write["GARC_X_FP"] = DrawingProps.M(xAp.Value + lbp.Value);
+                write["BRC_X_FP"] = DrawingProps.M(xAp.Value + lbp.Value);
                 ed.WriteMessage($"\n{Product.Tag} 주의: FP를 AP + LBP로 넣으면 AP–FP 간격 대조(축척·기준점 실수 감지)가 항상 맞으므로, AP 위치를 도면에서 다시 확인하세요.");
             }
 
             LinkStep(3, "기선(용골 바닥선) 높이를 클릭하세요");
             var bl = ed.GetPoint(new PromptPointOptions("\n기선(용골 바닥선) 높이 클릭 (Enter: 건너뛰기): ") { AllowNone = true });
             if (bl.Status == PromptStatus.Cancel) return false;
-            if (bl.Status == PromptStatus.OK) write["GARC_Z_BASE"] = DrawingProps.M(bl.Value.TransformBy(ucs).Y * scale);
+            if (bl.Status == PromptStatus.OK) write["BRC_Z_BASE"] = DrawingProps.M(bl.Value.TransformBy(ucs).Y * scale);
 
             if (write.Count > 0)
             {
@@ -250,8 +250,8 @@ namespace GaRuleCheck
             if (choice == "Select")
                 return SelectRole(doc, "obstruction", "\n장애물 객체 선택 (걸침 창 권장, Enter: 건너뛰기): ");
 
-            var props = DrawingProps.Read(doc.Database);
-            if (!props.ContainsKey("GARC_REGION"))
+            var props = DrawingProps.ReadCanonical(doc.Database);
+            if (!props.ContainsKey("BRC_REGION"))
                 ed.WriteMessage($"\n{Product.Tag} 주의: 측면도 영역이 없으면 레이어 단위 역할을 쓸 수 없어요(엔진이 '확인 필요'로 멈춤) — 2단계에서 영역을 지정하세요.");
             var pick = new PromptEntityOptions("\n장애물 레이어의 객체 하나를 클릭: ") { AllowNone = true };
             var e = ed.GetEntity(pick);
@@ -268,16 +268,16 @@ namespace GaRuleCheck
                 ed.WriteMessage($"\n{Product.Tag} 레이어 이름 '{layer}'에 '=' 또는 ';'가 있어 레이어 단위로 지정할 수 없습니다 — 객체 선택(Select)을 쓰세요.");
                 return true;
             }
-            var cur = props.TryGetValue("GARC_LAYER_ROLES", out var lr) ? lr : "";
+            var cur = props.TryGetValue("BRC_LAYER_ROLES", out var lr) ? lr : "";
             var parts = cur.Split(';').Select(x => x.Trim()).Where(x => x.Length > 0)
                            .Where(x => !x.Split('=')[0].Trim().Equals(layer.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
             parts.Add($"{layer.Trim()}=장애물");
-            DrawingProps.Write(doc.Database, new Dictionary<string, string> { ["GARC_LAYER_ROLES"] = string.Join("; ", parts) });
+            DrawingProps.Write(doc.Database, new Dictionary<string, string> { ["BRC_LAYER_ROLES"] = string.Join("; ", parts) });
             ed.WriteMessage($"\n{Product.Tag} 레이어 '{layer}'의 객체(측면도 영역 안)를 장애물로 씁니다.");
             return true;
         }
 
-        [CommandMethod("GARCROLE", CommandFlags.UsePickSet)]
+        [CommandMethod("BRCROLE", CommandFlags.UsePickSet)]
         public void Role()
         {
             var doc = Active;
@@ -309,7 +309,7 @@ namespace GaRuleCheck
             if (Watchers.TryGetValue(doc, out var w)) w.MarkDirty();
         }
 
-        [CommandMethod("GARCROLESHOW")]
+        [CommandMethod("BRCROLESHOW")]
         public void RoleShow()
         {
             var doc = Active;

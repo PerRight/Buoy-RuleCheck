@@ -1,4 +1,5 @@
-// 실도면 역할 지정 저장소 — 레이어를 옮기지 않고 '객체 ↔ 역할'을 도면 사전(NOD)의 XRecord 'GARC_ROLES'에 저장한다.
+// 실도면 역할 지정 저장소 — 레이어를 옮기지 않고 '객체 ↔ 역할'을 도면 사전(NOD)의 XRecord 'BRC_ROLES'에 저장한다.
+// 옛 이름 'GARC_ROLES'(2026-10-26 이전 도면)도 읽고, 다음에 쓸 때 새 이름으로 옮기며 옛 것을 지운다.
 // 설계자의 레이어 체계를 건드리지 않는다. 형식: (1, 역할) 다음 (330 소프트 포인터, 객체) 반복 — DXF 어댑터(read_roles)와 같다.
 // 도면 데이터 변경이므로 Undo·저장에 함께 묶인다(표시용 Transient와 다름). 판정은 엔진이 한다.
 using System;
@@ -11,21 +12,25 @@ namespace GaRuleCheck
 {
     public static class RoleMap
     {
-        public const string Key = "GARC_ROLES";
+        public const string Key = "BRC_ROLES";
+        public const string LegacyKey = "GARC_ROLES";
 
         /// 지워진 객체는 빼고 읽는다. 호출자의 트랜잭션 안에서.
         public static Dictionary<ObjectId, string> Read(Transaction tr, Database db)
         {
             var map = new Dictionary<ObjectId, string>();
             var nod = (DBDictionary)tr.GetObject(db.NamedObjectsDictionaryId, OpenMode.ForRead);
-            if (!nod.Contains(Key)) return map;
-            if (tr.GetObject(nod.GetAt(Key), OpenMode.ForRead) is not Xrecord xr || xr.Data == null) return map;
-            string? role = null;
-            foreach (TypedValue tv in xr.Data)
+            foreach (var name in new[] { LegacyKey, Key })   // 옛 것 먼저, 새 것이 덮는다(엔진 DXF 어댑터와 같은 순서)
             {
-                if (tv.TypeCode == (short)DxfCode.Text) role = tv.Value as string;
-                else if (tv.TypeCode == (short)DxfCode.SoftPointerId && role != null && tv.Value is ObjectId id && id.IsValid && !id.IsErased)
-                    map[id] = role;
+                if (!nod.Contains(name)) continue;
+                if (tr.GetObject(nod.GetAt(name), OpenMode.ForRead) is not Xrecord xr || xr.Data == null) continue;
+                string? role = null;
+                foreach (TypedValue tv in xr.Data)
+                {
+                    if (tv.TypeCode == (short)DxfCode.Text) role = tv.Value as string;
+                    else if (tv.TypeCode == (short)DxfCode.SoftPointerId && role != null && tv.Value is ObjectId id && id.IsValid && !id.IsErased)
+                        map[id] = role;
+                }
             }
             return map;
         }
@@ -70,12 +75,20 @@ namespace GaRuleCheck
         private static void Write(Transaction tr, Database db, Dictionary<ObjectId, string> map)
         {
             var nod = (DBDictionary)tr.GetObject(db.NamedObjectsDictionaryId, OpenMode.ForRead);
+            if (nod.Contains(LegacyKey))
+            {
+                // 옛 이름은 새 이름으로 옮겨 썼으니 지운다(같은 트랜잭션 — Undo로 함께 되돌아감)
+                var old = tr.GetObject(nod.GetAt(LegacyKey), OpenMode.ForWrite);
+                nod.UpgradeOpen();
+                nod.Remove(LegacyKey);
+                old.Erase();
+            }
             Xrecord xr;
             if (nod.Contains(Key))
                 xr = (Xrecord)tr.GetObject(nod.GetAt(Key), OpenMode.ForWrite);
             else
             {
-                nod.UpgradeOpen();
+                if (!nod.IsWriteEnabled) nod.UpgradeOpen();
                 xr = new Xrecord();
                 nod.SetAt(Key, xr);
                 tr.AddNewlyCreatedDBObject(xr, true);
