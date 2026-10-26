@@ -206,6 +206,8 @@ namespace BuoyRuleCheck
         /// 임시 그래픽을 지운다. 지워진 것만 해제하고, 지우지 못한 것(다른 도면 탭이 현재일 때 등)은 해제하지 않고 남겨 다음에 다시 지운다
         /// — 해제한 객체를 AutoCAD가 그 도면으로 돌아와 그리지 않게(2026-10-26 검증 N6).
         private static readonly List<Entity> Stale = new();
+        private const int MaxStale = 500;
+        private static bool _staleReported;
         private static void ClearList(List<Entity> items)
         {
             var tm = TransientManager.CurrentTransientManager;
@@ -219,7 +221,12 @@ namespace BuoyRuleCheck
                 bool erased = false;
                 try { erased = tm.EraseTransient(e, new IntegerCollection()); } catch { }
                 if (erased) { try { e.Dispose(); } catch { } }
-                else if (Stale.Count < 5000) Stale.Add(e);   // 무한히 쌓이지 않게(넘치면 해제하지 않은 채 놓아 둠)
+                else if (Stale.Count < MaxStale) Stale.Add(e);
+                else if (!_staleReported)   // 무한히 쌓이지 않게(넘치면 해제하지 않은 채 놓아 둠) — 한 번 알림
+                {
+                    _staleReported = true;
+                    Guard.Report("근거 표시 지우기", new InvalidOperationException($"지우지 못한 임시 그래픽이 {MaxStale}개를 넘었습니다"));
+                }
             }
         }
 

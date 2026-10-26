@@ -117,6 +117,36 @@ namespace BuoyRuleCheck
 
         public void StayOpen() { if (!IsDisposed) _grace.Stop(); }
 
+        /// 지금 항목들(규칙·객체) — 새 판정으로 바꿀 때 찾는 열쇠
+        public IReadOnlyList<BuoyCardItem> Items => _items;
+
+        /// 새 판정으로 제자리에서 바꾼다(닫았다 다시 열지 않음 — 검사마다 깜박이거나 커서 밑에서 달아나지 않게).
+        /// 높이가 바뀌면 아래 끝을 그대로 두고 위로 늘거나 준다(부표 왼쪽 위에 붙어 있게). 같은 내용이면 아무것도 안 함.
+        public void Replace(IReadOnlyList<BuoyCardItem> items)
+        {
+            if (IsDisposed || items.Count == 0) return;
+            if (items.Count == _items.Count && items.Zip(_items).All(p => Same(p.First, p.Second))) { _items.Clear(); _items.AddRange(items); return; }
+            _items.Clear();
+            _items.AddRange(items);
+            _hover = Rectangle.Empty;
+            AccessibleName = Product.Name + " — " + Describe();
+            int bottom = Bottom, h = Measure();
+            if (h != Height)
+            {
+                Height = h;
+                UpdateRegion();
+                _restTop = bottom - h;
+                Top = _restTop;
+            }
+            Invalidate();
+        }
+
+        private static bool Same(BuoyCardItem a, BuoyCardItem b) =>
+            a.Status == b.Status && a.RuleId == b.RuleId && a.RuleCondition == b.RuleCondition
+            && a.Element.ElementId == b.Element.ElementId && a.Element.Guide == b.Element.Guide && a.Element.Actual == b.Element.Actual
+            && a.Element.Fix?.ActionKo == b.Element.Fix?.ActionKo && a.Element.Fix?.ConditionKo == b.Element.Fix?.ConditionKo
+            && a.Element.Fix?.Delta == b.Element.Fix?.Delta && a.Element.Fix?.Condition == b.Element.Fix?.Condition;
+
         /// 미리보기용: 처음부터 고정
         public void Pinned2() { _pinned = true; Invalidate(); }
 

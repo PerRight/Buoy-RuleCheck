@@ -120,15 +120,45 @@ namespace BuoyRuleCheck
                 else if (rs is "na" or "review") { b.Anim.SetStatus("warn"); b.El = Gone(b.El, "unknown"); }
                 else b.Anim.Vanish();
             }
-            // 커서를 올려 둔 채 새 판정이 오면 카드도 새 판정으로(고정한 카드는 그때 모습 그대로 둔다)
-            if (_hover != null && _card is { Pinned: false })
-            {
-                if (Buoys.ContainsValue(_hover) && _hover.Anim.Phase != BuoyPhase.Vanish) Guard.Run("부표 카드", () => ShowCard(_hover));
-                else Leave();
-            }
+            // 올려 둔 부표가 사라지면 호버·근거 선을 끝낸다(카드가 있든 없든 — 검증 F5)
+            if (_hover != null && (!Buoys.ContainsValue(_hover) || _hover.Anim.Phase == BuoyPhase.Vanish)) Leave();
+            Guard.Run("부표 카드", () => RefreshCards(now));
             Ensure();
             Redraw();
         }
+
+        /// 새 판정이 오면 열린 카드를 제자리에서 새 판정으로 바꾼다(검증 N1·F2·F3).
+        ///   호버 카드: 그 부표 묶음의 지금 항목(사라지는 부표 제외).
+        ///   고정 카드: 항목마다 같은 규칙·객체의 새 판정으로. 새 판정이 하나도 없으면(객체·규칙이 빠짐) 닫는다 — 옛 파랑이 남지 않게.
+        private static void RefreshCards(Dictionary<string, (RuleResultDto r, ElementCheckDto e)> now)
+        {
+            if (_card is { IsDisposed: false, Pinned: false } hc && _hover != null) hc.Replace(CardItems(_hover));
+            var pinned = Pinned.ToList();
+            if (_card is { IsDisposed: false, Pinned: true } pc) pinned.Add(pc);
+            foreach (var c in pinned)
+            {
+                if (c.IsDisposed) continue;
+                var items = c.Items.Select(it => Latest(it, now)).Where(x => x != null).Select(x => x!).ToList();
+                if (items.Count == 0) c.Close();
+                else c.Replace(items);
+            }
+        }
+
+        private static BuoyCardItem? Latest(BuoyCardItem it, Dictionary<string, (RuleResultDto r, ElementCheckDto e)> now)
+        {
+            string key = it.RuleId + "|" + it.Element.ElementId;
+            if (Buoys.TryGetValue(key, out var b) && b.Anim.Phase != BuoyPhase.Vanish)
+                return new BuoyCardItem(b.Anim.Target, b.RuleId, b.RuleCondition, b.El);
+            if (now.TryGetValue(key, out var x))
+                return new BuoyCardItem(x.e.Status == "fail" ? "fail" : x.e.Status == "pass" ? "pass" : "warn", x.r.RuleId, x.r.Condition, x.e);
+            return null;
+        }
+
+        /// 카드 항목: 묶음의 지금 부표(사라지는 부표는 빼고 — 검증 F1), 최종 판정(Target)으로
+        private static List<BuoyCardItem> CardItems(Buoy b) =>
+            Members(b).Where(x => x == b || x.Anim.Phase != BuoyPhase.Vanish)
+                .OrderBy(x => Rank(x.Anim.Target))
+                .Select(x => new BuoyCardItem(x.Anim.Target, x.RuleId, x.RuleCondition, x.El)).ToList();
 
         /// 없어진 객체의 카드 내용: 옛 '고칠 내용·현재·기준·차이'를 보이지 않게(그 판정은 더는 맞지 않음). 자리·이름만 남긴다.
         private static ElementCheckDto Gone(ElementCheckDto e, string status) =>
@@ -324,6 +354,7 @@ namespace BuoyRuleCheck
             }
             var gone = Buoys.Values.Where(b => b.Anim.Done).Select(b => b.Key).ToList();
             foreach (var k in gone) Buoys.Remove(k);
+            if (_hover != null && !Buoys.ContainsValue(_hover)) Leave();   // 올려 둔 부표가 다 사라졌으면 호버 끝(검증 F5)
             CheckHoverStillInside();
             if (animating || gone.Count > 0) Redraw();
             if (Buoys.Count == 0)
@@ -345,6 +376,7 @@ namespace BuoyRuleCheck
         {
             if (doc != _doc) return;
             foreach (var b in Buoys.Values) if (b.Anim.Phase == BuoyPhase.Pass) b.Anim.Vanish();
+            if (_hover is { } h && h.Anim.Phase == BuoyPhase.Vanish) Leave();   // 검증 F5
             Ensure();
             Redraw();
         }
@@ -569,8 +601,9 @@ namespace BuoyRuleCheck
             EvidenceHover?.Invoke(b.RuleId, b.ElementId, false);
             _card?.LeaveSoon();
             // 문제없음을 확인했으면(올렸다 뗌) 퍼지며 사라진다(07)
-            if (b.Anim.Phase == BuoyPhase.Pass)
-                foreach (var m in Members(b)) if (m.Anim.Phase == BuoyPhase.Pass) m.Anim.Vanish();
+            // 다시 검사 보류 중이어도 카드가 최종 판정 '문제없음'을 보였으면 확인으로 친다(검증 F4)
+            if (b.Anim.Target == "pass")
+                foreach (var m in Members(b).ToList()) m.Anim.ConfirmIfPass();
             Ensure();
         }
 
@@ -594,8 +627,7 @@ namespace BuoyRuleCheck
         private static void ShowCard(Buoy b)
         {
             // 카드는 '최종' 판정(Target)으로 — 다시 검사 0.6 s 동안 부표 색은 옛 색이어도 카드 내용(El)은 이미 새 판정이다(검증 N1)
-            var items = Members(b).OrderBy(x => Rank(x.Anim.Target))
-                .Select(x => new BuoyCardItem(x.Anim.Target, x.RuleId, x.RuleCondition, x.El)).ToList();
+            var items = CardItems(b);
             CloseCard(force: false);
             var card = new BuoyCard(items);
             card.EvidenceRequested += it => EvidenceRequested?.Invoke(it.RuleId, it.Element.ElementId);

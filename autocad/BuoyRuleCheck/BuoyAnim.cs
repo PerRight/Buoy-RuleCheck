@@ -129,7 +129,17 @@ namespace BuoyRuleCheck
             Motion.SetPeriod(PeriodFor(p));
         }
 
-        /// 지금 보이는 판정이 아니라 '최종' 판정(보류 중이면 그 값) — 시험용
+        /// 문제없음 확인(호버 후 이탈): 최종 판정이 문제없음이면 그 색으로 바꾸고 퍼지며 사라진다. 다시 검사 0.6 s 보류 중이어도
+        /// 카드는 이미 '문제없음'을 보였으므로 확인으로 친다(검증 F4). 사라지면 true.
+        public bool ConfirmIfPass()
+        {
+            if (Phase == BuoyPhase.Vanish || Target != "pass") return false;
+            ApplyPending();
+            Vanish();
+            return true;
+        }
+
+        /// 지금 보이는 판정이 아니라 '최종' 판정(보류 중이면 그 값) — 카드·확인에 쓴다
         public string Target => _pendingStatus ?? Status;
 
         public void SetHover(bool on)
