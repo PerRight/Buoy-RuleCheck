@@ -1,9 +1,10 @@
-// 진입점과 명령. 리본 'GA RuleCheck' 탭의 버튼도 아래 명령을 실행한다.
+// 진입점과 명령. 리본 'Buoy-RuleCheck' 탭의 버튼도 아래 명령을 실행한다. 명령줄 문구는 '[BRC] …'(명세 6-4).
 //   GARC        검사 시작(팔레트 + 현재 도면 감시)        GARCCHECK  지금 다시 검사
 //   GARCOFF     감시 중지 + 표시 지우기                    GARCHEALTH 엔진 연결 확인
 //   GARCSETUP   GA_ 레이어·라벨 스타일·특성 틀 만들기      GARCSHIP   선박 정보 탭 열기
 //   GARCEYE     조종위치(GA_EYE 점) 지정                   GARCPICK   AP/FP/기선을 도면에서 지정
-//   GARCTOGGLE  도면 표시 켜기/끄기                        GARCREPORT HTML 검토 리포트 저장·열기
+//   GARCTOGGLE  부표 표시 켜기/끄기                        GARCREPORT HTML 검토 리포트 저장·열기
+//   GARCMOTION  동작 줄이기 켜기/끄기(회전·물결 멈춤, 색은 그대로)
 //   GARCLARGE   라벨 확대(라벨 글자·선 두께·표식 크기 2.5배 — 판정·도면은 그대로)
 //   GARCVERSION 지금 상태를 버전으로 기록(저장할 때도 자동으로 묻는다)   GARCCOMPARE 버전 비교 창
 //   GARCPANEL   떠 있는 로고의 수정 소요 목록 열기/닫기(Ctrl+.)         GARCLOGO   로고 보이기/숨기기
@@ -32,7 +33,7 @@ namespace GaRuleCheck
         public void Initialize()
         {
             AcApp.DocumentManager.MdiActiveDocument?.Editor.WriteMessage(
-                "\nGA-RuleCheck 로드됨 — 리본 'GA RuleCheck' 탭 또는 GARC 명령으로 시작하세요.\n");
+                $"\n{Product.Tag} {Product.Name} 로드됨 — 리본 '{Product.Name}' 탭 또는 GARC 명령으로 시작하세요.\n");
             AcApp.DocumentManager.DocumentToBeDestroyed += (_, e) => Commands.Forget(e.Document);
             AcApp.DocumentManager.DocumentActivated += (_, e) => Commands.OnActivated(e.Document);
             try { RibbonUi.Install(); } catch { /* 리본 없는 환경(콘솔 등) */ }
@@ -89,15 +90,15 @@ namespace GaRuleCheck
             EnsurePalette();
             DrawingProps.EnsureSetup(doc, props: false);   // 라벨 스타일·레이어가 없으면 만든다
             if (!EngineClient.EnsureRunning())
-                doc.Editor.WriteMessage("\nGA-RuleCheck: 엔진 서버를 켤 수 없습니다. engine 폴더에서 'python -m garc serve'를 실행하세요.\n");
+                doc.Editor.WriteMessage($"\n{Product.Tag} 검사 엔진을 켤 수 없어요 — engine 폴더에서 'python -m garc serve'를 실행하세요.\n");
             Attach(doc).MarkDirty();
             _panel!.Ship.Load(DrawingProps.Read(doc.Database));
             if (!DrawingProps.IsConfigured(doc.Database))
             {
                 _panel.ShowTab("ship");
-                doc.Editor.WriteMessage("\nGA-RuleCheck: 선박 정보(LOA 등)가 비어 있습니다. 팔레트 '선박 정보' 탭에서 입력하세요.\n");
+                doc.Editor.WriteMessage($"\n{Product.Tag} 선박 정보(LOA 등)가 비어 있어요 — 빈 입력은 판정하지 않습니다. 팔레트 '선박 정보' 탭에서 입력하세요.\n");
             }
-            doc.Editor.WriteMessage("\nGA-RuleCheck: 감시 시작. GA_ 레이어가 바뀌면 자동으로 다시 검사합니다.\n");
+            doc.Editor.WriteMessage($"\n{Product.Tag} 감시 시작 — 도면이 바뀌면 바뀐 입력에 걸린 규칙만 다시 검사합니다.\n");
         }
 
         [CommandMethod("GARCCHECK")]
@@ -123,8 +124,8 @@ namespace GaRuleCheck
         public void Health()
         {
             var ed = Active?.Editor;
-            try { ed?.WriteMessage("\n엔진 응답: " + EngineClient.Health() + "\n"); ForPanels(p => p.SetEngine(true)); }
-            catch (EngineException ex) { ed?.WriteMessage("\n" + ex.Message + "\n"); ForPanels(p => p.SetEngine(false)); }
+            try { ed?.WriteMessage($"\n{Product.Tag} 엔진 응답: " + EngineClient.Health() + "\n"); ForPanels(p => p.SetEngine(true)); }
+            catch (EngineException ex) { ed?.WriteMessage($"\n{Product.Tag} " + ex.Message + "\n"); ForPanels(p => p.SetEngine(false)); }
         }
 
         // ── 입력 ────────────────────────────────────────────────────────────
@@ -138,7 +139,7 @@ namespace GaRuleCheck
             var props = DrawingProps.Read(doc.Database);
             ForPanels(p => p.Ship.Load(props));
             doc.Editor.WriteMessage(
-                "\nGA_ 레이어 5개, 라벨 문자 스타일(GARC_LABEL), GARC_* 특성 틀을 만들었습니다." +
+                $"\n{Product.Tag} GA_ 레이어 5개, 라벨 문자 스타일(GARC_LABEL), GARC_* 특성 틀을 만들었습니다." +
                 "\n좌표 규약: 측면도, X = 선수 방향 +, Y = 위 +. 선박 정보는 팔레트 '선박 정보' 탭에서 입력.\n");
         }
 
@@ -186,12 +187,12 @@ namespace GaRuleCheck
                     var p = new DBPoint(pt) { Layer = "GA_EYE" };
                     ms.AppendEntity(p);
                     tr.AddNewlyCreatedDBObject(p, true);
-                    if (eyes.Count > 1) ed.WriteMessage($"\n주의: GA_EYE 점이 {eyes.Count + 1}개입니다. 하나만 남기세요(엔진이 '검토 불가'로 표시).");
+                    if (eyes.Count > 1) ed.WriteMessage($"\n{Product.Tag} 주의: GA_EYE 점이 {eyes.Count + 1}개입니다. 하나만 남기세요(엔진이 '검토 불가'로 표시).");
                 }
                 tr.Commit();
             }
             if (db.Pdmode == 0) db.Pdmode = 35;   // 점이 보이도록 (도면 설정 변경, Undo 가능)
-            ed.WriteMessage("\n조종위치를 지정했습니다.\n");
+            ed.WriteMessage($"\n{Product.Tag} 조종위치를 지정했습니다.\n");
         }
 
         [CommandMethod("GARCPICK")]
@@ -207,7 +208,7 @@ namespace GaRuleCheck
             double? scale = Watchers.TryGetValue(doc, out var w) ? w.Last?.UnitsScale : null;
             if (scale is not double s || s <= 0)
             {
-                ed.WriteMessage("\n도면 단위를 아직 모릅니다. 먼저 GARC로 한 번 검사하세요(단위 해석은 엔진이 합니다).\n");
+                ed.WriteMessage($"\n{Product.Tag} 도면 단위를 아직 모릅니다. 먼저 GARC로 한 번 검사하세요(단위 해석은 엔진이 합니다).\n");
                 return;
             }
             var label = k.StringResult switch { "AP" => "AP(선미수선)", "FP" => "FP(선수수선)", _ => "기선(baseline)" };
@@ -223,7 +224,7 @@ namespace GaRuleCheck
             DrawingProps.Write(doc.Database, new Dictionary<string, string> { [key] = DrawingProps.M(value) });
             ForPanels(p => p.Ship.SetField(key, DrawingProps.M(value)));
             w?.MarkDirty();
-            ed.WriteMessage($"\n{key} = {DrawingProps.M(value)} m\n");
+            ed.WriteMessage($"\n{Product.Tag} {key} = {DrawingProps.M(value)} m\n");
         }
 
         // ── 표시·기록 ───────────────────────────────────────────────────────
@@ -255,6 +256,15 @@ namespace GaRuleCheck
             };
         }
 
+        /// 동작 줄이기(명세 5절 '공통 움직임'): 오브·부표·로고의 회전·물결·크기 변화를 멈춘다. 상태 색은 그대로.
+        [CommandMethod("GARCMOTION")]
+        public void ToggleMotion()
+        {
+            UiState.SetReduceMotion(!UiState.Current.ReduceMotion);
+            bool on = UiState.Current.ReduceMotion;
+            Active?.Editor.WriteMessage($"\n{Product.Tag} 동작 줄이기 {(on ? "켜짐 — 회전·물결을 멈추고 상태 색은 그대로" : Motion.Reduced ? "꺼짐(Windows '애니메이션 표시'가 꺼져 있어 계속 멈춰 있음)" : "꺼짐")}\n");
+        }
+
         [CommandMethod("GARCLARGE")]
         public void LargeLabels()
         {
@@ -262,7 +272,7 @@ namespace GaRuleCheck
             Overlay.Scale = Overlay.Scale > 1.0 ? 1.0 : 2.5;
             ForPanels(p => p.SetLargeLabelsState(Overlay.Scale > 1.0));
             Redraw(doc);
-            doc?.Editor.WriteMessage($"\n라벨 확대 {(Overlay.Scale > 1.0 ? "켜짐 (라벨 글자·선 두께·표식 크기 2.5배, 판정은 그대로)" : "꺼짐")}\n");
+            doc?.Editor.WriteMessage($"\n{Product.Tag} 라벨 확대 {(Overlay.Scale > 1.0 ? "켜짐 (라벨 글자·선 두께·표식 크기 2.5배, 판정은 그대로)" : "꺼짐")}\n");
         }
 
         [CommandMethod("GARCREPORT")]
@@ -272,7 +282,7 @@ namespace GaRuleCheck
             if (doc == null) return;
             if (!Watchers.TryGetValue(doc, out var w) || w.Last == null)
             {
-                doc.Editor.WriteMessage("\n먼저 GARC로 검사하세요.\n");
+                doc.Editor.WriteMessage($"\n{Product.Tag} 먼저 GARC로 검사하세요.\n");
                 return;
             }
             try
@@ -284,11 +294,11 @@ namespace GaRuleCheck
                 var file = Path.Combine(dir, $"{Path.GetFileNameWithoutExtension(doc.Name)}_GA검토_{DateTime.Now:yyyyMMdd_HHmm}.html");
                 File.WriteAllText(file, html, new System.Text.UTF8Encoding(false));
                 Process.Start(new ProcessStartInfo(file) { UseShellExecute = true });
-                doc.Editor.WriteMessage($"\n리포트 저장: {file}\n");
+                doc.Editor.WriteMessage($"\n{Product.Tag} 리포트 저장: {file}\n");
             }
             catch (System.Exception ex)
             {
-                doc.Editor.WriteMessage("\n리포트 실패: " + ex.Message + "\n");
+                doc.Editor.WriteMessage($"\n{Product.Tag} 리포트 실패: " + ex.Message + "\n");
             }
         }
 
@@ -311,7 +321,7 @@ namespace GaRuleCheck
                 var folder = VersionStore.FolderFor(doc);
                 if (VersionStore.SameAsLatest(folder, raw))
                 {
-                    if (!fromSave) doc.Editor.WriteMessage("\n마지막 버전과 같아(GA_ 레이어·선박 정보 변화 없음) 새 버전을 만들지 않았습니다.\n");
+                    if (!fromSave) doc.Editor.WriteMessage($"\n{Product.Tag} 마지막 버전과 같아(GA_ 레이어·선박 정보 변화 없음) 새 버전을 만들지 않았습니다.\n");
                     return;
                 }
                 var idx = VersionStore.Load(folder);
@@ -350,12 +360,12 @@ namespace GaRuleCheck
                 using var dlg = new VersionDialog(next, DocName(doc), author, reason, string.Join(" · ", refs), summary);
                 if (AcApp.ShowModalDialog(dlg) != System.Windows.Forms.DialogResult.OK) return;
                 var entry = VersionStore.Add(folder, DocName(doc), raw, dlg.Result, last);
-                doc.Editor.WriteMessage($"\n버전 v{entry.Version} 기록 — {VersionStore.ReasonText(entry.Reason)} · {entry.Author} ({folder})\n");
+                doc.Editor.WriteMessage($"\n{Product.Tag} 버전 v{entry.Version} 기록 — {VersionStore.ReasonText(entry.Reason)} · {entry.Author} ({folder})\n");
                 if (CompareForms.TryGetValue(doc, out var cf) && !cf.IsDisposed) cf.Close();   // 열린 비교 창은 다시 열 때 새 목록으로
             }
             catch (System.Exception ex)
             {
-                doc.Editor.WriteMessage("\n버전 기록 실패: " + ex.Message + "\n");
+                doc.Editor.WriteMessage($"\n{Product.Tag} 버전 기록 실패: " + ex.Message + "\n");
             }
         }
 
@@ -367,7 +377,7 @@ namespace GaRuleCheck
             if (CompareForms.TryGetValue(doc, out var open) && !open.IsDisposed) { open.Activate(); return; }
             if (!EngineClient.EnsureRunning())
             {
-                doc.Editor.WriteMessage("\n엔진 서버에 연결할 수 없어 비교할 수 없습니다. 'python -m garc serve'를 실행하세요.\n");
+                doc.Editor.WriteMessage($"\n{Product.Tag} 엔진 서버에 연결할 수 없어 비교할 수 없습니다. 'python -m garc serve'를 실행하세요.\n");
                 return;
             }
             // 비교 창은 연 도면(doc)에 묶인다 — 다른 도면 탭이 활성일 때는 그 도면에 표시·이동하지 않는다
@@ -413,6 +423,14 @@ namespace GaRuleCheck
                     // 해결이 생기면 로고 옆 토스트(명세 6-4) — 같은 입력으로 되돌린 경우(Undo)도 해결로 센다
                     int solved = x.Last.Transitions.Count(t => t.Kind == "resolved");
                     if (solved > 0) FloatingUi.Toast(UiText.ToastResolved(solved));
+                    // 명령줄(명세 6-4): [BRC] rev 2 · 수정 소요 2 — 선교 가시거리, 충돌격벽 위치
+                    try
+                    {
+                        var ed = x.Doc.Editor;
+                        foreach (var line in UiText.CommandLines(x.Last, x.LastSeconds)) ed.WriteMessage($"\n{Product.Tag} {line}");
+                        if (string.IsNullOrEmpty(x.Doc.CommandInProgress)) ed.PostCommandPrompt();
+                    }
+                    catch { /* 명령줄 문구는 부가 기능 */ }
                 }
                 StatusTray.Update(x.Last, DocName(x.Doc));
             };
@@ -420,8 +438,8 @@ namespace GaRuleCheck
             {
                 ForPanels(p => p.ShowEngineDown(msg));
                 if (doc == Active) FloatingUi.SetState("down");
-                StatusTray.Set("down", "검토 불가 — 엔진 연결 안 됨");
-                doc.Editor.WriteMessage("\nGA-RuleCheck: " + msg + "\n");
+                StatusTray.Set("down", "연결 끊김 — 판정하지 않음");
+                doc.Editor.WriteMessage($"\n{Product.Tag} 연결 끊김 — 판정하지 않음: {msg}\n");
             };
             w.VersionRequested += x => RecordVersion(x.Doc, fromSave: true);
             Watchers[doc] = w;
@@ -594,7 +612,7 @@ namespace GaRuleCheck
             }
             _panel = CreatePanel();
 
-            _palette = new PaletteSet("GA RuleCheck", new Guid("3f6c2a71-5b8e-4d0a-9c1e-7a2b4d6e8f10"))
+            _palette = new PaletteSet(Product.Name, new Guid("3f6c2a71-5b8e-4d0a-9c1e-7a2b4d6e8f10"))
             {
                 Style = PaletteSetStyles.ShowCloseButton | PaletteSetStyles.ShowAutoHideButton | PaletteSetStyles.ShowPropertiesMenu,
                 MinimumSize = new System.Drawing.Size(380, 480),
