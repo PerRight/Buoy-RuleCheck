@@ -23,6 +23,7 @@ namespace GaRuleCheck
         public static readonly Font Value = new(Theme.MonoName, 10f);                      // 게이지 수치 13px
         public static readonly Font Tiny = new(Theme.MonoName, 7.5f);                      // 규정 번호 10px
         public static readonly Font Readiness = new(Theme.FontName, 10.5f, FontStyle.Bold);
+        public static readonly Font Micro = new(Theme.FontName, 7.5f);                       // 칸 아래 작은 표시 10px(직접 입력·비어 있음)
 
         public const TextFormatFlags Wrap = TextFormatFlags.WordBreak | TextFormatFlags.NoPadding | TextFormatFlags.TextBoxControl;
         public const TextFormatFlags Line = TextFormatFlags.SingleLine | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis;
@@ -590,6 +591,61 @@ namespace GaRuleCheck
                 TextRenderer.DrawText(g, _body, Theme.Small, new Rectangle(12, _headH, Width - 20, Height - _headH), Theme.Faint, Ink.Wrap);
             if (Focused && ShowFocusCues)
                 using (var fp = new Pen(Theme.Muted, 1f) { DashStyle = DashStyle.Dot }) g.DrawRectangle(fp, 0, 0, Width - 1, _headH - 1);
+        }
+    }
+
+    /// 역할 표시 범례(GARCROLESHOW 동안): 선체·장애물·충돌격벽·구상선수·조종위치 색과 객체 수. 판정 색과 겹치지 않는 색.
+    public sealed class RoleLegendCard : Control, IFits
+    {
+        private readonly Dictionary<string, int> _counts;
+        private const int Pad = 16;
+        private static readonly (string Role, string Ko, Color Ink, bool Ring)[] Items =
+        {
+            ("hull", "선체", Theme.RoleHull, false), ("obstruction", "장애물", Theme.RoleObstruction, false),
+            ("collision_bhd", "충돌격벽", Theme.RoleBulkhead, false), ("eye", "조종위치", Theme.RoleEye, true),
+            ("bulb", "구상선수", Theme.RoleBulb, false),
+        };
+
+        public RoleLegendCard(Dictionary<string, int> counts)
+        {
+            _counts = counts;
+            SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+            BackColor = Theme.Card;
+            Margin = new Padding(0, 0, 0, 10);
+            AccessibleRole = AccessibleRole.Grouping;
+            AccessibleName = "역할 표시 — " + string.Join(", ", Items.Select(i => $"{i.Ko} {(_counts.TryGetValue(i.Role, out var n) ? n : 0)}개"));
+        }
+
+        public void FitTo(int width)
+        {
+            Width = width;
+            Height = Pad + 20 + 8 + 3 * 24 + 4 + 18 + Pad - 6;
+            Invalidate();
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.Clear(Theme.EffectiveBack(Parent));
+            Ink.Card(g, ClientRectangle, false);
+            int w = Width - Pad * 2;
+            TextRenderer.DrawText(g, "역할 표시", Theme.Bold, new Point(Pad, Pad), Theme.Text, Ink.Line);
+            const string cmd = "GARCROLESHOW";
+            int cw = Ink.Width(cmd, Ink.Tiny);
+            TextRenderer.DrawText(g, cmd, Ink.Tiny, new Point(Width - Pad - cw, Pad + 2), Theme.Faint, Ink.Line);
+            int colW = w / 2, y0 = Pad + 28;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            for (int i = 0; i < Items.Length; i++)
+            {
+                var (role, ko, ink, ring) = Items[i];
+                int x = Pad + (i % 2) * colW, y = y0 + (i / 2) * 24;
+                if (ring) using (var p = new Pen(ink, 1.5f)) g.DrawEllipse(p, x + 4, y + 4, 8, 8);
+                else using (var p = new Pen(ink, 1.5f)) g.DrawLine(p, x, y + 8, x + 16, y + 8);
+                int n = _counts.TryGetValue(role, out var c) ? c : 0;
+                TextRenderer.DrawText(g, $"{ko} {n}", Theme.Small, new Point(x + 23, y + 1), n > 0 ? Theme.Muted : Theme.Faint, Ink.Line);
+            }
+            TextRenderer.DrawText(g, "판정 색(빨강·주황·파랑)과 겹치지 않는 색으로 — 다시 실행하면 꺼져요", Theme.Small,
+                new Rectangle(Pad, y0 + 3 * 24 + 2, w, 18), Theme.Faint, Ink.Line);
         }
     }
 

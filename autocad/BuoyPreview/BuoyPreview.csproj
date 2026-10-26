@@ -31,6 +31,8 @@
     <Compile Include="..\GaRuleCheck\ShipInfoView.cs" Link="Shared\ShipInfoView.cs" />
     <Compile Include="..\GaRuleCheck\DrawingPropsText.cs" Link="Shared\DrawingPropsText.cs" />
     <Compile Include="..\GaRuleCheck\FloatingParts.cs" Link="Shared\FloatingParts.cs" />
+    <Compile Include="..\GaRuleCheck\ParticularsDialog.cs" Link="Shared\ParticularsDialog.cs" />
+    <Compile Include="..\GaRuleCheck\LinkProgress.cs" Link="Shared\LinkProgress.cs" />
     <EmbeddedResource Include="samples.json" LogicalName="BuoyPreview.samples.json" />
   </ItemGroup>
 </Project>

@@ -48,8 +48,17 @@ namespace GaRuleCheck
             idle.Click += (_, _) => { _panel.SetIdle("검사 전", "S140.dwg"); SetLogo(null, "idle"); };
             var down = Theme.TextButton("연결 끊김 화면");
             down.Click += (_, _) => { _panel.ShowEngineDown("엔진 서버(127.0.0.1:8765)에 연결할 수 없습니다."); SetLogo(null, "down"); };
+            var link = Theme.TextButton("실도면 연결 창");
+            link.Click += (_, _) => ShowLinkDialog();
+            var strip = Theme.TextButton("2~5단계 안내 띠");
+            strip.Click += (_, _) => ShowLinkStrip();
+            var roles = Theme.TextButton("역할 표시 범례");
+            roles.Click += (_, _) => _panel.ShowRoleLegend(new Dictionary<string, int> { ["hull"] = 4, ["obstruction"] = 7, ["collision_bhd"] = 1, ["eye"] = 1 });
             list.Controls.Add(idle);
             list.Controls.Add(down);
+            list.Controls.Add(link);
+            list.Controls.Add(strip);
+            list.Controls.Add(roles);
 
             var host = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Bg };
             host.Controls.Add(_panel);
@@ -106,5 +115,41 @@ namespace GaRuleCheck
         }
 
         private void Log(string s) => _log.Text = s;
+
+        /// 실도면 연결 1단계 창: 합성 치수표 후보(S140 숫자)로. 실제 도면 값 아님.
+        private void ShowLinkDialog()
+        {
+            static System.Text.Json.JsonElement J(string v) => JsonDocument.Parse(v).RootElement.Clone();
+            var found = new ParticularsResponse
+            {
+                Items = new()
+                {
+                    ["loa"] = new ParticularItemDto { NameKo = "전장 LOA", Status = "found", Value = J("140") },
+                    ["lbp"] = new ParticularItemDto { NameKo = "LBP", Status = "found", Value = J("132") },
+                    ["scale"] = new ParticularItemDto { NameKo = "축척", Status = "found", Value = J("1000") },
+                    ["ship_type"] = new ParticularItemDto { NameKo = "선종", Status = "conflict" },
+                },
+                SuggestedProps = new() { ["GARC_LOA"] = "140", ["GARC_LBP"] = "132", ["GARC_SCALE"] = "1/1000" },
+                SuggestedConditions = new() { new ConditionDto { Name = "설계 흘수", TAft = 7.2, TFwd = 7.2 }, new ConditionDto { Name = "구조 흘수", TAft = 8.0, TFwd = 8.0 } },
+                HumanInputsKo = new() { "L(ICLL)은 선급 계산서 값", "밸러스트 도착 흘수는 복원성 계산서 값" },
+            };
+            using var dlg = new ParticularsDialog(found, new Dictionary<string, string>(), unitless: true, "S140_sample.dwg");
+            var r = dlg.ShowDialog(this);
+            Log($"실도면 연결 1단계: {r} — " + string.Join(", ", dlg.Result.Select(kv => $"{kv.Key}={kv.Value}")));
+        }
+
+        private LinkProgress? _strip;
+        private int _stripStep = 1;
+
+        /// 2~5단계 안내 띠: 누를 때마다 다음 단계로
+        private void ShowLinkStrip()
+        {
+            string[] what = { "", "측면도 영역의 한쪽 구석을 클릭하세요 — 평면도·단면도는 빼고", "AP(선미 수선, 보통 타두재 중심) 위치를 클릭하세요",
+                              "장애물을 고르세요 — 선교 앞 갑판 화물·크레인·마스트(조타실 자체는 빼고)", "조종위치를 클릭하세요 — 조타실 앞 창 쪽, 선교 갑판(바닥) 높이" };
+            _stripStep = _stripStep >= 5 ? 2 : _stripStep + 1;
+            _strip ??= new LinkProgress();
+            _strip.ShowOver(this, Bounds);
+            _strip.Set(_stripStep, what[_stripStep - 1]);
+        }
     }
 }

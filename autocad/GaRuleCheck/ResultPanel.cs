@@ -56,6 +56,7 @@ namespace GaRuleCheck
         private CheckResponse? _last;
         private string _lastDoc = "";
         private double? _lastSeconds;
+        private Dictionary<string, int>? _roleCounts;
 
         public ResultPanel()
         {
@@ -216,6 +217,7 @@ namespace GaRuleCheck
                 rc.LinkRequested += () => LinkRequested?.Invoke();
                 _cards.Controls.Add(rc);
             }
+            if (_roleCounts != null) _cards.Controls.Add(new RoleLegendCard(_roleCounts));
             bool failOnly = UiState.Current.FailOnly;
             foreach (var x in r.Results)
             {
@@ -246,6 +248,16 @@ namespace GaRuleCheck
             _cards.ResumeLayout();
             FitCards();
             if (record) AddHistory(r);
+        }
+
+        /// 역할 보기(GARCROLESHOW) 범례 카드 켜기(객체 수)/끄기(null)
+        public void ShowRoleLegend(Dictionary<string, int>? counts)
+        {
+            _roleCounts = counts;
+            if (_last != null) { ShowResult(_last, _lastDoc, record: false, seconds: _lastSeconds); return; }
+            foreach (var old in _cards.Controls.OfType<RoleLegendCard>().ToList()) { _cards.Controls.Remove(old); old.Dispose(); }
+            if (counts != null) { var c = new RoleLegendCard(counts); _cards.Controls.Add(c); _cards.Controls.SetChildIndex(c, 0); }
+            FitCards();
         }
 
         private void ClearCards()
