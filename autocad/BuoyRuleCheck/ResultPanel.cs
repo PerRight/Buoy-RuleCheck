@@ -34,7 +34,8 @@ namespace BuoyRuleCheck
         private readonly HeaderView _header = new() { Dock = DockStyle.Top };
         private readonly FlowLayoutPanel _tools = new()
         {
-            Dock = DockStyle.Top, Height = 50, BackColor = Theme.Bg, Padding = new Padding(16, 12, 16, 0), WrapContents = false,
+            Dock = DockStyle.Top, Height = 50, BackColor = Theme.Bg, Padding = new Padding(16, 12, 16, 0), WrapContents = true,
+            AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(0, 50),   // 폭이 모자라면 버튼이 다음 줄로(가려지지 않게)
         };
         private readonly Button _overlayBtn;
         private readonly Button _largeBtn;

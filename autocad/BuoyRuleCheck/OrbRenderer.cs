@@ -277,7 +277,7 @@ namespace BuoyRuleCheck
                 using (var ring = new SolidBrush(Theme.Bg)) using (var rp = Theme.RoundRect(RectangleF.Inflate(cr, 2, 2), 11)) g.FillPath(ring, rp);
                 using (var b = new SolidBrush(col)) using (var path = Theme.RoundRect(cr, 9)) g.FillPath(b, path);
                 TextRenderer.DrawText(g, chip, ChipFont, Rectangle.Round(cr), Theme.Bg,
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
             }
         }
     }
@@ -328,7 +328,7 @@ namespace BuoyRuleCheck
                 using var f = new Font(Theme.MonoName, 7.5f, FontStyle.Bold);
                 var cr = new RectangleF(center.X + 8, center.Y - 24, Math.Max(18, TextRenderer.MeasureText(cluster, f).Width + 6), 18);
                 using (var b = new SolidBrush(col)) using (var path = Theme.RoundRect(cr, 9)) g.FillPath(b, path);
-                TextRenderer.DrawText(g, cluster, f, Rectangle.Round(cr), Theme.Bg, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                TextRenderer.DrawText(g, cluster, f, Rectangle.Round(cr), Theme.Bg, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
             }
         }
     }

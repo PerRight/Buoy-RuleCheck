@@ -460,7 +460,7 @@ namespace BuoyRuleCheck
             // 번호 표식: 위치가 있는 변경은 모양(○ 추가 · □ 삭제 · ◇ 변경), 선박 정보·흘수 조건은 번호만
             var mr = new RectangleF(PadX, PadY, 22, 22);
             if (Change.Bbox != null) CanvasPainter.DrawMarker(g, PaintStyle.Screen, Change, mr, null, MarkerFont, false);
-            else TextRenderer.DrawText(g, $"{Change.Number}.", MarkerFont, Rectangle.Round(mr), Theme.Faint, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            else TextRenderer.DrawText(g, $"{Change.Number}.", MarkerFont, Rectangle.Round(mr), Theme.Faint, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
 
             int x = PadX + Col, w = Width - x - PadX;
             var (st, key) = UiText.ChangeStatus(Change);

@@ -272,8 +272,10 @@ namespace BuoyRuleCheck
                 if (flag)
                     TextRenderer.DrawText(g, "직접 입력", Ink.Micro, new Point(0, y + 21), Theme.Warn, Ink.Line);
                 bool mono = !foundText.StartsWith("도면에", StringComparison.Ordinal) && !conflict && !foundText.StartsWith("단위", StringComparison.Ordinal);
-                TextRenderer.DrawText(g, foundText, mono ? Theme.Mono : Theme.Small, new Rectangle(C1, y, c2w, RowH),
-                    conflict ? Theme.Warn : Theme.Muted, Ink.Wrap | TextFormatFlags.VerticalCenter);
+                var ff = mono ? Theme.Mono : Theme.Small;
+                int fh = Math.Min(RowH, Ink.Height(foundText, ff, c2w));
+                TextRenderer.DrawText(g, foundText, ff, new Rectangle(C1, y + (RowH - fh) / 2, c2w, fh),
+                    conflict ? Theme.Warn : Theme.Muted, Ink.Wrap);
                 y += RowH;
             }
             g.DrawLine(line, 0, y, w, y);

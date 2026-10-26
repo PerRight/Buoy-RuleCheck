@@ -298,7 +298,7 @@ namespace BuoyRuleCheck
             {
                 using var path = Theme.RoundRect(btn, 13);
                 using (var b = new SolidBrush(_hover == btn ? Color.White : Theme.Text)) g.FillPath(b, path);
-                TextRenderer.DrawText(g, "맞춰 확대", Theme.Bold, btn, Theme.Bg, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                TextRenderer.DrawText(g, "맞춰 확대", Theme.Bold, btn, Theme.Bg, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
             }
             return y + 26 + 12;
         }
@@ -310,7 +310,7 @@ namespace BuoyRuleCheck
             if (paint)
             {
                 if (_hover == r) using (var hb = new SolidBrush(Theme.CardHover)) g.FillEllipse(hb, r);
-                TextRenderer.DrawText(g, glyph, Theme.Body, r, _hover == r ? Theme.Text : Theme.Muted, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                TextRenderer.DrawText(g, glyph, Theme.Body, r, _hover == r ? Theme.Text : Theme.Muted, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
             }
             return r.Left - 4;
         }

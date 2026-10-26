@@ -25,18 +25,18 @@ namespace BuoyRuleCheck
         public static readonly Font Readiness = new(Theme.FontName, 10.5f, FontStyle.Bold);
         public static readonly Font Micro = new(Theme.FontName, 7.5f);                       // 칸 아래 작은 표시 10px(직접 입력·비어 있음)
 
-        public const TextFormatFlags Wrap = TextFormatFlags.WordBreak | TextFormatFlags.NoPadding | TextFormatFlags.TextBoxControl;
-        public const TextFormatFlags Line = TextFormatFlags.SingleLine | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis;
+        public const TextFormatFlags Wrap = TextFormatFlags.WordBreak | TextFormatFlags.NoPadding | TextFormatFlags.TextBoxControl | TextFormatFlags.NoPrefix;
+        public const TextFormatFlags Line = TextFormatFlags.SingleLine | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix;
         /// 재기용 플래그 — 줄임표(EndEllipsis)를 넣으면 안 된다. GDI DrawText(DT_CALCRECT)는 줄임표 플래그가 있으면
         /// 제안 폭(Size.Empty = 0)에 맞춰 잘린 폭을 돌려줘서, 실제 글자보다 좁게 재고 '수…'처럼 잘리거나 글자가 겹친다
         /// (2026-10-26 사용자 PC 미리보기에서 발견). 줄임표는 그릴 때(Line)만 쓴다.
-        public const TextFormatFlags Measure = TextFormatFlags.SingleLine | TextFormatFlags.NoPadding;
+        public const TextFormatFlags Measure = TextFormatFlags.SingleLine | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix;
 
         public static int Height(string text, Font f, int width) =>
             string.IsNullOrEmpty(text) ? 0 : TextRenderer.MeasureText(text, f, new Size(Math.Max(width, 20), 0), Wrap).Height;
 
         public static int Width(string text, Font f) =>
-            string.IsNullOrEmpty(text) ? 0 : TextRenderer.MeasureText(text, f, new Size(int.MaxValue, int.MaxValue), Measure).Width;
+            string.IsNullOrEmpty(text) ? 0 : TextRenderer.MeasureText(text, f, new Size(int.MaxValue, int.MaxValue), Measure).Width + 2;   // +2: 잰 폭 그대로인 칸에 그릴 때 1 px 차이로 '…'가 붙지 않게
         public static int LineHeight(string text, Font f) =>
             TextRenderer.MeasureText(string.IsNullOrEmpty(text) ? "가" : text, f, new Size(int.MaxValue, int.MaxValue), Measure).Height;
 
@@ -250,7 +250,7 @@ namespace BuoyRuleCheck
                 }
                 else using (var p = new Pen(Theme.Faint, 1f)) g.DrawPath(p, path);
             }
-            TextRenderer.DrawText(g, Text, Theme.Small, new Point(20, (int)(cy - TextRenderer.MeasureText(Text, Theme.Small).Height / 2f)), Theme.Muted);
+            TextRenderer.DrawText(g, Text, Theme.Small, new Point(20, (int)(cy - Ink.LineHeight(Text, Theme.Small) / 2f)), Theme.Muted, Ink.Line);
             if (Focused && ShowFocusCues)
                 using (var fp = new Pen(Theme.Muted, 1f) { DashStyle = DashStyle.Dot }) g.DrawRectangle(fp, 0, 6, Width - 1, Height - 14);
         }
@@ -624,10 +624,12 @@ namespace BuoyRuleCheck
             AccessibleName = "역할 표시 — " + string.Join(", ", Items.Select(i => $"{i.Ko} {(_counts.TryGetValue(i.Role, out var n) ? n : 0)}개"));
         }
 
+        private const string LegendNote = "판정 색(빨강·주황·파랑)과 겹치지 않는 색으로 — 다시 실행하면 꺼져요";
+
         public void FitTo(int width)
         {
             Width = width;
-            Height = Pad + 20 + 8 + 3 * 24 + 4 + 18 + Pad - 6;
+            Height = Pad + 20 + 8 + 3 * 24 + 4 + Math.Max(18, Ink.Height(LegendNote, Theme.Small, width - Pad * 2)) + Pad - 6;
             Invalidate();
         }
 
@@ -652,8 +654,8 @@ namespace BuoyRuleCheck
                 int n = _counts.TryGetValue(role, out var c) ? c : 0;
                 TextRenderer.DrawText(g, $"{ko} {n}", Theme.Small, new Point(x + 23, y + 1), n > 0 ? Theme.Muted : Theme.Faint, Ink.Line);
             }
-            TextRenderer.DrawText(g, "판정 색(빨강·주황·파랑)과 겹치지 않는 색으로 — 다시 실행하면 꺼져요", Theme.Small,
-                new Rectangle(Pad, y0 + 3 * 24 + 2, w, 18), Theme.Faint, Ink.Line);
+            TextRenderer.DrawText(g, LegendNote, Theme.Small,
+                new Rectangle(Pad, y0 + 3 * 24 + 2, w, Math.Max(18, Ink.Height(LegendNote, Theme.Small, w))), Theme.Faint, Ink.Wrap);
         }
     }
 

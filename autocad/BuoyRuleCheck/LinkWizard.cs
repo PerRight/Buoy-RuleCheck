@@ -133,7 +133,7 @@ namespace BuoyRuleCheck
             if (!SelectRole(doc, "hull", "\n[4/5] 선체 외곽선 선택 — 측면도의 갑판선·선수재·선미·바닥선(용골) (Enter: 건너뛰기): ")) { Finish(doc, "멈춤"); return; }
             LinkStep(4, "충돌격벽 선을 고르세요");
             if (!SelectRole(doc, "collision_bhd", "\n충돌격벽 선 선택 (Enter: 건너뛰기): ")) { Finish(doc, "멈춤"); return; }
-            LinkStep(4, "장애물을 고르세요 — 선교 앞 갑판 화물·크레인·마스트(조타실 자체는 빼고)");
+            LinkStep(4, "장애물을 고르세요 — 선교 앞 화물·크레인·마스트(조타실 빼고)");
             if (!PickObstructions(doc)) { Finish(doc, "멈춤"); return; }
             LinkStep(4, "구상선수 윤곽을 고르세요 — 없으면 Enter");
             if (!SelectRole(doc, "bulb", "\n구상선수(수선 아래 FP 앞으로 나온 부분) 윤곽 선택 — 없으면 Enter: ")) { Finish(doc, "멈춤"); return; }
