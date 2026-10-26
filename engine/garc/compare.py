@@ -15,6 +15,12 @@
   needs_check 이번 변경으로 판정 못 함(확인 필요)·적용 제외로 바뀐 것 — '해결'로 세지 않는다(모르면 멈춘다)
   related_rules  이 변경이 입력으로 들어가는 규칙
   center, bbox   표식 위치(m) — 플러그인은 units_scale로 나눠 도면 좌표로 바꾼다
+
+  표시용(판정·diff에 쓰지 않음, 2026-10-26 Buoy UI — 변경 목록 한 칸을 그리는 데만):
+  title_ko       짧은 제목 (예: "장애물 상단 높이", "충돌격벽 위치", "장애물 삭제")
+  value_from_ko / value_to_ko  수치 변화 앞·뒤 (예: "z 24.00" → "21.40 m"; 추가면 앞이 null, 삭제면 뒤가 "없음")
+  detail_ko      덧붙임 (예: "기준점 거리 11.00 → 9.00 m") 또는 null
+  status_before / status_after  그 객체의 이전·이후 요소 판정 중 가장 나쁜 것(fail > unknown > pass), 판정이 없으면 null
 """
 from __future__ import annotations
 
@@ -80,6 +86,57 @@ def _modified_desc(role: str, a: dict[str, float] | None, b: dict[str, float] | 
     return f"{rk} " + (", ".join(parts) if parts else "형상 변경(범위 같음)")
 
 
+_WORST = {"fail": 0, "unknown": 1, "pass": 2}
+
+
+def _worst(els: list[dict[str, Any]] | None) -> str | None:
+    """객체 하나의 요소 판정 중 가장 나쁜 것(표시용)."""
+    statuses = [e["status"] for e in els or []]
+    return min(statuses, key=lambda x: _WORST.get(x, 3)) if statuses else None
+
+
+def _short_shape(role: str, st: dict[str, float] | None) -> str:
+    """추가·삭제 항목의 값 한 줄(표시용): 장애물은 상단 높이만, 나머지는 _shape_ko 그대로."""
+    if st is not None and role == "obstruction":
+        return f"상단 z {st['z1']:.2f} m"
+    return _shape_ko(role, st)
+
+
+def _display_geo(kind: str, role: str, a: dict[str, float] | None, b: dict[str, float] | None,
+                 rep_a: Report, rep_b: Report) -> dict[str, Any]:
+    """변경 목록 한 칸의 제목·수치 변화(표시용). 판정·diff는 바꾸지 않는다."""
+    rk = ROLE_KO.get(role, "객체")
+    out: dict[str, Any] = {"title_ko": f"{rk} 형상 변경", "value_from_ko": None, "value_to_ko": None, "detail_ko": None}
+    if kind == "added":
+        return {**out, "title_ko": f"{rk} 추가", "value_to_ko": _short_shape(role, b)}
+    if kind == "removed":
+        return {**out, "title_ko": f"{rk} 삭제", "value_from_ko": _short_shape(role, a), "value_to_ko": "없음"}
+    if a is None or b is None:
+        return out
+    if role == "eye":
+        return {**out, "title_ko": "조종위치 이동", "value_from_ko": f"x {a['x0']:.2f}, z {a['z1']:.2f}",
+                "value_to_ko": f"x {b['x0']:.2f}, z {b['z1']:.2f} m"}
+    if role == "collision_bhd":
+        da, db = _bhd_distance(rep_a), _bhd_distance(rep_b)
+        detail = f"기준점 거리 {da.removesuffix(' m')} → {db}" if da and db and da != db else None
+        return {**out, "title_ko": "충돌격벽 위치", "value_from_ko": _shape_ko(role, a).removesuffix(" m"),
+                "value_to_ko": _shape_ko(role, b).removeprefix("x "), "detail_ko": detail}
+    parts = []
+    if abs(b["z1"] - a["z1"]) > 1e-3:
+        parts.append(("상단 높이", "z", f"{a['z1']:.2f}", f"{b['z1']:.2f}"))
+    if abs(b["x0"] - a["x0"]) > 1e-3 or abs(b["x1"] - a["x1"]) > 1e-3:
+        parts.append(("위치", "x", f"{a['x0']:.1f}~{a['x1']:.1f}", f"{b['x0']:.1f}~{b['x1']:.1f}"))
+    if abs(b["z0"] - a["z0"]) > 1e-3 and not parts:
+        parts.append(("하단 높이", "z", f"{a['z0']:.2f}", f"{b['z0']:.2f}"))
+    if len(parts) == 1:
+        what, q, f, t = parts[0]
+        return {**out, "title_ko": f"{rk} {what}", "value_from_ko": f"{q} {f}", "value_to_ko": f"{t} m"}
+    if parts:
+        return {**out, "title_ko": f"{rk} 위치·높이", "value_from_ko": " · ".join(f"{q} {f} m" for _, q, f, _ in parts),
+                "value_to_ko": " · ".join(f"{q} {t} m" for _, q, _, t in parts)}
+    return {**out, "detail_ko": "범위 같음"}
+
+
 def _fmt_conditions(conds: list[dict[str, Any]]) -> str:
     return "; ".join(f"{c['name']} {c['t_aft']:g}/{c['t_fwd']:g}" for c in conds) or "없음"
 
@@ -131,6 +188,9 @@ def _group_blocks(changes: list[dict[str, Any]], block_of: dict[str, str | None]
             groups[(b, c["kind"])] = g
             out.append(g)
         g["members"].append(c["element_id"])
+        for key in ("status_before", "status_after"):   # 표시용: 하위 객체 중 가장 나쁜 판정
+            vals = [v for v in (g.get(key), c.get(key)) if v]
+            g[key] = min(vals, key=lambda x: _WORST.get(x, 3)) if vals else None
         for key in ("resolved", "introduced", "needs_check"):
             for x in c[key]:
                 if all(y["rule_id"] != x["rule_id"] for y in g[key]):
@@ -151,6 +211,9 @@ def _group_blocks(changes: list[dict[str, Any]], block_of: dict[str, str | None]
         g["desc_ko"] = f"{g['role_ko']} 블록 {b} {_KIND_KO.get(kind, kind)} (하위 객체 {n}개)"
         g["before_ko"] = "없음" if kind == "added" else f"블록 {b} — 변경 범위 {span}"
         g["after_ko"] = "없음" if kind == "removed" else f"블록 {b} — 변경 범위 {span}"
+        g["title_ko"] = f"{g['role_ko']} 블록 {b} {_KIND_KO.get(kind, kind)}"
+        g["value_from_ko"], g["value_to_ko"] = None, f"하위 객체 {n}개 · {span}"
+        g["detail_ko"] = None
     for g in groups.values():
         if len(g["members"]) == 1:
             g["element_id"] = g["members"][0]       # 하위 객체 하나만 바뀌었으면 원래 항목 그대로
@@ -242,6 +305,9 @@ def compare_models(ma: dict[str, Any], mb: dict[str, Any], labels: tuple[str, st
             "resolved": res, "introduced": intro, "needs_check": check,
             "related_rules": [r.id for r in rules_by_role.get(role, [])],
             "center": center, "bbox": bbox,
+            **_display_geo(kind, role, sa, sb, ra, rb),
+            "status_before": None if kind == "added" else _worst(ea.get(handle)),
+            "status_after": None if kind == "removed" else _worst(eb.get(handle)),
         })
 
     for h in diff["modified"]:
@@ -285,7 +351,9 @@ def compare_models(ma: dict[str, Any], mb: dict[str, Any], labels: tuple[str, st
         changes.append({"kind": "ship", "element_id": None, "role": None, "role_ko": "선박 정보",
                         "desc_ko": f"선박 정보 {SHIP_KO.get(k, k)} {fa} → {fb}", "before_ko": fa, "after_ko": fb,
                         "resolved": res, "introduced": intro, "needs_check": check, "related_rules": related,
-                        "center": None, "bbox": None})
+                        "center": None, "bbox": None,
+                        "title_ko": f"선박 정보 {SHIP_KO.get(k, k)}", "value_from_ko": fa, "value_to_ko": fb, "detail_ko": None,
+                        "status_before": None, "status_after": None})
     if not diff["initial"] and diff["conditions_changed"]:
         related = [r.id for r in rules if r.uses_conditions]
         res, intro, check = rule_transitions_once(related)
@@ -293,7 +361,9 @@ def compare_models(ma: dict[str, Any], mb: dict[str, Any], labels: tuple[str, st
         changes.append({"kind": "conditions", "element_id": None, "role": None, "role_ko": "흘수 조건",
                         "desc_ko": f"흘수 조건 {fa} → {fb}", "before_ko": fa, "after_ko": fb,
                         "resolved": res, "introduced": intro, "needs_check": check, "related_rules": related,
-                        "center": None, "bbox": None})
+                        "center": None, "bbox": None,
+                        "title_ko": "흘수 조건", "value_from_ko": fa, "value_to_ko": fb, "detail_ko": None,
+                        "status_before": None, "status_after": None})
 
     changes = _group_blocks(changes, {o["handle"]: o.get("block") for o in ma["objects"] + mb["objects"]})
     changes.sort(key=lambda c: (_KIND_ORDER[c["kind"]], c["center"][0] if c["center"] else math.inf,

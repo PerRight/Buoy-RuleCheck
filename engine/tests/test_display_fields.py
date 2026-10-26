@@ -78,3 +78,44 @@ class DisplayFields(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(HAVE_EZDXF, "ezdxf 없음")
+class CompareDisplayFields(unittest.TestCase):
+    """버전 비교 변경 목록의 표시용 필드(title_ko·value_from/to_ko·detail_ko·status_before/after) — 판정·diff와 같은 숫자인지."""
+
+    @classmethod
+    def setUpClass(cls):
+        from garc.compare import compare_raws
+        cls.d = compare_raws(read_dxf(SAMPLES / "S140_v1_review.dxf"), read_dxf(SAMPLES / "S140_v2_fixed.dxf"), ("v1", "v2"))
+        cls.by = {c["element_id"]: c for c in cls.d["changes"]}
+
+    def test_modified_obstruction_top(self):
+        c = self.by["97"]
+        self.assertEqual((c["title_ko"], c["value_from_ko"], c["value_to_ko"]), ("장애물 상단 높이", "z 24.00", "21.40 m"))
+        self.assertEqual((c["status_before"], c["status_after"]), ("fail", "pass"))
+        self.assertIn("21.40", c["after_ko"])                       # 기존 문구와 같은 숫자
+
+    def test_removed_and_added(self):
+        rm, add = self.by["98"], self.by["9C"]
+        self.assertEqual((rm["title_ko"], rm["value_from_ko"], rm["value_to_ko"], rm["status_after"]), ("장애물 삭제", "상단 z 25.00 m", "없음", None))
+        self.assertEqual((add["title_ko"], add["value_from_ko"], add["value_to_ko"], add["status_before"], add["status_after"]),
+                         ("장애물 추가", None, "상단 z 19.00 m", None, "pass"))
+
+    def test_bulkhead_distance_detail(self):
+        c = self.by["92"]
+        self.assertEqual((c["title_ko"], c["value_from_ko"], c["value_to_ko"]), ("충돌격벽 위치", "x 122.50", "124.50 m"))
+        self.assertEqual(c["detail_ko"], "기준점 거리 11.00 → 9.00 m")
+        self.assertIn("11.00 m → 9.00 m", c["desc_ko"])                # 기존 설명과 같은 거리
+
+    def test_ship_and_conditions(self):
+        from garc.compare import compare_raws
+        a = read_dxf(SAMPLES / "S140_v2_fixed.dxf")
+        b = read_dxf(SAMPLES / "S140_v2_fixed.dxf")
+        b["props"]["GARC_LOA"] = "150"
+        b["props"]["GARC_CONDITIONS"] = "밸러스트 도착:6.5/3.0"
+        d = compare_raws(a, b, ("A", "B"))
+        kinds = {c["kind"]: c for c in d["changes"]}
+        self.assertEqual((kinds["ship"]["title_ko"], kinds["ship"]["value_from_ko"], kinds["ship"]["value_to_ko"]), ("선박 정보 LOA", "140 m", "150 m"))
+        self.assertEqual(kinds["conditions"]["title_ko"], "흘수 조건")
+        self.assertIsNone(kinds["ship"]["status_after"])
