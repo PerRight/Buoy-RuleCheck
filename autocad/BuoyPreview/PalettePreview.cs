@@ -195,7 +195,7 @@ namespace BuoyRuleCheck
         private void ShowLinkStrip()
         {
             string[] what = { "", "측면도 영역의 한쪽 구석을 클릭하세요 — 평면도·단면도는 빼고", "AP(선미 수선, 보통 타두재 중심) 위치를 클릭하세요",
-                              "장애물을 고르세요 — 선교 앞 갑판 화물·크레인·마스트(조타실 자체는 빼고)", "조종위치를 클릭하세요 — 조타실 앞 창 쪽, 선교 갑판(바닥) 높이" };
+                              "장애물을 고르세요 — 선교 앞 화물·크레인·마스트(조타실 빼고)", "조종위치를 클릭하세요 — 조타실 앞 창 쪽, 선교 갑판(바닥) 높이" };
             _stripStep = _stripStep >= 5 ? 2 : _stripStep + 1;
             _strip ??= new LinkProgress();
             _strip.ShowOver(this, Bounds);
