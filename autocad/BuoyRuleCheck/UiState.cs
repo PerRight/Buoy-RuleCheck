@@ -40,14 +40,20 @@ namespace BuoyRuleCheck
             return new UiState();
         }
 
+        /// '수정 소요만'을 이번 실행 동안만 바꿨을 때 ui.json에 쓸 원래 값(다른 설정을 저장해도 잠깐 바꾼 값이 남지 않게)
+        private bool? _persistedFailOnly;
+
         public void Save()
         {
+            bool now = FailOnly;
+            if (_persistedFailOnly is bool keep) FailOnly = keep;
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
                 File.WriteAllText(FilePath, JsonSerializer.Serialize(this, Contract.Json), new UTF8Encoding(false));
             }
             catch { /* 저장 실패는 기능에 영향 없음 */ }
+            finally { FailOnly = now; }
         }
 
         /// '미충족만 보기'가 바뀌면 열린 패널(팔레트·떠 있는 패널)이 같이 바뀌게.
@@ -63,11 +69,14 @@ namespace BuoyRuleCheck
             MotionChanged?.Invoke();
         }
 
-        public static void SetFailOnly(bool on)
+        /// persist=false: 이번 실행 동안만(예: '근거 ›'로 숨긴 항목을 보이려고 잠깐 끔 — 사용자가 정한 값은 ui.json에 그대로)
+        public static void SetFailOnly(bool on, bool persist = true)
         {
             if (Current.FailOnly == on) return;
+            if (persist) Current._persistedFailOnly = null;
+            else Current._persistedFailOnly ??= Current.FailOnly;
             Current.FailOnly = on;
-            Current.Save();
+            if (persist) Current.Save();
             FailOnlyChanged?.Invoke();
         }
     }

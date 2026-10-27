@@ -90,18 +90,23 @@ namespace BuoyRuleCheck
                 var targets = el != null ? new List<string> { el.ElementId } : r.Targets;
                 var col = StatusColor(el?.Status ?? r.Status);
                 // 펼친 블록의 하위 객체 handle('1F3.12')은 원래 블록 하나로 — 같은 블록을 수백 번 복제하지 않게
+                int failed = 0;
                 foreach (var h in targets.Select(Extractor.BaseHandle).Distinct())
                 {
-                    var id = Extractor.HandleToId(db, h);
-                    if (id.IsNull || id.IsErased) continue;
-                    if (tr.GetObject(id, OpenMode.ForRead) is not Entity ent) continue;
-                    var clone = (Entity)ent.Clone();
-                    clone.Color = col;
-                    if (clone is Polyline pl0) pl0.ConstantWidth = 1.5 * UnitsPerPixel(doc);
-                    Add(clone);
+                    try
+                    {
+                        var id = Extractor.HandleToId(db, h);
+                        if (id.IsNull || id.IsErased) continue;
+                        if (tr.GetObject(id, OpenMode.ForRead) is not Entity ent) continue;
+                        var clone = (Entity)ent.Clone();
+                        clone.Color = col;
+                        if (clone is Polyline pl0) pl0.ConstantWidth = 1.5 * UnitsPerPixel(doc);
+                        Add(clone);
+                    }
+                    catch (Exception ex) { failed++; Guard.Report("근거 대상 강조", ex); }   // 대상 하나가 실패해도 시선·허용선은 그린다
                 }
                 int targetsDrawn = Items.Count - before;
-                int lines = 0, failed = 0;
+                int lines = 0;
                 if (scale > 0)
                     foreach (var ov in r.Overlays)
                     {

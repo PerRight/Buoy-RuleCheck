@@ -32,6 +32,8 @@ namespace BuoyRuleCheck
         /// 묶음 목록에서 한 줄 → 그 부표로 이동, [맞춰 확대] → 모두 들어오게
         public event Action<IReadOnlyList<BuoyCardItem>>? ZoomRequested;
         public event Action<BuoyCard>? Closed2;
+        /// 핀을 누름(고정 켜짐/꺼짐) — 고정하면 부표 자리에 붙어 화면 이동·확대를 따라간다(호출 쪽이 FollowTo로 옮김)
+        public event Action<BuoyCard, bool>? PinChanged;
         public bool Pinned => _pinned;
         public bool MouseInside => Visible && Bounds.Contains(Cursor.Position);
 
@@ -105,6 +107,29 @@ namespace BuoyRuleCheck
             _t0 = DateTime.UtcNow;
             if (!Visible) Show(owner);
             if (!Motion.Reduced) _fade.Start(); else Opacity = 1;
+        }
+
+        /// 고정 카드가 도면 위 자리를 따라간다(2026-10-27 사용자 요청: 화면이 아니라 그 위치에 고정).
+        /// anchor = 부표 중심의 화면 좌표, clip = 도면 창(화면 좌표). 부표 왼쪽 위에(자리가 없으면 오른쪽 위),
+        /// 부표가 도면 창 밖으로 나가면 숨기고 다시 들어오면 보인다. anchor가 null이면 숨긴다.
+        public void FollowTo(Point? anchor, Rectangle clip)
+        {
+            if (IsDisposed) return;
+            if (anchor is not { } a || !clip.Contains(a))
+            {
+                if (Visible && !MouseInside) Visible = false;
+                return;
+            }
+            int x = a.X - Width - 18, y = a.Y - Height - 14;
+            if (x < clip.Left) x = a.X + 22;
+            var wa = Screen.FromPoint(a).WorkingArea;
+            y = Math.Clamp(y, wa.Top + 4, Math.Max(wa.Top + 4, wa.Bottom - Height - 4));
+            x = Math.Clamp(x, wa.Left + 4, Math.Max(wa.Left + 4, wa.Right - Width - 4));
+            _fade.Stop();
+            _restTop = y;
+            Opacity = 1;
+            if (Location.X != x || Location.Y != y) Location = new Point(x, y);
+            if (!Visible) Visible = true;   // 처음 Show(owner)로 붙인 주인 창은 그대로 — 활성화하지 않음(ShowWithoutActivation)
         }
 
         /// 커서가 부표를 떠났다 — 150 ms 유예 뒤 닫는다(카드 위로 옮겨 오면 남는다)
@@ -257,7 +282,13 @@ namespace BuoyRuleCheck
             }
             int right = CardW - Pad;
             right = IconButton(g, paint, right, y, "×", "닫기 (Esc)", Close);
-            right = IconButton(g, paint, right, y, _pinned ? "●" : "○", _pinned ? "고정 풀기" : "고정 — 다른 부표를 봐도 남김", () => { _pinned = !_pinned; _grace.Stop(); Invalidate(); });
+            right = IconButton(g, paint, right, y, _pinned ? "●" : "○", _pinned ? "고정 풀기" : "고정 — 이 자리에 붙여 둠(화면을 옮기거나 확대해도 따라감)", () =>
+            {
+                _pinned = !_pinned;
+                _grace.Stop();
+                Invalidate();
+                PinChanged?.Invoke(this, _pinned);
+            });
             if (paint)
             {
                 string name = UiText.Short(it.RuleId);

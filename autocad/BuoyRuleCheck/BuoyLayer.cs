@@ -123,6 +123,7 @@ namespace BuoyRuleCheck
             // 올려 둔 부표가 사라지면 호버·근거 선을 끝낸다(카드가 있든 없든 — 검증 F5)
             if (_hover != null && (!Buoys.ContainsValue(_hover) || _hover.Anim.Phase == BuoyPhase.Vanish)) Leave();
             Guard.Run("부표 카드", () => RefreshCards(now));
+            Guard.Run("고정 카드 따라가기", FollowPinned);   // 높이가 바뀌었을 수 있음
             Ensure();
             Redraw();
         }
@@ -365,6 +366,11 @@ namespace BuoyRuleCheck
             if (_hover != null && !Buoys.ContainsValue(_hover)) Leave();   // 올려 둔 부표가 다 사라졌으면 호버 끝(검증 F5)
             SettleLeave();
             CheckHoverStillInside();
+            if ((DateTime.UtcNow - _followAt).TotalMilliseconds >= 100)   // 창 이동·크기·묶음 바뀜도 따라가게(0.1 s마다)
+            {
+                _followAt = DateTime.UtcNow;
+                FollowPinned();
+            }
             if (animating || gone.Count > 0) Redraw();
             if (Buoys.Count == 0)
             {
@@ -378,6 +384,7 @@ namespace BuoyRuleCheck
         {
             if (_card is { Pinned: false }) CloseCard(force: false);
             Redraw();
+            FollowPinned();   // 고정 카드는 부표 자리를 따라감
         });
 
         /// 저장: 확인 대기 중인 문제없음 부표를 퍼지며 사라지게(디자인 전달 5장)
@@ -632,10 +639,15 @@ namespace BuoyRuleCheck
             if (_leaveAt is not { } t) return;
             if (_hover == null) { _leaveAt = null; return; }
             if (_card is { IsDisposed: false } c && c.MouseInside) { _leaveAt = DateTime.UtcNow; return; }   // 카드 위 — 유지, 나가면 다시 150 ms
-            if (_card == null || _card.IsDisposed || (DateTime.UtcNow - t).TotalMilliseconds >= OrbStates.CardGraceMs) Leave();
+            if (_card == null || _card.IsDisposed || (DateTime.UtcNow - t).TotalMilliseconds >= OrbStates.CardGraceMs)
+            {
+                // 유예가 끝났다 — 카드 유예를 다시 걸지 않고(카드만 150 ms 더 남아 근거 선 없이 보이던 틈, 2026-10-27 검증) 바로 닫는다
+                Leave(cardSoon: false);
+                if (_card is { IsDisposed: false, Pinned: false, MouseInside: false }) CloseCard(force: false);
+            }
         }
 
-        private static void Leave()
+        private static void Leave(bool cardSoon = true)
         {
             _hoverFromObject = false;
             _leaveAt = null;
@@ -644,7 +656,7 @@ namespace BuoyRuleCheck
             _hover = null;
             b.Anim.SetHover(false);
             EvidenceHover?.Invoke(b.RuleId, b.ElementId, false);
-            _card?.LeaveSoon();
+            if (cardSoon) _card?.LeaveSoon();
             // 문제없음을 확인했으면(올렸다 뗌) 퍼지며 사라진다(07)
             // 다시 검사 보류 중이어도 카드가 최종 판정 '문제없음'을 보였으면 확인으로 친다(검증 F4)
             if (b.Anim.Target == "pass")
@@ -674,7 +686,7 @@ namespace BuoyRuleCheck
             // 카드는 '최종' 판정(Target)으로 — 다시 검사 0.6 s 동안 부표 색은 옛 색이어도 카드 내용(El)은 이미 새 판정이다(검증 N1)
             var items = CardItems(b);
             CloseCard(force: false);
-            var card = new BuoyCard(items);
+            var card = new BuoyCard(items) { Tag = b.Key };   // 어느 부표 자리의 카드인지(고정하면 그 자리를 따라감)
             card.EvidenceRequested += it => EvidenceRequested?.Invoke(it.RuleId, it.Element.ElementId);
             card.ZoomRequested += list => ZoomTo(list);
             card.Closed2 += c =>
@@ -682,8 +694,93 @@ namespace BuoyRuleCheck
                 Pinned.Remove(c);
                 if (_card == c) _card = null;
             };
+            card.PinChanged += OnPinChanged;
             _card = card;
             try { card.ShowNear(System.Windows.Forms.Cursor.Position, new Owner(AcApp.MainWindow.Handle)); } catch { }
+        }
+
+        /// 핀을 누르면 그 자리로 바로 붙인다(커서 옆이 아니라 부표 왼쪽 위)
+        private static void OnPinChanged(BuoyCard c, bool on) => Guard.Run("부표 카드 고정", () => { if (on) FollowPinned(); });
+
+        // ── 고정 카드: 도면 위 자리를 따라감 (2026-10-27 사용자 요청 — 화면이 아니라 그 위치에 고정) ─────────────
+        //   카드는 WinForms 창이라 도면과 함께 움직이지 않는다. 화면 이동·확대(ViewChanged)와 박자마다 부표 중심의 화면 좌표를
+        //   다시 구해 카드를 옮긴다. 부표가 도면 창 밖이면 카드를 숨기고, 다시 들어오면 보인다. 도면은 그대로.
+
+        private static DateTime _followAt;
+
+        private static void FollowPinned()
+        {
+            if (_doc == null) return;
+            var cards = Pinned.Where(c => !c.IsDisposed).ToList();
+            if (_card is { IsDisposed: false, Pinned: true } pc && !cards.Contains(pc)) cards.Add(pc);
+            if (cards.Count == 0) return;
+            var map = ViewMap.Current(_doc);
+            if (map == null) return;
+            Layout(map.Upp);   // 지금 배율로 부표 중심·묶음
+            foreach (var c in cards)
+            {
+                var w = PinPoint(c, map.Upp);
+                Guard.Run("고정 카드 따라가기", () => c.FollowTo(w is { } p ? map.ToScreen(p) : null, map.Clip));
+            }
+        }
+
+        /// 고정 카드가 붙을 도면 위 점: 그 부표(묶였으면 대표)의 오브 중심. 부표가 없으면(목록에서 연 카드 등) 고칠 자리 + 오브 간격.
+        private static Point3d? PinPoint(BuoyCard c, double upp)
+        {
+            string? key = c.Tag as string;
+            if (key == null && c.Items.Count > 0) key = c.Items[0].RuleId + "|" + c.Items[0].Element.ElementId;
+            if (key != null && Buoys.TryGetValue(key, out var b))
+            {
+                var lead = b.Leader ?? b;
+                return lead.Center;
+            }
+            var a = c.Items.Count > 0 ? c.Items[0].Element.Anchor : null;
+            if (a is not { Length: >= 2 } || _scale <= 0) return null;
+            double off = BuoyPainter.CenterOffset * upp;
+            return new Point3d(a[0] / _scale + off, a[1] / _scale + off, 0);
+        }
+
+        /// 지금 뷰의 도면(WCS) → 화면 픽셀 변환. 뷰 중심 = 도면 창 가운데, 1 px = 뷰 높이 / SCREENSIZE.Y(부표 맞히기와 같은 배율).
+        /// 뷰 회전(VIEWTWIST)·방향은 표준 WCS→DCS 행렬로. 타일 뷰포트가 여럿이면 도면 창 전체 기준이라 어긋날 수 있다(실기 확인).
+        private sealed class ViewMap
+        {
+            public Matrix3d WcsToDcs;
+            public Point2d Center;
+            public double Upp;
+            public System.Drawing.Rectangle Clip;
+
+            public static ViewMap? Current(Document doc)
+            {
+                try
+                {
+                    using var v = doc.Editor.GetCurrentView();
+                    var ss = (Point2d)AcApp.GetSystemVariable("SCREENSIZE");
+                    if (ss.Y < 1) return null;
+                    double upp = v.Height / ss.Y;
+                    if (!(upp > 0) || double.IsInfinity(upp)) return null;
+                    var dcsToWcs = Matrix3d.Rotation(-v.ViewTwist, v.ViewDirection, v.Target)
+                                 * Matrix3d.Displacement(v.Target - Point3d.Origin)
+                                 * Matrix3d.PlaneToWorld(v.ViewDirection);
+                    var h = doc.Window.Handle;
+                    if (!GetClientRect(h, out var rc)) return null;
+                    var tl = new POINT { X = rc.Left, Y = rc.Top };
+                    if (!ClientToScreen(h, ref tl)) return null;
+                    return new ViewMap
+                    {
+                        WcsToDcs = dcsToWcs.Inverse(), Center = v.CenterPoint, Upp = upp,
+                        Clip = new System.Drawing.Rectangle(tl.X, tl.Y, rc.Right - rc.Left, rc.Bottom - rc.Top),
+                    };
+                }
+                catch (Exception ex) { Guard.Report("고정 카드 위치", ex); return null; }
+            }
+
+            public System.Drawing.Point ToScreen(Point3d w)
+            {
+                var p = w.TransformBy(WcsToDcs);
+                double x = Clip.X + Clip.Width / 2.0 + (p.X - Center.X) / Upp;
+                double y = Clip.Y + Clip.Height / 2.0 - (p.Y - Center.Y) / Upp;
+                return new System.Drawing.Point((int)Math.Round(Math.Clamp(x, -1e6, 1e6)), (int)Math.Round(Math.Clamp(y, -1e6, 1e6)));
+            }
         }
 
         /// 지금 카드를 닫는다. 핀으로 고정한 카드는 남겨 두고(목록에 옮김) 새 카드를 띄울 수 있게.
@@ -715,13 +812,15 @@ namespace BuoyRuleCheck
             const double pad = 8;   // m — 고칠 자리 주변이 함께 보이게
             try { using (doc.LockDocument()) Overlay.FocusBox(doc, new[] { a[0] - pad, a[1] - pad, a[0] + pad, a[1] + pad }, scale); } catch { }
             string st = e.Status == "fail" ? "fail" : e.Status == "pass" ? "pass" : "warn";   // 모르는 요소 상태는 확인 필요(문제없음 아님)
-            var card = new BuoyCard(new List<BuoyCardItem> { new(st, r.RuleId, r.Condition, e) });
+            var card = new BuoyCard(new List<BuoyCardItem> { new(st, r.RuleId, r.Condition, e) }) { Tag = r.RuleId + "|" + e.ElementId };
             card.EvidenceRequested += it => EvidenceRequested?.Invoke(it.RuleId, it.Element.ElementId);
             card.ZoomRequested += list => ZoomTo(list);
             card.Closed2 += c => { Pinned.Remove(c); if (_card == c) _card = null; };
+            card.PinChanged += OnPinChanged;
             card.Pinned2();
             Pinned.Add(card);
             try { card.ShowNear(System.Windows.Forms.Cursor.Position, new Owner(AcApp.MainWindow.Handle)); } catch { }
+            if (doc == _doc) Guard.Run("고정 카드 따라가기", FollowPinned);   // 바로 그 자리(부표 왼쪽 위)로
             return true;
         }
 
@@ -743,6 +842,15 @@ namespace BuoyRuleCheck
 
         [DllImport("user32.dll")]
         private static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+
+        [DllImport("user32.dll")]
+        private static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct POINT { public int X, Y; }
+
+        [DllImport("user32.dll")]
+        private static extern bool ClientToScreen(IntPtr hWnd, ref POINT pt);
 
         private sealed class Owner : System.Windows.Forms.IWin32Window
         {

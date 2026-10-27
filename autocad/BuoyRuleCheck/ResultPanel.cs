@@ -149,7 +149,7 @@ namespace BuoyRuleCheck
             var rc = FindCard(ruleId);
             if (rc == null && UiState.Current.FailOnly && _last != null && _last.Results.Any(x => x.RuleId == ruleId))
             {
-                UiState.SetFailOnly(false);   // FailOnlyChanged → 모든 팔레트를 다시 그림
+                UiState.SetFailOnly(false, persist: false);   // FailOnlyChanged → 모든 팔레트를 다시 그림. 저장된 설정은 그대로(검증 지적)
                 rc = FindCard(ruleId);
             }
             if (rc == null) return false;
