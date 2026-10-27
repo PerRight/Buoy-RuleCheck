@@ -15,3 +15,8 @@
 *.jpg binary
 *.ico binary
 *.pdf binary
+
+# 설치 패키지의 .cmd: 한국어 Windows 콘솔 코드 페이지(cp949) + CRLF 바이트 그대로(UTF-8로 바꾸면 echo 한글이 깨진다)
+tools/package/payload/*.cmd -text
+# 패키지 안내문: UTF-8 BOM + CRLF 그대로(메모장에서 바로 읽히게)
+tools/package/payload/README.txt -text

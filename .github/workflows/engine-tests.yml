@@ -1,4 +1,4 @@
-# 엔진 테스트 — push·PR마다 24건 기대값 포함 전체 테스트를 돌린다.
+# 엔진 테스트 — push·PR마다 24건 기대값 포함 전체 테스트와 설치 패키지 스크립트 시험을 돌린다.
 # C# 플러그인은 AutoCAD DLL이 필요해 여기서 빌드하지 않는다 (autocad/README.md 첫 실행 확인표로 확인).
 name: engine-tests
 
@@ -28,6 +28,8 @@ jobs:
       - name: 단위 테스트 (24건 기대값 포함)
         working-directory: engine
         run: python -m unittest discover -s tests -v
+      - name: 설치 패키지 스크립트 시험 (번들 정의·내장 Python 경로·설치·제거 흐름)
+        run: python -m unittest discover -s tools/package/tests -v
       - name: 24건 표가 expected_24.json과 일치하는지
         working-directory: engine
         run: |

@@ -56,3 +56,8 @@ desktop.ini
 .vscode/
 .env
 .env.*
+
+# ── 설치 패키지(tools/package/make_package.py) 산출물·내려받은 Python·AutoCAD 참조 DLL(Autodesk 파일 — 올리지 않음) ──
+dist/
+tools/package/cache/
+tools/package/refs/
