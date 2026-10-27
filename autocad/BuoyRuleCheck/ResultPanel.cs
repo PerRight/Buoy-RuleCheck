@@ -138,13 +138,28 @@ namespace BuoyRuleCheck
             _largeBtn.AccessibleName = "라벨 확대 " + (on ? "켜짐" : "꺼짐");
         }
 
-        /// '근거 ›'(부표 카드) → 검토 탭에서 그 항목으로
-        public void FocusRule(string ruleId)
+        /// 지금 이 판정을 보이고 있나(팔레트를 방금 만들었거나 다른 도면 결과면 false)
+        public bool Shows(CheckResponse r) => ReferenceEquals(_last, r);
+
+        /// '근거 ›'(부표 카드)·로고 목록 → 검토 탭에서 그 항목으로 스크롤하고 링을 밝힌다.
+        /// '수정 소요만'으로 숨긴 항목(확인 필요 등)이면 필터를 끄고 찾는다 — 눌렀는데 아무 일도 없어 보이지 않게(2026-10-27 사용자 PC).
+        public bool FocusRule(string ruleId)
         {
             ShowTab("review");
-            foreach (Control c in _cards.Controls)
-                if (c is RuleCard rc && rc.RuleId == ruleId) { _cards.ScrollControlIntoView(rc); rc.Flash(); break; }
+            var rc = FindCard(ruleId);
+            if (rc == null && UiState.Current.FailOnly && _last != null && _last.Results.Any(x => x.RuleId == ruleId))
+            {
+                UiState.SetFailOnly(false);   // FailOnlyChanged → 모든 팔레트를 다시 그림
+                rc = FindCard(ruleId);
+            }
+            if (rc == null) return false;
+            _cards.ScrollControlIntoView(rc);
+            rc.Flash();
+            return true;
         }
+
+        private RuleCard? FindCard(string ruleId) =>
+            _cards.Controls.OfType<RuleCard>().FirstOrDefault(c => c.RuleId == ruleId);
 
         private void OnFailOnlyChanged()
         {

@@ -142,6 +142,7 @@ namespace BuoyRuleCheck
             }
             catch (EngineException ex) { ed?.WriteMessage($"\n{Product.Tag} " + ex.Message + "\n"); ForPanels(p => p.SetEngine(false)); }
             ed?.WriteMessage($"{Product.Tag} {BuoyLayer.Diagnose()}\n");
+            ed?.WriteMessage($"{Product.Tag} {Overlay.LastEvidenceNote}\n");
         }
 
         // ── 입력 ────────────────────────────────────────────────────────────
@@ -265,11 +266,8 @@ namespace BuoyRuleCheck
                 if (d == null) return;
                 try { if (on) Overlay.ShowEvidence(d, rule, el); else Overlay.ClearEvidence(); } catch (System.Exception ex) { Guard.Report("근거 선(부표)", ex); }
             };
-            BuoyLayer.EvidenceRequested += (rule, el) =>
-            {
-                EnsurePalette();
-                ForPanels(p => p.FocusRule(rule));
-            };
+            // '근거 ›' → 팔레트를 펼쳐(자동 숨김으로 접혀 있어도) 그 항목으로. 전에는 보이게만 해서 접힌 팔레트가 안 열렸다(2026-10-27 사용자 PC)
+            BuoyLayer.EvidenceRequested += (rule, el) => OpenPaletteAt(rule);
         }
 
         /// 동작 줄이기(명세 5절 '공통 움직임'): 오브·부표·로고의 회전·물결·크기 변화를 멈춘다. 상태 색은 그대로.
@@ -661,7 +659,11 @@ namespace BuoyRuleCheck
 
         /// 로고 목록 '팔레트에서 자세히': 팔레트를 보이게(자동 숨김이면 펼침) + 검토 탭 + 가장 급한 항목 카드로 스크롤·깜빡임.
         /// 팔레트가 이미 열려 있으면 아무 변화가 없어 보이던 것(2026-10-26 사용자 PC)을 고침.
-        private static void ShowPaletteDetail()
+        private static void ShowPaletteDetail() => OpenPaletteAt(null);
+
+        /// 팔레트를 보이고 펼친 뒤(자동 숨김으로 접혀 있으면 펼침) 그 항목 카드로. ruleId가 없으면 가장 급한 항목.
+        /// 팔레트를 방금 만들었거나 다른 도면 결과가 떠 있으면 지금 도면의 마지막 판정을 먼저 채운다.
+        private static void OpenPaletteAt(string? ruleId)
         {
             EnsurePalette();
             try
@@ -673,11 +675,16 @@ namespace BuoyRuleCheck
                     _palette.Activate(0);
                 }
             }
-            catch { /* 팔레트 상태 API 실패는 무시 — 아래 카드 이동은 한다 */ }
+            catch (System.Exception ex) { Guard.Report("팔레트 펼치기", ex); }   // 실패해도 아래 카드 이동은 한다
             var d = Active;
-            var r = d != null && Watchers.TryGetValue(d, out var w) ? w.Last : null;
-            var first = r?.Results.OrderBy(x => Theme.StatusRank(x.Status)).FirstOrDefault();
-            ForPanels(p => { if (first != null) p.FocusRule(first.RuleId); else p.ShowTab("review"); });
+            var w = d != null && Watchers.TryGetValue(d, out var ww) ? ww : null;
+            if (d != null && w?.Last is { } last)
+                ForPanels(p => { if (!p.Shows(last)) p.ShowResult(last, DocName(d), record: false, seconds: w.LastSeconds); });
+            ruleId ??= w?.Last?.Results.OrderBy(x => Theme.StatusRank(x.Status)).FirstOrDefault()?.RuleId;
+            bool found = false;
+            ForPanels(p => { if (ruleId != null) found |= p.FocusRule(ruleId); else p.ShowTab("review"); });
+            if (ruleId != null && !found)
+                d?.Editor.WriteMessage($"\n{Product.Tag} 팔레트에 '{UiText.Short(ruleId)}' 항목이 없어요 — 다시 검사하면 나타나요.\n");
         }
 
         private static void EnsurePalette()

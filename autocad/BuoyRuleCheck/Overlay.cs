@@ -65,18 +65,26 @@ namespace BuoyRuleCheck
         }
 
         /// 근거 보기: 그 규칙의 시선·허용선·라벨 + 대상 객체(판정 색). 부표·팔레트 카드에 커서를 올린 동안만.
+        /// BRCHEALTH용: 마지막 근거 표시가 무엇을 그렸는지, 못 그렸으면 왜인지
+        public static string LastEvidenceNote { get; private set; } = "근거 선: 아직 안 그림";
+
         public static void ShowEvidence(Document doc, string ruleId, string? elementId)
         {
             Clear();
             _evidence = (ruleId, elementId);
-            if (!Enabled || _resp == null || _respDoc != doc) return;
-            var r = _resp.Results.FirstOrDefault(x => x.RuleId == ruleId);
-            if (r == null) return;
+            string why = !Enabled ? "표시 꺼짐" : _resp == null ? "판정 없음" : _respDoc != doc ? "다른 도면의 판정" : "";
+            if (why.Length > 0) { LastEvidenceNote = $"근거 선: {UiText.Short(ruleId)} — 그리지 않음({why})"; return; }
+            var r = _resp!.Results.FirstOrDefault(x => x.RuleId == ruleId);
+            if (r == null) { LastEvidenceNote = $"근거 선: {UiText.Short(ruleId)} — 그리지 않음(판정에 그 항목 없음)"; return; }
             var db = doc.Database;
             double scale = _resp.UnitsScale ?? 0;   // 1 도면 단위 = scale m
-            using (doc.LockDocument())
-            using (var tr = db.TransactionManager.StartOpenCloseTransaction())
+            // 읽기만 한다. 커서 이벤트(PointMonitor) 안에서 잠금이 안 되면 잠그지 않고 읽는다 — 근거 선이 통째로 빠지지 않게
+            DocumentLock? lk = null;
+            try { lk = doc.LockDocument(); } catch { lk = null; }
+            int before = Items.Count;
+            try
             {
+                using var tr = db.TransactionManager.StartOpenCloseTransaction();
                 var style = DrawingProps.LabelStyleId(tr, db);
                 var el = elementId == null ? null : r.Elements.FirstOrDefault(e => e.ElementId == elementId);
                 var targets = el != null ? new List<string> { el.ElementId } : r.Targets;
@@ -92,10 +100,26 @@ namespace BuoyRuleCheck
                     if (clone is Polyline pl0) pl0.ConstantWidth = 1.5 * UnitsPerPixel(doc);
                     Add(clone);
                 }
+                int targetsDrawn = Items.Count - before;
+                int lines = 0, failed = 0;
                 if (scale > 0)
-                    foreach (var ov in r.Overlays) Draw(ov, scale, style, db);
+                    foreach (var ov in r.Overlays)
+                    {
+                        int n0 = Items.Count;
+                        try { Draw(ov, scale, style, db); } catch (Exception ex) { failed++; Guard.Report("근거 선 그리기", ex); }   // 한 줄이 실패해도 나머지는 그린다
+                        lines += Items.Count - n0;
+                    }
                 tr.Commit();
+                LastEvidenceNote = $"근거 선: {UiText.Short(ruleId)} — 대상 {targetsDrawn} · 선·글자 {lines}/{r.Overlays.Count}"
+                    + (scale > 0 ? "" : " (축척 없음 — 선 못 그림)") + (failed > 0 ? $" · 실패 {failed}" : "")
+                    + (lk == null ? " · 잠금 없이 읽음" : "") + $" · {DateTime.Now:HH:mm:ss}";
             }
+            catch (Exception ex)
+            {
+                LastEvidenceNote = $"근거 선: {UiText.Short(ruleId)} — 오류 {Guard.Short(ex)}";
+                throw;   // 호출 쪽이 [BRC] 내부 오류로 알린다
+            }
+            finally { lk?.Dispose(); }
         }
 
         /// 검사 실패·문서 닫힘: 이전 판정으로 근거를 그리지 않게 잊는다.

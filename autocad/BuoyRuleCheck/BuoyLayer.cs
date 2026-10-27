@@ -363,6 +363,7 @@ namespace BuoyRuleCheck
             var gone = Buoys.Values.Where(b => b.Anim.Done).Select(b => b.Key).ToList();
             foreach (var k in gone) Buoys.Remove(k);
             if (_hover != null && !Buoys.ContainsValue(_hover)) Leave();   // 올려 둔 부표가 다 사라졌으면 호버 끝(검증 F5)
+            SettleLeave();
             CheckHoverStillInside();
             if (animating || gone.Count > 0) Redraw();
             if (Buoys.Count == 0)
@@ -546,7 +547,7 @@ namespace BuoyRuleCheck
             double upp = PointerUpp(doc);
             if (upp <= 0) upp = LastUpp;
             // 배율을 못 구함(아직 한 번도 못 그림 등): 객체 위 호버 카드는 닫지 않는다 — 전에는 여기서 매번 닫혀 카드가 깜박였다
-            if (upp <= 0) { if (!_hoverFromObject) Leave(); return false; }
+            if (upp <= 0) { if (!_hoverFromObject) SoftLeave(); return false; }
             Layout(upp);   // 커서가 있는 뷰의 배율로 중심·묶음을 다시(다른 뷰포트를 마지막에 그렸어도 맞게)
             Buoy? hit = null;
             double best = double.MaxValue;
@@ -557,10 +558,16 @@ namespace BuoyRuleCheck
                 double dist = b.Center.DistanceTo(new Point3d(world.X, world.Y, 0));
                 if (dist <= r && dist < best) { best = dist; hit = b; }
             }
-            if (hit == _hover) { if (hit != null) _card?.StayOpen(); return hit != null; }
+            if (hit == _hover)
+            {
+                if (hit == null) return false;
+                _leaveAt = null;   // 카드 쪽으로 가다가 돌아옴
+                _card?.StayOpen();
+                return true;
+            }
             if (hit == null && _hoverFromObject) return false;   // 객체 위 호버는 HoverObject가 끝낸다
-            Leave();
-            if (hit == null) return false;
+            if (hit == null) { SoftLeave(); return false; }
+            Leave();   // 다른 부표로 옮김
             _hover = hit;
             _hoverFromObject = false;
             hit.Anim.SetHover(true);
@@ -585,10 +592,16 @@ namespace BuoyRuleCheck
             }
             if (hit == null)
             {
-                if (_hoverFromObject) Leave();
+                if (_hoverFromObject) SoftLeave();
                 return;
             }
-            if (hit == _hover) { _card?.StayOpen(); return; }
+            if (hit == _hover)
+            {
+                _leaveAt = null;
+                _hoverFromObject = true;   // 부표에서 그 객체 위로 옮겨 옴 — 이제 객체를 벗어날 때 끝낸다
+                _card?.StayOpen();
+                return;
+            }
             Leave();
             _hover = hit;
             _hoverFromObject = true;
@@ -599,10 +612,33 @@ namespace BuoyRuleCheck
         }
 
         private static bool _hoverFromObject;
+        private static DateTime? _leaveAt;   // 커서가 부표·객체를 벗어난 시각 — 카드로 옮겨 가는 중일 수 있어 바로 끝내지 않는다
+
+        /// 커서가 부표(또는 객체)를 벗어남. 열린 카드가 있으면 바로 끝내지 않고 150 ms 기다린다 — 그 사이 카드 위로 들어오면
+        /// 호버·근거 선(시선·허용선)·카드를 그대로 둔다(디자인 전달 4장 '카드 위로 들어오면 유지'). 끝내는 것은 박자(Tick)가 한다.
+        /// 전에는 부표를 벗어나는 순간 근거 선이 꺼져, 카드로 옮겨 가 읽는 동안 근거가 보이지 않았다(2026-10-27 사용자 PC).
+        private static void SoftLeave()
+        {
+            if (_hover == null) { _hoverFromObject = false; _leaveAt = null; return; }
+            if (_card is not { IsDisposed: false, Pinned: false } c) { Leave(); return; }
+            if (_leaveAt != null) return;
+            _leaveAt = DateTime.UtcNow;
+            c.LeaveSoon();
+        }
+
+        /// 박자마다: 벗어난 뒤 150 ms가 지났고 커서가 카드 위가 아니면(또는 카드가 닫혔으면) 호버를 끝낸다.
+        private static void SettleLeave()
+        {
+            if (_leaveAt is not { } t) return;
+            if (_hover == null) { _leaveAt = null; return; }
+            if (_card is { IsDisposed: false } c && c.MouseInside) { _leaveAt = DateTime.UtcNow; return; }   // 카드 위 — 유지, 나가면 다시 150 ms
+            if (_card == null || _card.IsDisposed || (DateTime.UtcNow - t).TotalMilliseconds >= OrbStates.CardGraceMs) Leave();
+        }
 
         private static void Leave()
         {
             _hoverFromObject = false;
+            _leaveAt = null;
             if (_hover == null) return;
             var b = _hover;
             _hover = null;
