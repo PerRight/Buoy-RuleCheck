@@ -1,12 +1,12 @@
 # 기여 안내 (팀 작업 규칙)
 
-Buoy-RuleCheck(저장소 이름 GA-RuleCheck)는 2026 K-조선 해커톤 홍대도면반의 저장소입니다. 팀원이 같은 방식으로 고치고 확인할 수 있게 최소한의 규칙만 적습니다.
+Buoy-RuleCheck(GitHub `PerRight/Buoy-RuleCheck`, 옛 이름 GA-RuleCheck)는 2026 K-조선 해커톤 홍대도면반의 저장소입니다. 팀원이 같은 방식으로 고치고 확인할 수 있게 최소한의 규칙만 적습니다.
 구조·원칙의 원본은 [CLAUDE.md](CLAUDE.md)입니다. 이 문서와 어긋나면 CLAUDE.md가 우선입니다.
 
 ## 1. 처음 받았을 때
 ```bash
 git clone <저장소 주소>
-cd GA-RuleCheck/engine
+cd Buoy-RuleCheck/engine
 pip install "ezdxf==1.4.4"               # CI와 같은 버전
 python -m unittest discover -s tests      # 전부 통과해야 정상 (ezdxf 없으면 DXF 3개 skip)
 ```

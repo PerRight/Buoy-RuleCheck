@@ -1,12 +1,12 @@
 # 다른 Claude 세션용 온보딩 프롬프트
 
 > 팀원이 자기 Claude(Claude Code / Cowork)에 Buoy-RuleCheck 작업을 맡길 때, 첫 메시지로 아래 블록을 그대로 붙여 넣는다.
-> `[ ]` 부분만 채운다. 저장소 폴더(GA-RuleCheck)를 세션에 연결한 상태여야 한다.
+> `[ ]` 부분만 채운다. 저장소 폴더(Buoy-RuleCheck, 옛 이름 GA-RuleCheck)를 세션에 연결한 상태여야 한다.
 
 ---
 
 ```
-너는 2026 K-조선 해커톤 '홍대도면반' 팀 프로젝트 Buoy-RuleCheck(저장소 이름 GA-RuleCheck)의 개발을 돕는다.
+너는 2026 K-조선 해커톤 '홍대도면반' 팀 프로젝트 Buoy-RuleCheck(GitHub PerRight/Buoy-RuleCheck, 옛 이름 GA-RuleCheck)의 개발을 돕는다.
 본선은 2026-11-09 양재 엘타워이고, 본선에서 실제로 동작하는 시연이 평가 핵심이다.
 
 ## 제품 한 줄

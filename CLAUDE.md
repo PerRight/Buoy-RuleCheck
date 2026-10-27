@@ -3,7 +3,7 @@
 > Claude Code / Cowork가 이 폴더에서 작업할 때 가장 먼저 읽는 문서.
 > 결정이 바뀌면 코드보다 이 문서를 먼저 고친다.
 > 정식 이름 **Buoy-RuleCheck**(2026-10-26 확정, 워드마크 **Buoy** RuleCheck). 옛 작업명 `GA-RuleCheck` / `garc` / `GARC_`는 호환용 별칭으로만 남는다(§9).
-> 저장소 이름(PerRight/GA-RuleCheck)과 `docs/review`·`docs/mentoring`의 지난 기록은 당시 이름 그대로 둔다.
+> GitHub 저장소는 **PerRight/Buoy-RuleCheck**(10-27 이름 변경 — 옛 주소 PerRight/GA-RuleCheck는 GitHub가 새 주소로 연결). `docs/review`·`docs/mentoring`의 지난 기록은 당시 이름 그대로 둔다.
 
 ---
 
@@ -157,7 +157,7 @@ python scripts/make_samples.py --compare-demo   # 버전 비교 데모 샘플 �
 - [x] 실도면 축척(1/N) 입력·측면도 영역 지정 — 10-18 `GARCLINK`(현 `BRCLINK`, 엔진 0.4.0·플러그인 0.5.0). AutoCAD 안 실행은 확인표 26~35 (손종민)
 - [ ] **마스트·크레인 지브 같은 좁은 구조물을 V/22.1.1 장애물로 볼지**(아니면 V/22.1.2 사각 섹터로 따로) — 선급·MSC/Circ.982·현업 관행 확인. 실도면 시험에서 판정이 갈림 (표인범)
 - [ ] 실도면 역할 지정 보조(선체 외곽선·충돌격벽 후보 자동 제시) — 지금은 사람이 고름. AI 사용 시 실행 위치(로컬만) 결정 후 (손종민·표인범)
-- [x] GitHub 공개 저장소 업로드 (PerRight/GA-RuleCheck) — Actions 결과 확인, README 배지는 남음 (전원)
+- [x] GitHub 공개 저장소 업로드 (PerRight/GA-RuleCheck → 10-27 PerRight/Buoy-RuleCheck로 이름 변경) — Actions 결과 확인, README 배지는 남음 (전원)
 - [ ] 라이선스 결정 (공개 저장소 — 정하기 전까지 '열람만 가능'. 대회 규정의 지식재산 조항과 함께 확인) (표인범)
 - [x] 블록(INSERT) 장애물 지원 — 10-18 추출기(C#·DXF)가 펼쳐서 보냄(handle '<블록>.<번호>'). 펼칠 수 없는 블록만 '검토 불가'
 - [ ] 3주차 생성형 AI 설명: `server/explain.py`는 외부 API로 데이터를 보냄 → '도면 내용 외부 전송 금지'와 충돌. 보낼 범위(판정 문구만/수치 포함)·옵트인·오프라인 폴백을 먼저 결정 (전원)
@@ -184,8 +184,9 @@ python scripts/make_samples.py --compare-demo   # 버전 비교 데모 샘플 �
 | 스키마 | `brc.raw/1`·`brc.versions/1` | `garc.raw/1` 읽음 |
 | C# | `BuoyRuleCheck` 네임스페이스·어셈블리, `BuoyRuleCheck.bundle` | 설치 스크립트가 옛 `GaRuleCheck.bundle` 제거 |
 | 레이어 접두어 | `GA_` 유지 (GA = General Arrangement) | — |
+| GitHub 저장소·PC 폴더 (10-27) | `PerRight/Buoy-RuleCheck`, 저장소 폴더 `Buoy-RuleCheck` | GitHub가 옛 주소를 연결. 로컬은 `git remote set-url origin https://github.com/PerRight/Buoy-RuleCheck.git`. 폴더를 옮기면 `autocad\install.ps1`을 다시 실행(엔진 경로 환경변수) |
 
-남은 것: GitHub 저장소 이름(PerRight/GA-RuleCheck) — 바꾸면 기존 링크가 리다이렉트되지만 팀 결정 후. 발표자료.
+남은 것: 발표자료.
 
 ## 10. 참고
 - 이전 저장소(FreeCAD, 상위 폴더 `core/ server/ freecad/`): IS Code 복원성·KG 역산·설명 서버. 설명 서버(`server/explain.py`)와 Guider식 UX는 3주차에 재사용 후보.
