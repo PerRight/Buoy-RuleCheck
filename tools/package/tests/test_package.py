@@ -201,10 +201,73 @@ class SetupFlow(unittest.TestCase):
         r = subprocess.run([sys.executable, "-I", "-c", code], capture_output=True, text=True, env=self.env,
                            cwd=str(self.tmp), stdin=subprocess.DEVNULL, timeout=120)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertIn("잠겨", r.stdout)
+        self.assertIn("사용 중인 파일", r.stdout)
+        self.assertIn("이전 설치는 그대로", r.stdout)
         self.assertTrue((app / "engine" / "OLD_MARK").exists(), "옛 설치가 그대로")
         self.assertFalse((app / "engine" / "NEW_MARK").exists())
         self.assertFalse(list(app.parent.glob("app.new*")), "임시 폴더를 남기지 않음")
+
+    def _swap_with_failing_rename(self, should_fail) -> subprocess.CompletedProcess:
+        """설치 중 특정 이름 바꾸기만 실패시키고 install을 돌린다(should_fail(src_name, target_name) -> bool)."""
+        code = (
+            "import importlib.util, pathlib, sys\n"
+            f"spec = importlib.util.spec_from_file_location('bs', r'{self.pkg / 'buoy_setup.py'}')\n"
+            "bs = importlib.util.module_from_spec(spec); spec.loader.exec_module(bs)\n"
+            "bs.time.sleep = lambda s: None\n"
+            "real = pathlib.Path.rename\n"
+            f"FAIL = {should_fail}\n"
+            "def rename(self, target):\n"
+            "    if FAIL(self.name, pathlib.Path(target).name):\n"
+            "        raise PermissionError(13, 'locked', str(self))\n"
+            "    return real(self, target)\n"
+            "pathlib.Path.rename = rename\n"
+            "sys.exit(bs.main(['install', '--yes']))\n")
+        return subprocess.run([sys.executable, "-I", "-c", code], capture_output=True, text=True, env=self.env,
+                              cwd=str(self.tmp), stdin=subprocess.DEVNULL, timeout=120)
+
+    def _mark_old_install(self):
+        r = self.run_setup(self.pkg / "buoy_setup.py", "install")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        app = self.tmp / "Local" / "BuoyRuleCheck" / "app"
+        bundle = self.tmp / "Roaming" / "Autodesk" / "ApplicationPlugins" / "BuoyRuleCheck.bundle"
+        (app / "engine" / "OLD_MARK").write_text("old")
+        (bundle / "OLD_MARK").write_text("old")
+        (self.pkg / "engine" / "NEW_MARK").write_text("new")
+        return app, bundle
+
+    def _assert_old_intact(self, app, bundle):
+        self.assertTrue((app / "engine" / "OLD_MARK").exists(), "설치 폴더는 옛것 그대로")
+        self.assertFalse((app / "engine" / "NEW_MARK").exists())
+        self.assertTrue((bundle / "OLD_MARK").exists(), "번들도 옛것 그대로")
+        for d in (app.parent, bundle.parent):
+            left = [p.name for p in d.iterdir() if ".new" in p.name or ".old-" in p.name or ".bad-" in p.name]
+            self.assertEqual(left, [], "임시 폴더를 남기지 않음")
+
+    def test_bundle_locked_after_app_swapped_rolls_back_both(self):
+        """설치 폴더는 바꿨는데 번들을 못 바꾸면 설치 폴더도 되돌린다(엔진 새것·플러그인 옛것이 남지 않게)."""
+        app, bundle = self._mark_old_install()
+        r = self._swap_with_failing_rename("lambda a, b: a == 'BuoyRuleCheck.bundle' and '.old-' in b")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self._assert_old_intact(app, bundle)
+
+    def test_new_into_place_fails_restores_old(self):
+        """옛것을 비킨 뒤 새것을 넣지 못하면(백신이 새 파일을 잡음) 옛것을 제자리로 — 설치 폴더가 사라지지 않게."""
+        app, bundle = self._mark_old_install()
+        r = self._swap_with_failing_rename("lambda a, b: a.startswith('app.new-') and b == 'app'")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self._assert_old_intact(app, bundle)
+
+    def test_uninstall_cleans_leftovers(self):
+        r = self.run_setup(self.pkg / "buoy_setup.py", "install")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        root = self.tmp / "Local" / "BuoyRuleCheck"
+        plugins = self.tmp / "Roaming" / "Autodesk" / "ApplicationPlugins"
+        for p in (root / "app.old-1", root / "app.new-2", plugins / "BuoyRuleCheck.bundle.old-3"):
+            p.mkdir()
+        r = self.run_setup(self.pkg / "buoy_setup.py", "uninstall")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(sorted(p.name for p in root.iterdir() if p.is_dir()), [])
+        self.assertEqual(list(plugins.iterdir()), [])
 
     def test_autocad_running_stops_without_changes(self):
         r = self.run_setup(self.pkg / "buoy_setup.py", "install", BRC_SETUP_FAKE_ACAD_RUNNING="1")
@@ -224,6 +287,29 @@ class SetupFlow(unittest.TestCase):
         r = self.run_setup(self.pkg / "buoy_setup.py", "install")
         self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
         self.assertIn("엔진을 불러오지 못함", r.stdout)
+
+
+class WindowsCommands(unittest.TestCase):
+    """Windows에서만 도는 명령 줄을 문자열로 확인(실행은 못 함)."""
+
+    def test_detached_delete_is_one_string_with_retry_loop(self):
+        bs = _load("buoy_setup")
+        calls = []
+        orig_win, orig_popen = bs.IS_WIN, bs.subprocess.Popen
+        bs.IS_WIN = True
+        bs.subprocess.Popen = lambda *a, **k: calls.append((a, k))
+        try:
+            bs.detached_delete(Path(r"C:/Users/홍 길동/AppData/Local/BuoyRuleCheck/app"))
+        finally:
+            bs.IS_WIN, bs.subprocess.Popen = orig_win, orig_popen
+        (args, kw), = calls
+        cmd = args[0]
+        self.assertIsInstance(cmd, str, "목록으로 넘기면 따옴표가 \\\"로 바뀐다")
+        self.assertTrue(cmd.startswith('cmd /d /c "for /l %i in (1,1,60) do @('))
+        self.assertTrue(cmd.endswith(')"'))
+        self.assertIn('rmdir /s /q "app"', cmd)
+        self.assertTrue(cmd.isascii(), "한글·공백 경로는 명령 줄이 아니라 cwd로")
+        self.assertTrue(kw["cwd"].endswith("BuoyRuleCheck"))
 
 
 class Payload(unittest.TestCase):

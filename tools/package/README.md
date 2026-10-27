@@ -4,7 +4,9 @@
 받는 PC에서는 압축을 풀고 `INSTALL.cmd` 더블클릭이면 끝이다(인터넷·관리자 권한·Python·.NET SDK 불필요).
 
 ## 1. 패키지 만들기 (개발 PC — AutoCAD 2027 · .NET 10 SDK · Python 3.10+ · 인터넷)
-.NET 8용(2025·2026) 빌드에는 .NET 8 참조 팩도 필요하다. 인터넷이 있으면 빌드할 때 NuGet에서 자동으로 받고, 없으면 .NET 8 SDK를 같이 설치해 둔다.
+.NET 8용(2025·2026) 빌드에는 .NET 8 참조 팩(`Microsoft.NETCore.App.Ref`·`Microsoft.WindowsDesktop.App.Ref`)도 필요하다.
+- 인터넷이 있으면 빌드할 때 NuGet에서 자동으로 받는다(권장).
+- 오프라인이면 .NET 10 SDK가 정한 **정확한 버전**의 팩이 미리 있어야 한다. .NET 8 SDK를 따로 깔아도 패치 버전이 다르면 NU1101로 실패한다.
 저장소 루트에서:
 ```powershell
 python tools\package\make_package.py

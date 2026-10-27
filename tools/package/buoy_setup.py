@@ -9,7 +9,7 @@
   - AutoCAD 자동 로드 번들 → %APPDATA%\\Autodesk\\ApplicationPlugins\\BuoyRuleCheck.bundle
     (2027용 .NET 10 DLL과 2025·2026용 .NET 8 DLL 중 AutoCAD가 자기 버전에 맞는 것을 로드한다)
   - 사용자 환경변수 BRC_ENGINE_DIR·BRC_PYTHON → 플러그인이 엔진을 자동으로 켠다
-  - 인터넷에서 받은 zip의 '차단'(Zone.Identifier) 표시를 지운다 — 남아 있으면 AutoCAD가 DLL을 로드하지 못한다
+  - 인터넷에서 받은 zip의 '차단'(Zone.Identifier) 표시를 지운다 — 남아 있으면 AutoCAD 로드 때 경고·차단이 생길 수 있다
   - 화면 설정(%APPDATA%\\BuoyRuleCheck\\ui.json)·도면 옆 버전 기록(<도면>.brc)은 건드리지 않는다
 
 도면 내용은 다루지 않는다. 네트워크는 설치 뒤 자체 시험에서 127.0.0.1(이 PC 안)에만 접속한다.
@@ -18,6 +18,7 @@ Windows가 아닌 곳(개발자 시험)에서는 레지스트리·프로세스·
 from __future__ import annotations
 
 import argparse
+import glob
 import json
 import os
 import shutil
@@ -27,6 +28,7 @@ import sys
 import time
 import urllib.request
 from pathlib import Path
+from typing import Callable
 
 PRODUCT = "Buoy-RuleCheck"
 BUNDLE = "BuoyRuleCheck.bundle"
@@ -87,6 +89,8 @@ def say(msg: str = "", *, mark: str = "") -> None:
 
 
 def save_log() -> None:
+    if not _log_lines:
+        return
     try:
         log_path().parent.mkdir(parents=True, exist_ok=True)
         with open(log_path(), "a", encoding="utf-8") as f:
@@ -272,9 +276,12 @@ def detached_delete(path: Path) -> None:
         return
     # 문자열 하나로 넘긴다: 목록으로 넘기면 Python이 경로의 따옴표를 \"로 바꿔 cmd가 경로를 못 읽는다(2026-10-27 검증 M1).
     # 지울 폴더의 부모에서 실행하고 이름(app — ASCII, 공백 없음)만 쓴다. 숨은 콘솔(CREATE_NO_WINDOW)로 이 창과 따로 산다.
+    # 1초마다 최대 60번 시도: 이 Python이 끝나(파일 잠금이 풀려) 지워지면 멈춘다. 창을 X로 닫거나 Ctrl+C로 끝내도 지워진다.
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200)
-    subprocess.Popen(f'cmd /d /c "ping -n 4 127.0.0.1 >nul & rmdir /s /q {path.name}"', creationflags=flags,
-                     close_fds=True, cwd=str(path.parent))
+    name = path.name
+    loop = (f'for /l %i in (1,1,60) do @(ping -n 2 127.0.0.1 >nul & rmdir /s /q "{name}" 2>nul'
+            f' & if not exist "{name}" exit)')
+    subprocess.Popen(f'cmd /d /c "{loop}"', creationflags=flags, close_fds=True, cwd=str(path.parent))
 
 
 # ── 공통 단계 ────────────────────────────────────────────────────────────────
@@ -300,30 +307,76 @@ def bundle_targets(bundle: Path) -> list[str]:
     return [t for t in ("R25", "R26") if (bundle / "Contents" / "Win64" / t / "BuoyRuleCheck.dll").exists()]
 
 
-def swap_in(dst: Path, fill) -> None:
-    """dst를 통째로 새것으로 바꾼다: 옆 폴더(<이름>.new)에 다 채운 뒤 바꿔 끼운다.
-    옛 폴더를 옮기지 못하면(엔진 python.exe 등 파일 잠김) 아무것도 바꾸지 않고 PermissionError — 반쯤 바뀐 설치가 남지 않게
-    (2026-10-27 검증 M2: 엔진만 새것·Python 반쯤 지워짐·번들은 옛것으로 남던 경로)."""
-    new = dst.with_name(dst.name + ".new")
-    for leftover in [new, *dst.parent.glob(dst.name + ".old-*")]:
-        shutil.rmtree(leftover, ignore_errors=True)   # 지난번 실패·잠김으로 남은 것(못 지우면 그대로 두고 진행)
-    if new.exists():
-        raise PermissionError(13, "이전 설치의 임시 폴더를 지우지 못함", str(new))
-    new.mkdir(parents=True)
-    try:
-        fill(new)
-    except BaseException:
-        shutil.rmtree(new, ignore_errors=True)
-        raise
-    old = dst.with_name(f"{dst.name}.old-{int(time.time() * 1000)}")
-    if dst.exists():
+def _retry_rename(a: Path, b: Path, tries: int = 5) -> None:
+    """이름 바꾸기 — 실시간 백신 등이 막 만든 파일을 잠깐 잡고 있으면 실패하므로 몇 번 다시 해 본다."""
+    for i in range(tries):
         try:
-            dst.rename(old)
-        except OSError as ex:
+            a.rename(b)
+            return
+        except OSError:
+            if i == tries - 1:
+                raise
+            time.sleep(0.4)
+
+
+def clean_leftovers(dst: Path) -> None:
+    """지난번 실패·잠김으로 남은 <이름>.new-*·.old-*·.bad-* 폴더를 지운다(못 지우면 그대로 두고 진행)."""
+    stem = glob.escape(dst.name)
+    for pat in (".new", ".new-*", ".old-*", ".bad-*"):
+        for p in dst.parent.glob(stem + pat):
+            if p.is_dir():
+                shutil.rmtree(p, ignore_errors=True)
+
+
+def swap_all(items: list[tuple[Path, Callable[[Path], None]]]) -> None:
+    """여러 폴더(설치 폴더·번들)를 한꺼번에 새것으로 바꾼다.
+      1) 각각 옆 폴더 <이름>.new-<시각>에 다 채운다(실패하면 임시 폴더만 지우고 그만 — 아무것도 안 바뀜)
+      2) 하나씩 옛것을 <이름>.old-<시각>으로 비키고 새것을 넣는다. 도중에 하나라도 실패하면(파일 잠김) 이미 바꾼 것을 되돌린다.
+    그래서 엔진은 새것인데 플러그인은 옛것이거나, 설치 폴더가 사라진 채로 남지 않는다(2026-10-27 검증 M2·N1·N2)."""
+    ms = int(time.time() * 1000)
+    staged: list[tuple[Path, Path]] = []
+    try:
+        for dst, fill in items:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            clean_leftovers(dst)
+            new = dst.with_name(f"{dst.name}.new-{ms}")
+            new.mkdir()
+            staged.append((dst, new))
+            fill(new)
+    except BaseException:
+        for _, new in staged:
             shutil.rmtree(new, ignore_errors=True)
-            raise PermissionError(13, "사용 중인 파일이 있어 바꾸지 못함", str(dst)) from ex
-    new.rename(dst)
-    shutil.rmtree(old, ignore_errors=True)
+        raise
+    done: list[tuple[Path, Path | None]] = []
+    try:
+        for dst, new in staged:
+            old = None
+            if dst.exists():
+                old = dst.with_name(f"{dst.name}.old-{ms}")
+                _retry_rename(dst, old)
+            try:
+                _retry_rename(new, dst)
+            except OSError:
+                if old is not None:
+                    _retry_rename(old, dst)   # 이 폴더는 옛것으로 되돌림
+                raise
+            done.append((dst, old))
+    except OSError as ex:
+        for dst, old in reversed(done):        # 이미 바꾼 폴더도 옛것으로
+            try:
+                bad = dst.with_name(f"{dst.name}.bad-{ms}")
+                _retry_rename(dst, bad)
+                if old is not None:
+                    _retry_rename(old, dst)
+                shutil.rmtree(bad, ignore_errors=True)
+            except OSError:
+                pass
+        for _, new in staged:
+            shutil.rmtree(new, ignore_errors=True)
+        raise PermissionError(13, "사용 중인 파일이 있어 바꾸지 못함", getattr(ex, "filename", None) or "") from ex
+    for _, old in done:
+        if old is not None:
+            shutil.rmtree(old, ignore_errors=True)
 
 
 def free_port() -> int:
@@ -424,9 +477,10 @@ def install(assume_yes: bool) -> int:
     pids = stop_engines()
     say(f"엔진 {len(pids)}개를 껐어요(PID {', '.join(pids)})" if pids else "켜져 있는 엔진 없음", mark="[OK]")
 
-    # 3) 엔진·내장 Python 복사
-    say("[3/6] 엔진·내장 Python 설치")
+    # 3) 엔진·내장 Python·플러그인 번들을 한꺼번에 바꿔 끼움
+    say("[3/6] 엔진·내장 Python·AutoCAD 자동 로드 번들 설치")
     app = install_dir()
+    plugins = plugins_dir()
 
     def fill_app(dest: Path) -> None:
         for name in APP_ITEMS:
@@ -437,33 +491,32 @@ def install(assume_yes: bool) -> int:
                 shutil.copytree(s, dest / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
             else:
                 shutil.copy2(s, dest / name)
+    items: list[tuple[Path, Callable[[Path], None]]] = []
+    if src != app:
+        items.append((app, fill_app))
+    items.append((plugins / BUNDLE, lambda dest: shutil.copytree(bundle_src, dest, dirs_exist_ok=True)))
     try:
-        if src != app:
-            app.parent.mkdir(parents=True, exist_ok=True)
-            swap_in(app, fill_app)
+        swap_all(items)
     except PermissionError as ex:
-        say(f"파일이 잠겨 있어 바꾸지 못했어요({ex.filename}). 검사 엔진 창·AutoCAD를 닫고 다시 실행하세요.", mark="[실패]")
-        return 1
-    say(str(app), mark="[OK]")
-
-    # 4) AutoCAD 자동 로드 번들
-    say("[4/6] AutoCAD 자동 로드 번들 설치")
-    plugins = plugins_dir()
-    plugins.mkdir(parents=True, exist_ok=True)
-    try:
-        for old in OLD_BUNDLES:
-            if (plugins / old).exists():
-                shutil.rmtree(plugins / old)
-                say(f"옛 번들 삭제: {plugins / old}", mark="[OK]")
-        swap_in(plugins / BUNDLE, lambda dest: shutil.copytree(bundle_src, dest, dirs_exist_ok=True))
-    except PermissionError as ex:
-        say(f"번들 파일이 잠겨 있어요({ex.filename}). AutoCAD를 모두 닫고 다시 실행하세요.", mark="[실패]")
+        say(f"사용 중인 파일이 있어 바꾸지 못했어요({ex.filename or '?'}). 이전 설치는 그대로입니다."
+            " 검사 엔진 창·AutoCAD·이 폴더를 연 탐색기 창을 닫고 다시 실행하세요.", mark="[실패]")
         return 1
     names = {"R25": "2025·2026(.NET 8)", "R26": "2027(.NET 10)"}
+    say(str(app), mark="[OK]")
     say(f"{plugins / BUNDLE}  — {', '.join(names[t] for t in targets)}", mark="[OK]")
+
+    # 4) 옛 이름 번들 정리 · 인터넷 표시 해제
+    say("[4/6] 옛 번들 정리 · 인터넷에서 받은 파일 표시 해제")
+    for old in OLD_BUNDLES:
+        if (plugins / old).exists():
+            try:
+                shutil.rmtree(plugins / old)
+                say(f"옛 번들 삭제: {plugins / old}", mark="[OK]")
+            except OSError as ex:
+                say(f"옛 번들을 지우지 못했어요({ex}). 두 번들이 함께 로드되면 명령이 겹치니 직접 지우세요: {plugins / old}",
+                    mark="[주의]")
     n = unblock(app) + unblock(plugins / BUNDLE)
-    if n:
-        say(f"인터넷에서 받은 파일 표시 {n}개를 해제했어요(AutoCAD가 DLL을 막지 않게)", mark="[OK]")
+    say(f"표시 {n}개 해제(AutoCAD 로드 때 경고·차단이 없게)" if n else "해제할 표시 없음", mark="[OK]")
 
     # 5) 환경변수
     say("[5/6] 엔진 자동 실행 설정(사용자 환경변수)")
@@ -506,6 +559,8 @@ def uninstall(assume_yes: bool) -> int:
     if pids:
         say(f"켜져 있던 엔진 {len(pids)}개를 껐어요", mark="[OK]")
     plugins = plugins_dir()
+    for leftover in (plugins / BUNDLE, install_dir()):
+        clean_leftovers(leftover)   # 지난 설치 실패로 남은 .new-*·.old-* (검증 N6)
     for name in (BUNDLE, *OLD_BUNDLES):
         b = plugins / name
         if b.exists():
@@ -528,15 +583,17 @@ def uninstall(assume_yes: bool) -> int:
                     shutil.rmtree(p, ignore_errors=True)
                 elif p.exists():
                     p.unlink()
+            # 남은 것(실행 중인 python.exe·이 스크립트·UNINSTALL.cmd)은 이 프로그램이 끝나는 대로 지운다 — 먼저 띄워 두므로
+            # Enter 전에 창을 닫거나 Ctrl+C로 끝내도 지워진다(2026-10-27 검증 N3).
+            detached_delete(app)
             say(f"삭제(창을 닫으면 마무리): {app}", mark="[OK]")
             say("제거 완료. 화면 설정(%APPDATA%\\BuoyRuleCheck)과 도면 옆 버전 기록(<도면>.brc)은 그대로 둡니다.", mark="[OK]")
             save_log()
             if not assume_yes and sys.stdin and sys.stdin.isatty():
                 try:
-                    input("  Enter를 누르면 창을 닫고 남은 파일(내장 Python)을 지웁니다.")
-                except EOFError:
+                    input("  Enter를 누르면 창을 닫습니다.")
+                except (EOFError, KeyboardInterrupt):
                     pass
-            detached_delete(app)   # 실행 중인 python.exe·이 스크립트·UNINSTALL.cmd는 이 프로그램이 끝난 뒤 지움
             return 0
         shutil.rmtree(app, ignore_errors=True)
         say(f"삭제: {app}", mark="[OK]")

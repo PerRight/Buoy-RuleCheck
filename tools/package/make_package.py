@@ -18,8 +18,8 @@
 사용 예(저장소 루트에서):
   python tools/package/make_package.py
       AutoCAD 2027 DLL은 C:\\Program Files\\Autodesk\\AutoCAD 2027에서, 2025·2026용은 아래 순서로 찾는다:
-        1) --acad25 <폴더>  2) C:\\Program Files\\Autodesk\\AutoCAD 2026 / 2025  3) tools/package/refs/R25
-        4) Autodesk 공식 NuGet 참조(AutoCAD.NET 25.0.*, 인터넷)  — 모두 안 되면 2027용만 넣고 알린다
+        1) --acad25 <폴더>  2) C:\\Program Files\\Autodesk\\AutoCAD 2025 / 2026  3) tools/package/refs/R25
+        4) Autodesk 공식 NuGet 참조(AutoCAD.NET 25.0.*, 인터넷)  — 모두 안 되면 실패(--allow-2027-only면 2027용만)
       내장 Python은 python.org에서 최신 3.14.x를 받아 tools/package/cache에 둔다(서명 확인).
   python tools/package/make_package.py --python-zip D:\\python-3.14.2-embed-amd64.zip   (미리 받은 파일)
   python tools/package/make_package.py --acad25 D:\\refs\\R25        (2025·2026 PC에서 복사한 DLL 4개:
@@ -147,18 +147,22 @@ def build_plugins(a: argparse.Namespace, work: Path) -> dict[str, Path]:
     built: dict[str, Path] = {}
     extra = list(a.dotnet_arg or [])
     say("[1/4] 플러그인 빌드")
-    # 2027 (.NET 10) — 필수
     d27 = Path(a.acad2027) if a.acad2027 else program_files_acad(2027)
     if not has_refs(d27):
         fail(f"AutoCAD 2027 참조 DLL이 없습니다: {d27}  (--acad2027 <폴더>로 지정)")
+    # 2025·2026 (.NET 8)을 먼저, 2027을 마지막에 — 공유 obj/의 복원 상태가 평소(.NET 10)로 끝나게(검증 N5)
+    if a.skip_r25:
+        say("    [건너뜀] AutoCAD 2025·2026용(--skip-r25)")
+    else:
+        built.update(build_r25(a, work, extra))
     if not dotnet_build("R26", work / "R26", d27, None, extra):
         fail("AutoCAD 2027용 빌드 실패 — 위 오류를 확인하세요.")
     built["R26"] = work / "R26"
     say("    [OK] AutoCAD 2027용")
-    # 2025·2026 (.NET 8) — 할 수 있으면
-    if a.skip_r25:
-        say("    [건너뜀] AutoCAD 2025·2026용(--skip-r25)")
-        return built
+    return built
+
+
+def build_r25(a: argparse.Namespace, work: Path, extra: list[str]) -> dict[str, Path]:
     cands: list[tuple[str, Path | None, str | None]] = []
     if a.acad25:
         cands.append(("지정 폴더", Path(a.acad25), None))
@@ -167,22 +171,24 @@ def build_plugins(a: argparse.Namespace, work: Path) -> dict[str, Path]:
     cands.append(("tools/package/refs/R25", HERE / "refs" / "R25", None))
     if not a.no_nuget:
         cands.append(("Autodesk NuGet 참조", None, a.acad_nuget))
+    tried = False
     for label, d, nuget in cands:
         if nuget is None and not has_refs(d):
             continue
+        tried = True
         say(f"    2025·2026용 참조: {label}")
         if dotnet_build("R25", work / "R25", d, nuget, extra):
-            built["R25"] = work / "R25"
             say("    [OK] AutoCAD 2025·2026용")
-            return built
+            return {"R25": work / "R25"}
         say(f"    [주의] {label}로 빌드하지 못함")
-    msg = ("AutoCAD 2025·2026용을 만들지 못했습니다. 그 버전이 깔린 PC의 DLL 4개(" + ", ".join(ACAD_REF_DLLS)
-           + ")를 tools/package/refs/R25에 복사하거나 --acad25로 지정하고 다시 실행하세요"
-           + "(.NET 8 참조 팩을 받으려면 인터넷이나 .NET 8 SDK도 필요).")
+    why = ("참조 DLL은 찾았지만 빌드하지 못했습니다(위 오류 — NU1101이면 .NET 8 참조 팩을 받을 인터넷이 필요)"
+           if tried else "참조 DLL을 찾지 못했습니다")
+    msg = (f"AutoCAD 2025·2026용을 만들지 못했습니다: {why}. 2025·2026이 깔린 PC의 DLL 4개("
+           + ", ".join(ACAD_REF_DLLS) + ")를 tools/package/refs/R25에 복사하거나 --acad25로 지정하세요.")
     if not a.allow_2027_only:
         fail(msg + " 2027용만 만들려면 --allow-2027-only.")
     say("    [주의] " + msg + " 2027용만 넣고 zip 이름에 _2027only를 붙입니다.")
-    return built
+    return {}
 
 
 # ── 내장 Python ──────────────────────────────────────────────────────────────

@@ -3,7 +3,8 @@
     Buoy-RuleCheck — AutoCAD 2027 (.NET 10) 플러그인. 빌드: dotnet build -c Release   (.NET 10 SDK 필요)
     AutoCAD가 다른 경로에 설치돼 있으면: dotnet build -c Release -p:AcadDir="D:\Autodesk\AutoCAD 2027"
     AutoCAD 2025/2026(.NET 8)용으로 빌드하려면: -p:BrcTfm=net8.0-windows -p:AcadDir="...\AutoCAD 2025"
-    (-p:TargetFramework=…로 바꾸면 NuGet 복원이 그 값을 무시해 NETSDK1005로 실패한다 — 그래서 BrcTfm을 거친다)
+    (-p:TargetFramework=… 이나 dotnet build -f … 로 바꾸면 NuGet 복원이 그 값을 무시해 NETSDK1005로 실패한다 — 그래서 BrcTfm을 거친다.
+     net8로 빌드한 뒤 복원 없이(no-restore 옵션) net10을 빌드해도 같은 오류 — 복원을 다시 하면 된다)
     (버전마다 바이너리 호환이 안 되므로 쓰는 AutoCAD 버전에 맞춰 다시 빌드해야 한다)
     AutoCAD DLL은 참조만 하고 출력 폴더로 복사하지 않는다(Private=false).
   -->
@@ -20,6 +21,8 @@
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <!-- 디자이너를 쓰지 않는 코드 전용 UI라 WinForms 직렬화 분석기 경고는 끈다 -->
     <NoWarn>$(NoWarn);WFO1000</NoWarn>
+    <!-- 쓰지 않는 ASP.NET Core 참조 팩을 받지 않게(.NET 8 빌드 때 필요한 팩을 NETCore·WindowsDesktop 둘로 줄임) -->
+    <DisableTransitiveFrameworkReferenceDownloads>true</DisableTransitiveFrameworkReferenceDownloads>
     <AcadDir Condition="'$(AcadDir)' == ''">C:\Program Files\Autodesk\AutoCAD 2027</AcadDir>
   </PropertyGroup>
   <!-- AutoCAD 참조: 기본은 설치 폴더(AcadDir)의 DLL. 2025·2026 DLL이 없는 PC에서 .NET 8용을 만들 때는
