@@ -10,11 +10,16 @@
 > **v0.3.2(10-12 3·4차 수정: layer_counts 전송, 'GA' 접두 레이어 감시 신호, 엔진 주소 허용 목록·리다이렉트 금지 / 10-13 '발표 모드' → '라벨 확대'·명령 `GARCLARGE`)는 빌드 미확인** — `install.ps1`로 다시 빌드할 것.
 > v0.3.1(10-12 오류 수정: Extractor·EngineClient·ShipInfoView·DocWatcher·Dto)은 10-12 18:34 사용자 PC에서 빌드 성공(`Polyline2d.VertexPosition`, `Vertex2dType.SplineControlVertex`, `Vertex3dType.ControlVertex`, `HttpClientHandler.UseProxy` 모두 컴파일됨). **실기 동작은 아래 확인표 1~14로 확인할 것** — 오류가 나면 메시지·스크린샷 그대로 Claude에게.
 
+## 다른 PC에 설치 (통합 패키지)
+개발 환경이 없는 PC에는 저장소 대신 통합 설치 패키지를 쓴다: 개발 PC에서 `python tools\package\make_package.py` → zip을 받는 PC에서 모두 풀고 `INSTALL.cmd` 더블클릭.
+Python(내장)·플러그인 DLL(2027용 .NET 10 + 2025·2026용 .NET 8)이 들어 있어 .NET SDK·Python·인터넷·관리자 권한이 필요 없다. 만드는 법·2025/2026 참조 DLL 구하는 법·설치 프로그램이 하는 일: [../tools/package/README.md](../tools/package/README.md).
+아래 '준비물'~'자동 로드 설치'는 저장소에서 직접 빌드하는 개발자용이다.
+
 ## 준비물
 - AutoCAD 2027 (.NET 10) — LT 버전은 .NET 플러그인 불가
 - .NET 10 SDK (`dotnet --list-sdks` → 10.x). 설치: `winget install Microsoft.DotNet.SDK.10`
 - (Visual Studio를 쓸 경우 2026 이상 — VS 2022는 .NET 10 대상 빌드 불가)
-- AutoCAD 2025/2026(.NET 8)에서 쓰려면 `-p:TargetFramework=net8.0-windows -p:AcadDir=...`로 따로 빌드 (버전 간 바이너리 호환 없음)
+- AutoCAD 2025/2026(.NET 8)에서 쓰려면 `-p:TargetFramework=net8.0-windows -p:AcadDir=...`로 따로 빌드 (버전 간 바이너리 호환 없음). 2025·2026 DLL이 없으면 `-p:AcadNuGet=25.0.*`(Autodesk 공식 NuGet 참조, 인터넷). 통합 패키지는 둘 다 넣는다
 - Python 3.10+ (엔진 서버)
 
 ## 빌드
@@ -194,6 +199,16 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 | 59 | 58 뒤 `BRCHEALTH` | 마지막 줄 `[BRC] 근거 선: 가시거리 — 대상 1 · 선·글자 n/n · 시각`. '그리지 않음(…)'이나 '오류 …'가 나오면 그 줄을 알릴 것 |
 | 60 | 부표 카드의 ○(핀) 클릭 → 휠로 확대·축소, 가운데 버튼으로 이동, 부표가 화면 밖으로 나가게 이동 후 되돌림 | 핀을 누르면 카드가 부표 왼쪽 위로 붙고(●), 화면을 옮기면 카드가 부표를 따라감. 부표가 도면 창 밖이면 카드가 숨고 다시 들어오면 보임. ●를 다시 누르면 고정 풀림. 타일 뷰포트가 여럿이면 위치가 어긋날 수 있음(알릴 것) |
 | 61 | 고정 카드가 있는 채로 AutoCAD 최소화 → 복원, `BRCTOGGLE` 두 번, `BRCHEALTH` | 복원 뒤 카드가 0.1 s 안에 부표 자리로. 부표를 끄면 고정 카드도 숨고 켜면 제자리에 다시 보임. `BRCHEALTH` 셋째 줄 `고정 카드 n장 · 도면 창 보임 · 창 안쪽 W×H · 1 px = …` — 카드가 안 따라가면 이 줄을 알릴 것 |
+
+**통합 설치 패키지 (`tools/package`)** — 개발 환경이 없는 PC에서.
+
+| # | 조작 | 기대 결과 |
+|---|---|---|
+| 62 | 개발 PC에서 `python tools\package\make_package.py` | `[OK] dist\Buoy-RuleCheck_0.6.0_setup.zip`, python.exe 서명 확인 [OK], 'AutoCAD 2027'(+ 참조 DLL이 있으면 '2025·2026') |
+| 63 | Python·.NET SDK가 없는 PC에 zip 복사 → 모두 압축 풀기 → AutoCAD 닫고 `INSTALL.cmd` | 6단계가 [OK]로 끝나고 '[OK] 엔진 0.5.0 응답 확인' · '[OK] 설치 완료.' AutoCAD가 켜져 있으면 닫으라고 기다림 |
+| 64 | AutoCAD 켜기 → 샘플(`%LOCALAPPDATA%\BuoyRuleCheck\app\samples\S140_rev1_deck_containers.dxf`) → `BRC` | 리본 탭·부표·팔레트가 개발 PC와 같음. 엔진 창이 최소화로 자동 실행(내장 Python). `BRCHEALTH` 첫 줄에 엔진 0.5.0 |
+| 65 | AutoCAD 2025 또는 2026 PC에서 63~64 | 2025·2026용 DLL이 들어 있으면 같은 동작. 없으면 설치 1단계에서 '그 버전용 플러그인이 없음' 안내 |
+| 66 | `%LOCALAPPDATA%\BuoyRuleCheck\app\UNINSTALL.cmd` | 번들·환경변수·설치 폴더가 지워지고 화면 설정·도면 옆 `.brc`는 남음. 다시 켠 AutoCAD에 탭 없음 |
 
 ## 설계 메모
 - **표시는 Transient(임시 그래픽)만** 쓴다. 도면 DB를 수정하지 않으니 Undo 기록이 오염되지 않고 저장 파일에도 남지 않는다.

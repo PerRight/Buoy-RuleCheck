@@ -63,7 +63,11 @@ python -m brc revs ../samples/S140_rev*.dxf
 ```
 그 밖에: `python -m brc check <도면.dxf>` (한 도면 판정), `python -m brc report <도면…> -o 리포트.html` (HTML 검토 리포트), `python -m brc serve` (플러그인용 로컬 서버). 옛 명령 `python -m garc …`도 그대로 됩니다.
 
-## 빠른 시작 2 — AutoCAD 2027 플러그인
+## 다른 PC에 설치 — 통합 패키지 (Python·.NET SDK 없어도 됨)
+개발 PC에서 `python tools\package\make_package.py` → `dist\Buoy-RuleCheck_<버전>_setup.zip`.
+받는 PC에서는 **압축을 모두 풀고 `INSTALL.cmd` 더블클릭** → AutoCAD를 켜고 `BRC`. 인터넷·관리자 권한·Python·.NET SDK 불필요(내장 Python 포함), AutoCAD 2027(.NET 10)과 2025·2026(.NET 8)용 DLL을 함께 넣어 AutoCAD가 버전에 맞는 것을 로드한다. 자세히: [tools/package/README.md](tools/package/README.md)
+
+## 빠른 시작 2 — AutoCAD 2027 플러그인 (개발자: 저장소에서 빌드)
 준비물: AutoCAD 2027(LT 제외), .NET 10 SDK, Python 3.10+
 ```powershell
 # AutoCAD를 모두 닫고
