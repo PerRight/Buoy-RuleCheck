@@ -87,7 +87,7 @@ def engine_version() -> str:
 def git_commit() -> str:
     try:
         return subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"], capture_output=True,
-                              text=True, timeout=20).stdout.strip()
+                              encoding="utf-8", errors="replace", timeout=20).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         return ""
 
@@ -116,7 +116,10 @@ def dotnet_build(target: str, out: Path, acad_dir: Path | None, nuget: str | Non
     cmd += extra
     say(f"    dotnet build ({TARGETS[target][2]}, {'NuGet ' + nuget if nuget else acad_dir})")
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900)
+        # 출력은 영어·UTF-8로 받는다(한국어 SDK 메시지·cp949 경로에서도 오류 줄을 읽을 수 있게)
+        env = dict(os.environ, DOTNET_CLI_UI_LANGUAGE="en-US", DOTNET_CLI_FORCE_UTF8_ENCODING="true",
+                   DOTNET_NOLOGO="1", DOTNET_CLI_TELEMETRY_OPTOUT="1")
+        r = subprocess.run(cmd, capture_output=True, encoding="utf-8", errors="replace", timeout=900, env=env)
     except FileNotFoundError:
         fail("dotnet 명령이 없습니다 — .NET 10 SDK를 설치하세요(패키지를 만드는 PC에만 필요).")
     except subprocess.TimeoutExpired:
@@ -244,7 +247,7 @@ def check_signature(exe: Path) -> None:
     ps = (f"$s = Get-AuthenticodeSignature -LiteralPath '{exe}'; "
           "\"$($s.Status)|$($s.SignerCertificate.Subject)\"")
     out = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps], capture_output=True,
-                         text=True, timeout=60).stdout.strip()
+                         encoding="oem" if IS_WIN else "utf-8", errors="replace", timeout=60).stdout.strip()
     status, _, subject = out.partition("|")
     if status != "Valid" or "Python Software Foundation" not in subject:
         fail(f"python.exe 서명이 올바르지 않습니다({out or '확인 실패'}). 받은 파일을 지우고 다시 실행하세요.")
@@ -370,8 +373,9 @@ def self_test(stage: Path) -> None:
     if not IS_WIN:
         say("    (내장 Python 실행 시험은 Windows에서만 — 건너뜀)")
         return
-    r = subprocess.run([str(app / "python" / "python.exe"), "-I", "-c", "import brc, garc; print(brc.__version__)"],
-                       cwd=str(app), capture_output=True, text=True, timeout=120)
+    r = subprocess.run([str(app / "python" / "python.exe"), "-I", "-X", "utf8", "-c", "import brc, garc; print(brc.__version__)"],
+                       cwd=str(app), capture_output=True, encoding="utf-8", errors="replace", timeout=120,
+                       env=dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8"))
     if r.returncode != 0:
         fail("패키지의 내장 Python이 엔진을 불러오지 못합니다: " + r.stderr.strip()[-400:])
     say(f"    [OK] 내장 Python이 엔진 {r.stdout.strip()}을 불러옴(다른 폴더에서, ._pth 경로)")

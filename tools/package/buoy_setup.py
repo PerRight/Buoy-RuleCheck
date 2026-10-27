@@ -42,6 +42,10 @@ TARGET_OF_YEAR = {2025: "R25", 2026: "R25", 2027: "R26"}
 
 HERE = Path(__file__).resolve().parent
 
+# 하위 프로세스 출력 해석: Windows 명령(tasklist·PowerShell)은 콘솔 코드 페이지(한국어 Windows는 cp949)로 쓴다.
+# INSTALL.cmd가 -X utf8로 실행하므로 text=True 기본값(UTF-8 엄격)으로 읽으면 한글 안내문에서 예외가 난다 → 코드 페이지 + replace.
+CON_ENC = "oem" if IS_WIN else "utf-8"
+
 
 # ── 경로 ──────────────────────────────────────────────────────────────────────
 
@@ -156,7 +160,8 @@ def autocad_running() -> bool:
     if not IS_WIN:
         return os.environ.get("BRC_SETUP_FAKE_ACAD_RUNNING") == "1"
     try:
-        out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq acad.exe", "/NH"], capture_output=True, text=True,
+        out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq acad.exe", "/NH"], capture_output=True,
+                             encoding=CON_ENC, errors="replace",
                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), timeout=20).stdout
         return "acad.exe" in out.lower()
     except (OSError, subprocess.SubprocessError):
@@ -174,7 +179,8 @@ def stop_engines() -> list[str]:
     )
     try:
         out = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps], capture_output=True,
-                             text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), timeout=60).stdout
+                             encoding=CON_ENC, errors="replace",
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), timeout=60).stdout
         pids = [x.strip() for x in out.splitlines() if x.strip().isdigit()]
         if pids:
             time.sleep(1.0)   # 파일 잠금이 풀리도록
@@ -307,13 +313,16 @@ def self_test(app: Path) -> tuple[bool, str]:
     env = dict(os.environ)
     env.pop("PYTHONPATH", None)
     env.pop("PYTHONHOME", None)
+    env["PYTHONUTF8"] = "1"            # 엔진의 출력·오류(한글 경로 포함)를 UTF-8로 — 아래에서 UTF-8로 읽는다
+    env["PYTHONIOENCODING"] = "utf-8"
     if not IS_WIN:
         env["PYTHONPATH"] = str(engine)   # 시험용 Python에는 ._pth가 없다
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     # 1) 다른 폴더에서도 엔진을 찾는지(내장 Python의 ._pth에 ..\engine)
     try:
-        r = subprocess.run([str(py), "-c", "import brc, garc; print(brc.__version__)"], cwd=str(app),
-                           capture_output=True, text=True, env=env, creationflags=flags, timeout=60)
+        r = subprocess.run([str(py), "-X", "utf8", "-c", "import brc, garc; print(brc.__version__)"], cwd=str(app),
+                           capture_output=True, encoding="utf-8", errors="replace", env=env, creationflags=flags,
+                           timeout=60)
     except (OSError, subprocess.SubprocessError) as ex:
         return False, f"내장 Python을 실행하지 못함: {ex}"
     if r.returncode != 0:
@@ -324,7 +333,7 @@ def self_test(app: Path) -> tuple[bool, str]:
     out = install_root() / "selftest.log"
     with open(out, "w", encoding="utf-8", errors="replace") as lf:
         try:
-            p = subprocess.Popen([str(py), "-m", "brc", "serve", "--port", str(port)], cwd=str(engine), env=env,
+            p = subprocess.Popen([str(py), "-X", "utf8", "-m", "brc", "serve", "--port", str(port)], cwd=str(engine), env=env,
                                  stdout=lf, stderr=subprocess.STDOUT, creationflags=flags)
         except OSError as ex:
             return False, f"엔진 서버를 켜지 못함: {ex}"
