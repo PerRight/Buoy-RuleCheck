@@ -210,7 +210,7 @@ namespace BuoyRuleCheck
         {
             UiState.Current.BuoysVisible = on;
             UiState.Current.Save();
-            if (!on) CloseCard(force: true);
+            if (!on) CloseCard(force: false);   // 고정한 카드는 닫지 않고 목록으로(아래에서 숨김, 켜면 다시 보임 — 검증 8차 N1)
             Redraw();
             Guard.Run("고정 카드 따라가기", FollowPinned);   // 고정 카드도 같이 숨기고/보임
         }
@@ -414,6 +414,24 @@ namespace BuoyRuleCheck
         public static string Diagnose() =>
             $"부표 {Count}개 · 표시 {(Visible ? "켜짐" : "꺼짐")} · 그릴 자리 {(_host != null ? "있음" : _hostFailed ? "올리지 못함" : "없음")}"
             + $" · 오버룰 적용 {BuoyOverrule.Applied}회 · 그리기 호출 {_drawCalls}회(그림 {_drawn}회)" + (LastUpp > 0 ? $" · 1 px = {LastUpp:g4} 도면 단위" : "");
+
+        /// BRCHEALTH용 두 번째 줄: 고정 카드 따라가기 상태(카드가 조용히 안 따라갈 때 원인 — 검증 8차 N6)
+        public static string DiagnoseFollow()
+        {
+            int n = Pinned.Count(c => !c.IsDisposed && c.Pinned) + (_card is { IsDisposed: false, Pinned: true } ? 1 : 0);
+            if (_doc == null) return $"고정 카드 {n}장 · 도면 없음";
+            try
+            {
+                var h = _doc.Window.Handle;
+                bool vis = IsWindowVisible(h), icon = IsIconic(h), mainIcon = IsIconic(AcApp.MainWindow.Handle);
+                GetClientRect(h, out var rc);
+                var map = ViewMap.Current(_doc);
+                return $"고정 카드 {n}장 · 도면 창 {(vis ? "보임" : "숨김")}{(icon ? "·아이콘" : "")}{(mainIcon ? " · AutoCAD 최소화" : "")}"
+                     + $" · 창 안쪽 {rc.Right - rc.Left}×{rc.Bottom - rc.Top}"
+                     + (map == null ? " · 위치 계산 안 함" : map.Clip.IsEmpty ? " · 위치 계산: 영역 없음(숨김)" : $" · 1 px = {map.Upp:g4} 도면 단위");
+            }
+            catch (Exception ex) { return $"고정 카드 {n}장 · 상태 오류 {Guard.Short(ex)}"; }
+        }
 
         internal static void Draw(ViewportDraw vd)
         {
@@ -688,7 +706,9 @@ namespace BuoyRuleCheck
             var items = CardItems(b);
             CloseCard(force: false);
             // 이 부표의 고정 카드가 이미 보이면 호버 카드를 겹쳐 띄우지 않는다(검증 F-B) — 근거 선·×1.25는 그대로
-            if (Pinned.Any(c => !c.IsDisposed && c.Pinned && c.Visible && c.Tag as string == b.Key)) return;
+            // 같은 자리 = 고정 카드의 부표(묶였으면 대표)가 이 부표이고 항목 수가 같음(묶음이 커졌으면 새 구성원을 볼 수 있게 띄움 — 검증 8차 N4)
+            if (Pinned.Any(c => !c.IsDisposed && c.Pinned && c.Visible && c.Tag is string k && Buoys.TryGetValue(k, out var pb)
+                                && (pb.Leader ?? pb) == b && c.Items.Count == items.Count)) return;
             var card = new BuoyCard(items) { Tag = b.Key };   // 어느 부표 자리의 카드인지(고정하면 그 자리를 따라감)
             card.EvidenceRequested += it => EvidenceRequested?.Invoke(it.RuleId, it.Element.ElementId);
             card.ZoomRequested += list => ZoomTo(list);
@@ -761,6 +781,7 @@ namespace BuoyRuleCheck
             {
                 try
                 {
+                    if (IsIconic(AcApp.MainWindow.Handle)) return null;   // AutoCAD 최소화: 아무것도 하지 않음(시스템이 숨긴 카드를 다시 띄우지 않게 — 검증 F-A, 8차 N5)
                     using var v = doc.Editor.GetCurrentView();
                     var ss = (Point2d)AcApp.GetSystemVariable("SCREENSIZE");
                     if (ss.Y < 1) return null;
@@ -770,16 +791,14 @@ namespace BuoyRuleCheck
                                  * Matrix3d.Displacement(v.Target - Point3d.Origin)
                                  * Matrix3d.PlaneToWorld(v.ViewDirection);
                     var h = doc.Window.Handle;
-                    var main = AcApp.MainWindow.Handle;
-                    if (IsIconic(main) || !IsWindowVisible(h) || IsIconic(h)) return null;   // 최소화·숨김: 따라가지 않음(검증 F-A)
-                    if (!GetClientRect(h, out var rc) || rc.Right - rc.Left < 2 || rc.Bottom - rc.Top < 2) return null;
+                    var map = new ViewMap { WcsToDcs = dcsToWcs.Inverse(), Center = v.CenterPoint, Upp = upp, Clip = System.Drawing.Rectangle.Empty };
+                    // 도면 창만 숨김·아이콘(다른 도면 탭 등): 빈 영역 → 고정 카드를 숨긴다(검증 8차 N3)
+                    if (!IsWindowVisible(h) || IsIconic(h)) return map;
+                    if (!GetClientRect(h, out var rc) || rc.Right - rc.Left < 2 || rc.Bottom - rc.Top < 2) return map;
                     var tl = new POINT { X = rc.Left, Y = rc.Top };
-                    if (!ClientToScreen(h, ref tl)) return null;
-                    return new ViewMap
-                    {
-                        WcsToDcs = dcsToWcs.Inverse(), Center = v.CenterPoint, Upp = upp,
-                        Clip = new System.Drawing.Rectangle(tl.X, tl.Y, rc.Right - rc.Left, rc.Bottom - rc.Top),
-                    };
+                    if (!ClientToScreen(h, ref tl)) return map;
+                    map.Clip = new System.Drawing.Rectangle(tl.X, tl.Y, rc.Right - rc.Left, rc.Bottom - rc.Top);
+                    return map;
                 }
                 catch (Exception ex) { Guard.Report("고정 카드 위치", ex); return null; }
             }
@@ -817,6 +836,7 @@ namespace BuoyRuleCheck
         /// 자리(anchor)가 없으면 false — 호출 쪽이 대상 객체로 이동한다.
         public static bool OpenFromList(Document doc, double scale, RuleResultDto r, ElementCheckDto? e)
         {
+            if (!Visible) return false;   // 부표를 꺼 두었으면 숨은 고정 카드를 쌓지 않는다 — 호출 쪽이 대상 객체로 이동(검증 8차 N2)
             e ??= UiText.Decisive(r);
             if (e?.Anchor is not { Length: >= 2 } a || scale <= 0) return false;
             const double pad = 8;   // m — 고칠 자리 주변이 함께 보이게
