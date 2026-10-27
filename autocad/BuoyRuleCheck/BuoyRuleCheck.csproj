@@ -2,12 +2,14 @@
   <!--
     Buoy-RuleCheck — AutoCAD 2027 (.NET 10) 플러그인. 빌드: dotnet build -c Release   (.NET 10 SDK 필요)
     AutoCAD가 다른 경로에 설치돼 있으면: dotnet build -c Release -p:AcadDir="D:\Autodesk\AutoCAD 2027"
-    AutoCAD 2025/2026(.NET 8)용으로 빌드하려면: -p:TargetFramework=net8.0-windows -p:AcadDir="...\AutoCAD 2025"
+    AutoCAD 2025/2026(.NET 8)용으로 빌드하려면: -p:BrcTfm=net8.0-windows -p:AcadDir="...\AutoCAD 2025"
+    (-p:TargetFramework=…로 바꾸면 NuGet 복원이 그 값을 무시해 NETSDK1005로 실패한다 — 그래서 BrcTfm을 거친다)
     (버전마다 바이너리 호환이 안 되므로 쓰는 AutoCAD 버전에 맞춰 다시 빌드해야 한다)
     AutoCAD DLL은 참조만 하고 출력 폴더로 복사하지 않는다(Private=false).
   -->
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <BrcTfm Condition="'$(BrcTfm)' == ''">net10.0-windows</BrcTfm>
+    <TargetFramework>$(BrcTfm)</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
@@ -21,7 +23,7 @@
     <AcadDir Condition="'$(AcadDir)' == ''">C:\Program Files\Autodesk\AutoCAD 2027</AcadDir>
   </PropertyGroup>
   <!-- AutoCAD 참조: 기본은 설치 폴더(AcadDir)의 DLL. 2025·2026 DLL이 없는 PC에서 .NET 8용을 만들 때는
-       Autodesk 공식 NuGet 참조 어셈블리를 쓸 수 있다: -p:TargetFramework=net8.0-windows -p:AcadNuGet=25.0.*
+       Autodesk 공식 NuGet 참조 어셈블리를 쓸 수 있다: -p:BrcTfm=net8.0-windows -p:AcadNuGet=25.0.*
        (인터넷 필요, 패키지 구성은 버전마다 다를 수 있음 — tools/package/make_package.py가 이 경로를 마지막 수단으로 시도) -->
   <ItemGroup Condition="'$(AcadNuGet)' != ''">
     <PackageReference Include="AutoCAD.NET" Version="$(AcadNuGet)" ExcludeAssets="runtime" PrivateAssets="all" />

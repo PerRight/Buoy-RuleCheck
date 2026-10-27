@@ -174,6 +174,38 @@ class SetupFlow(unittest.TestCase):
         self.assertEqual(json.loads(envf.read_text(encoding="utf-8")), {})
         self.assertTrue((self.tmp / "Local" / "BuoyRuleCheck" / "install.log").exists())
 
+    def test_only_unsupported_autocad_is_not_reported_as_done(self):
+        r = self.run_setup(self.pkg / "buoy_setup.py", "install", BRC_SETUP_FAKE_ACAD="2026")
+        self.assertEqual(r.returncode, 4, r.stdout + r.stderr)
+        self.assertNotIn("설치 완료", r.stdout)
+        self.assertIn("동작하지 않아요", r.stdout)
+
+    def test_locked_upgrade_changes_nothing(self):
+        """옛 설치 폴더를 옮기지 못하면(파일 잠김) 엔진·Python·번들 모두 옛것 그대로, 임시 폴더도 남기지 않는다."""
+        r = self.run_setup(self.pkg / "buoy_setup.py", "install")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        app = self.tmp / "Local" / "BuoyRuleCheck" / "app"
+        (app / "engine" / "OLD_MARK").write_text("old")
+        (self.pkg / "engine" / "NEW_MARK").write_text("new")
+        code = (
+            "import importlib.util, pathlib, sys\n"
+            f"spec = importlib.util.spec_from_file_location('bs', r'{self.pkg / 'buoy_setup.py'}')\n"
+            "bs = importlib.util.module_from_spec(spec); spec.loader.exec_module(bs)\n"
+            "real = pathlib.Path.rename\n"
+            "def rename(self, target):\n"
+            "    if self.name == 'app' and '.old-' in str(target):\n"
+            "        raise PermissionError(13, 'locked', str(self))\n"
+            "    return real(self, target)\n"
+            "pathlib.Path.rename = rename\n"
+            "sys.exit(bs.main(['install', '--yes']))\n")
+        r = subprocess.run([sys.executable, "-I", "-c", code], capture_output=True, text=True, env=self.env,
+                           cwd=str(self.tmp), stdin=subprocess.DEVNULL, timeout=120)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("잠겨", r.stdout)
+        self.assertTrue((app / "engine" / "OLD_MARK").exists(), "옛 설치가 그대로")
+        self.assertFalse((app / "engine" / "NEW_MARK").exists())
+        self.assertFalse(list(app.parent.glob("app.new*")), "임시 폴더를 남기지 않음")
+
     def test_autocad_running_stops_without_changes(self):
         r = self.run_setup(self.pkg / "buoy_setup.py", "install", BRC_SETUP_FAKE_ACAD_RUNNING="1")
         self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
@@ -205,6 +237,17 @@ class Payload(unittest.TestCase):
                 if s and not s.lower().startswith(("rem", "echo")):
                     self.assertTrue(s.isascii(), f"{name}: 명령 줄은 ASCII만 — {s}")
             self.assertIn("-I -X utf8", text)
+
+    def test_zip_name_marks_2027_only(self):
+        with tempfile.TemporaryDirectory() as t:
+            stage = Path(t) / "Buoy-RuleCheck_9.9.9"
+            (stage / "app").mkdir(parents=True)
+            (stage / "INSTALL.cmd").write_bytes(b"@echo off\r\n")
+            self.assertEqual(mp.make_zip(stage, "_2027only").name, "Buoy-RuleCheck_9.9.9_2027only_setup.zip")
+            z = mp.make_zip(stage)
+            self.assertEqual(z.name, "Buoy-RuleCheck_9.9.9_setup.zip")
+            with zipfile.ZipFile(z) as zz:
+                self.assertIn("Buoy-RuleCheck_9.9.9/INSTALL.cmd", zz.namelist())
 
     def test_readme_template_fields(self):
         raw = (PKG / "payload" / "README.txt").read_bytes()

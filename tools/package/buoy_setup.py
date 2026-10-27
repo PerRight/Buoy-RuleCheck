@@ -92,6 +92,7 @@ def save_log() -> None:
         with open(log_path(), "a", encoding="utf-8") as f:
             f.write(time.strftime("\n=== %Y-%m-%d %H:%M:%S ===\n"))
             f.write("\n".join(_log_lines) + "\n")
+        _log_lines.clear()   # 두 번 불려도 같은 줄을 두 번 적지 않게
     except OSError:
         pass
 
@@ -150,8 +151,12 @@ def _broadcast_env_change() -> None:
     try:
         import ctypes
         from ctypes import wintypes
-        result = wintypes.DWORD()
-        ctypes.windll.user32.SendMessageTimeoutW(0xFFFF, 0x001A, 0, "Environment", 0x0002, 5000, ctypes.byref(result))
+        f = ctypes.windll.user32.SendMessageTimeoutW
+        f.argtypes = (wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPCWSTR, wintypes.UINT, wintypes.UINT,
+                      ctypes.POINTER(ctypes.c_size_t))
+        f.restype = ctypes.c_ssize_t
+        result = ctypes.c_size_t()   # PDWORD_PTR(64비트에서 8바이트)
+        f(0xFFFF, 0x001A, 0, "Environment", 0x0002, 5000, ctypes.byref(result))
     except Exception:
         pass
 
@@ -265,10 +270,11 @@ def detached_delete(path: Path) -> None:
     if not IS_WIN:
         shutil.rmtree(path, ignore_errors=True)
         return
-    cmd = f'ping -n 4 127.0.0.1 >nul & rmdir /s /q "{path}"'
-    flags = getattr(subprocess, "DETACHED_PROCESS", 0x8) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200) \
-        | getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    subprocess.Popen(["cmd", "/c", cmd], creationflags=flags, close_fds=True, cwd=str(path.parent))
+    # 문자열 하나로 넘긴다: 목록으로 넘기면 Python이 경로의 따옴표를 \"로 바꿔 cmd가 경로를 못 읽는다(2026-10-27 검증 M1).
+    # 지울 폴더의 부모에서 실행하고 이름(app — ASCII, 공백 없음)만 쓴다. 숨은 콘솔(CREATE_NO_WINDOW)로 이 창과 따로 산다.
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200)
+    subprocess.Popen(f'cmd /d /c "ping -n 4 127.0.0.1 >nul & rmdir /s /q {path.name}"', creationflags=flags,
+                     close_fds=True, cwd=str(path.parent))
 
 
 # ── 공통 단계 ────────────────────────────────────────────────────────────────
@@ -294,10 +300,30 @@ def bundle_targets(bundle: Path) -> list[str]:
     return [t for t in ("R25", "R26") if (bundle / "Contents" / "Win64" / t / "BuoyRuleCheck.dll").exists()]
 
 
-def replace_dir(src: Path, dst: Path) -> None:
+def swap_in(dst: Path, fill) -> None:
+    """dst를 통째로 새것으로 바꾼다: 옆 폴더(<이름>.new)에 다 채운 뒤 바꿔 끼운다.
+    옛 폴더를 옮기지 못하면(엔진 python.exe 등 파일 잠김) 아무것도 바꾸지 않고 PermissionError — 반쯤 바뀐 설치가 남지 않게
+    (2026-10-27 검증 M2: 엔진만 새것·Python 반쯤 지워짐·번들은 옛것으로 남던 경로)."""
+    new = dst.with_name(dst.name + ".new")
+    for leftover in [new, *dst.parent.glob(dst.name + ".old-*")]:
+        shutil.rmtree(leftover, ignore_errors=True)   # 지난번 실패·잠김으로 남은 것(못 지우면 그대로 두고 진행)
+    if new.exists():
+        raise PermissionError(13, "이전 설치의 임시 폴더를 지우지 못함", str(new))
+    new.mkdir(parents=True)
+    try:
+        fill(new)
+    except BaseException:
+        shutil.rmtree(new, ignore_errors=True)
+        raise
+    old = dst.with_name(f"{dst.name}.old-{int(time.time() * 1000)}")
     if dst.exists():
-        shutil.rmtree(dst)
-    shutil.copytree(src, dst, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        try:
+            dst.rename(old)
+        except OSError as ex:
+            shutil.rmtree(new, ignore_errors=True)
+            raise PermissionError(13, "사용 중인 파일이 있어 바꾸지 못함", str(dst)) from ex
+    new.rename(dst)
+    shutil.rmtree(old, ignore_errors=True)
 
 
 def free_port() -> int:
@@ -387,8 +413,10 @@ def install(assume_yes: bool) -> int:
     for year, loc in acad.items():
         ok = TARGET_OF_YEAR[year] in targets
         say(f"AutoCAD {year}  {loc}  → {'지원' if ok else '이 패키지에 그 버전용 플러그인이 없음'}", mark="[OK]" if ok else "[주의]")
-    if acad and not any(TARGET_OF_YEAR[y] in targets for y in acad):
-        say("이 PC의 AutoCAD 버전에 맞는 플러그인이 패키지에 없습니다. 패키지를 만든 사람에게 알려 주세요.", mark="[주의]")
+    unsupported_only = bool(acad) and not any(TARGET_OF_YEAR[y] in targets for y in acad)
+    if unsupported_only:
+        say("이 PC의 AutoCAD 버전에 맞는 플러그인이 패키지에 없습니다(설치는 하지만 AutoCAD에 탭이 생기지 않아요)."
+            " 패키지를 만든 사람에게 알려 주세요.", mark="[주의]")
     wait_autocad_closed(assume_yes)
 
     # 2) 켜져 있던 엔진 끄기
@@ -399,18 +427,20 @@ def install(assume_yes: bool) -> int:
     # 3) 엔진·내장 Python 복사
     say("[3/6] 엔진·내장 Python 설치")
     app = install_dir()
+
+    def fill_app(dest: Path) -> None:
+        for name in APP_ITEMS:
+            s = src / name
+            if not s.exists():
+                continue
+            if s.is_dir():
+                shutil.copytree(s, dest / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+            else:
+                shutil.copy2(s, dest / name)
     try:
         if src != app:
-            app.mkdir(parents=True, exist_ok=True)
-            for name in APP_ITEMS:
-                s = src / name
-                if not s.exists():
-                    continue
-                d = app / name
-                if s.is_dir():
-                    replace_dir(s, d)
-                else:
-                    shutil.copy2(s, d)
+            app.parent.mkdir(parents=True, exist_ok=True)
+            swap_in(app, fill_app)
     except PermissionError as ex:
         say(f"파일이 잠겨 있어 바꾸지 못했어요({ex.filename}). 검사 엔진 창·AutoCAD를 닫고 다시 실행하세요.", mark="[실패]")
         return 1
@@ -425,7 +455,7 @@ def install(assume_yes: bool) -> int:
             if (plugins / old).exists():
                 shutil.rmtree(plugins / old)
                 say(f"옛 번들 삭제: {plugins / old}", mark="[OK]")
-        replace_dir(bundle_src, plugins / BUNDLE)
+        swap_in(plugins / BUNDLE, lambda dest: shutil.copytree(bundle_src, dest, dirs_exist_ok=True))
     except PermissionError as ex:
         say(f"번들 파일이 잠겨 있어요({ex.filename}). AutoCAD를 모두 닫고 다시 실행하세요.", mark="[실패]")
         return 1
@@ -451,6 +481,11 @@ def install(assume_yes: bool) -> int:
     say(msg, mark="[OK]" if ok else "[실패]")
 
     say()
+    if unsupported_only:   # 다 했어도 이 PC에서는 동작하지 않으므로 '완료'라고 하지 않는다(2026-10-27 검증 M3)
+        say("설치는 했지만 이 PC의 AutoCAD(" + ", ".join(map(str, acad)) + ")용 플러그인이 패키지에 없어 동작하지 않아요.",
+            mark="[주의]")
+        say(f"  이 패키지가 지원하는 AutoCAD: {', '.join(names[t] for t in targets)}")
+        return 4
     if ok:
         say("설치 완료.", mark="[OK]")
     else:
@@ -493,11 +528,18 @@ def uninstall(assume_yes: bool) -> int:
                     shutil.rmtree(p, ignore_errors=True)
                 elif p.exists():
                     p.unlink()
-            detached_delete(app)   # 실행 중인 python.exe·이 스크립트는 끝난 뒤 지움
-            say(f"삭제(잠시 뒤 마무리): {app}", mark="[OK]")
-        else:
-            shutil.rmtree(app, ignore_errors=True)
-            say(f"삭제: {app}", mark="[OK]")
+            say(f"삭제(창을 닫으면 마무리): {app}", mark="[OK]")
+            say("제거 완료. 화면 설정(%APPDATA%\\BuoyRuleCheck)과 도면 옆 버전 기록(<도면>.brc)은 그대로 둡니다.", mark="[OK]")
+            save_log()
+            if not assume_yes and sys.stdin and sys.stdin.isatty():
+                try:
+                    input("  Enter를 누르면 창을 닫고 남은 파일(내장 Python)을 지웁니다.")
+                except EOFError:
+                    pass
+            detached_delete(app)   # 실행 중인 python.exe·이 스크립트·UNINSTALL.cmd는 이 프로그램이 끝난 뒤 지움
+            return 0
+        shutil.rmtree(app, ignore_errors=True)
+        say(f"삭제: {app}", mark="[OK]")
     say("제거 완료. 화면 설정(%APPDATA%\\BuoyRuleCheck)과 도면 옆 버전 기록(<도면>.brc)은 그대로 둡니다.", mark="[OK]")
     return 0
 

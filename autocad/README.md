@@ -19,7 +19,7 @@ Python(내장)·플러그인 DLL(2027용 .NET 10 + 2025·2026용 .NET 8)이 들�
 - AutoCAD 2027 (.NET 10) — LT 버전은 .NET 플러그인 불가
 - .NET 10 SDK (`dotnet --list-sdks` → 10.x). 설치: `winget install Microsoft.DotNet.SDK.10`
 - (Visual Studio를 쓸 경우 2026 이상 — VS 2022는 .NET 10 대상 빌드 불가)
-- AutoCAD 2025/2026(.NET 8)에서 쓰려면 `-p:TargetFramework=net8.0-windows -p:AcadDir=...`로 따로 빌드 (버전 간 바이너리 호환 없음). 2025·2026 DLL이 없으면 `-p:AcadNuGet=25.0.*`(Autodesk 공식 NuGet 참조, 인터넷). 통합 패키지는 둘 다 넣는다
+- AutoCAD 2025/2026(.NET 8)에서 쓰려면 `-p:BrcTfm=net8.0-windows -p:AcadDir=...`로 따로 빌드 (버전 간 바이너리 호환 없음, `-p:TargetFramework=`는 NuGet 복원이 무시해 실패). .NET 8 참조 팩이 필요해 인터넷이나 .NET 8 SDK가 있어야 한다. 2025·2026 DLL이 없으면 `-p:AcadNuGet=25.0.*`(Autodesk 공식 NuGet 참조). 통합 패키지는 둘 다 넣는다
 - Python 3.10+ (엔진 서버)
 
 ## 빌드

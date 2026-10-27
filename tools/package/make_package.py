@@ -107,8 +107,10 @@ def dotnet_build(target: str, out: Path, acad_dir: Path | None, nuget: str | Non
     if out.exists():
         shutil.rmtree(out)
     # obj는 기본 위치 그대로(바꾸면 기존 obj/의 자동 생성 .cs가 컴파일에 섞인다). 대상 프레임워크별 하위 폴더로 나뉜다.
+    # 대상 프레임워크는 BrcTfm으로(csproj가 TargetFramework에 넣음). -p:TargetFramework=는 NuGet 복원이 무시해
+    # project.assets.json이 net10 기준으로 남고 net8 빌드가 NETSDK1005로 실패한다(2026-10-27 검증 H1).
     cmd = ["dotnet", "build", str(CSPROJ), "-c", "Release", "-o", str(out), "--nologo", "-v", "q",
-           f"-p:TargetFramework={tfm}"]
+           f"-p:BrcTfm={tfm}"]
     if nuget:
         cmd.append(f"-p:AcadNuGet={nuget}")
     else:
@@ -160,7 +162,7 @@ def build_plugins(a: argparse.Namespace, work: Path) -> dict[str, Path]:
     cands: list[tuple[str, Path | None, str | None]] = []
     if a.acad25:
         cands.append(("지정 폴더", Path(a.acad25), None))
-    for year in (2026, 2025):
+    for year in (2025, 2026):   # 2025 참조로 만든 DLL이 2026에서도 로드된다(반대는 2026에만 있는 API가 섞일 수 있음)
         cands.append((f"AutoCAD {year} 설치 폴더", program_files_acad(year), None))
     cands.append(("tools/package/refs/R25", HERE / "refs" / "R25", None))
     if not a.no_nuget:
@@ -175,10 +177,11 @@ def build_plugins(a: argparse.Namespace, work: Path) -> dict[str, Path]:
             return built
         say(f"    [주의] {label}로 빌드하지 못함")
     msg = ("AutoCAD 2025·2026용을 만들지 못했습니다. 그 버전이 깔린 PC의 DLL 4개(" + ", ".join(ACAD_REF_DLLS)
-           + ")를 tools/package/refs/R25에 복사하거나 --acad25로 지정하고 다시 실행하세요.")
-    if a.require_r25:
-        fail(msg)
-    say("    [주의] " + msg + " 지금은 2027용만 넣습니다.")
+           + ")를 tools/package/refs/R25에 복사하거나 --acad25로 지정하고 다시 실행하세요"
+           + "(.NET 8 참조 팩을 받으려면 인터넷이나 .NET 8 SDK도 필요).")
+    if not a.allow_2027_only:
+        fail(msg + " 2027용만 만들려면 --allow-2027-only.")
+    say("    [주의] " + msg + " 2027용만 넣고 zip 이름에 _2027only를 붙입니다.")
     return built
 
 
@@ -239,19 +242,21 @@ def python_version_of(zip_path: Path, py_dir: Path) -> str:
     return "?"
 
 
-def check_signature(exe: Path) -> None:
-    """python.exe가 Python Software Foundation 서명인지(Windows에서만). 아니면 멈춘다."""
+def check_signature(*files: Path) -> None:
+    """python.exe·python3xx.dll이 Python Software Foundation 서명인지(Windows에서만). 아니면 멈춘다."""
     if not IS_WIN:
         say("    (서명 확인은 Windows에서만 — 건너뜀)")
         return
-    ps = (f"$s = Get-AuthenticodeSignature -LiteralPath '{exe}'; "
-          "\"$($s.Status)|$($s.SignerCertificate.Subject)\"")
-    out = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps], capture_output=True,
-                         encoding="oem" if IS_WIN else "utf-8", errors="replace", timeout=60).stdout.strip()
-    status, _, subject = out.partition("|")
-    if status != "Valid" or "Python Software Foundation" not in subject:
-        fail(f"python.exe 서명이 올바르지 않습니다({out or '확인 실패'}). 받은 파일을 지우고 다시 실행하세요.")
-    say("    [OK] python.exe 서명: Python Software Foundation")
+    for f in files:
+        lit = str(f).replace("'", "''")   # PowerShell 작은따옴표 문자열 안의 '
+        ps = (f"$s = Get-AuthenticodeSignature -LiteralPath '{lit}'; "
+              "\"$($s.Status)|$($s.SignerCertificate.Subject)\"")
+        out = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps], capture_output=True,
+                             encoding="oem", errors="replace", timeout=60).stdout.strip()
+        status, _, subject = out.partition("|")
+        if status != "Valid" or "Python Software Foundation" not in subject:
+            fail(f"{f.name} 서명이 올바르지 않습니다({out or '확인 실패'}). 받은 파일을 지우고 다시 실행하세요.")
+    say("    [OK] 서명 확인: " + ", ".join(f.name for f in files) + " — Python Software Foundation")
 
 
 def unpack_python(zip_path: Path, dest: Path) -> str:
@@ -268,7 +273,7 @@ def unpack_python(zip_path: Path, dest: Path) -> str:
         # 엔진 폴더를 경로에 넣는다(내장 Python은 PYTHONPATH·현재 폴더를 쓰지 않음). site는 켜지 않는다.
         lines.insert(2 if len(lines) >= 2 else len(lines), "..\\engine")
         pth.write_text("\r\n".join(lines) + "\r\n", encoding="utf-8")
-    check_signature(dest / "python.exe")
+    check_signature(dest / "python.exe", *sorted(dest.glob("python3*.dll")))
     ver = python_version_of(zip_path, dest)
     try:
         mm = tuple(int(x) for x in ver.split(".")[:2])
@@ -360,8 +365,9 @@ def assemble(a: argparse.Namespace, built: dict[str, Path], py_zip: Path) -> tup
     }
     (app / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     readme = (PAYLOAD / "README.txt").read_bytes().decode("utf-8-sig").replace("\r\n", "\n")
-    readme = readme.format(plugin_version=ver, engine_version=manifest["engine_version"], python_version=py_ver,
-                           acad_years=" / ".join(years[t] for t in targets))
+    for k, v in {"plugin_version": ver, "engine_version": manifest["engine_version"], "python_version": py_ver,
+                 "acad_years": " / ".join(years[t] for t in targets)}.items():
+        readme = readme.replace("{" + k + "}", v)   # format()은 안내문에 다른 중괄호가 생기면 멈춘다
     (stage / "README.txt").write_bytes(("\ufeff" + readme).replace("\n", "\r\n").encode("utf-8"))
     say(f"    [OK] {stage}")
     return stage, manifest
@@ -381,8 +387,8 @@ def self_test(stage: Path) -> None:
     say(f"    [OK] 내장 Python이 엔진 {r.stdout.strip()}을 불러옴(다른 폴더에서, ._pth 경로)")
 
 
-def make_zip(stage: Path) -> Path:
-    z = stage.parent / f"{stage.name}_setup.zip"
+def make_zip(stage: Path, suffix: str = "") -> Path:
+    z = stage.parent / f"{stage.name}{suffix}_setup.zip"
     if z.exists():
         z.unlink()
     with zipfile.ZipFile(z, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
@@ -399,8 +405,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--acad25", help="AutoCAD 2025·2026 참조 DLL 4개가 있는 폴더")
     ap.add_argument("--acad-nuget", default="25.0.*", help="마지막 수단 NuGet 참조 버전(기본 25.0.* = 2025 기준, 2026에서도 로드)")
     ap.add_argument("--no-nuget", action="store_true", help="NuGet 참조를 시도하지 않음")
-    ap.add_argument("--skip-r25", action="store_true", help="2027용만 만듦")
-    ap.add_argument("--require-r25", action="store_true", help="2025·2026용을 못 만들면 실패로 끝냄")
+    ap.add_argument("--skip-r25", action="store_true", help="2027용만 만듦(zip 이름에 _2027only)")
+    ap.add_argument("--allow-2027-only", action="store_true",
+                    help="2025·2026용을 못 만들어도 2027용만으로 계속(기본은 실패로 끝냄)")
     ap.add_argument("--python-zip", help="미리 받은 Windows 내장 Python zip(python-3.x.y-embed-amd64.zip)")
     ap.add_argument("--python-version", help="받을 Python 버전(예: 3.14.2). 없으면 --python-minor의 최신")
     ap.add_argument("--python-minor", default="3.14", help="최신을 찾을 Python 계열(기본 3.14)")
@@ -415,7 +422,7 @@ def main(argv: list[str] | None = None) -> int:
     stage, manifest = assemble(a, built, py_zip)
     say("[4/4] 시험·압축")
     self_test(stage)
-    z = make_zip(stage)
+    z = make_zip(stage, "" if "R25" in built else "_2027only")   # 2027 전용이면 이름에 드러나게
     digest = hashlib.sha256(z.read_bytes()).hexdigest()
     (z.parent / (z.name + ".sha256.txt")).write_text(f"{digest}  {z.name}\n", encoding="utf-8")
     say()
