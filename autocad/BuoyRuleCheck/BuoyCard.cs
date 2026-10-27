@@ -127,8 +127,8 @@ namespace BuoyRuleCheck
             x = Math.Clamp(x, wa.Left + 4, Math.Max(wa.Left + 4, wa.Right - Width - 4));
             _fade.Stop();
             _restTop = y;
-            Opacity = 1;
             if (Location.X != x || Location.Y != y) Location = new Point(x, y);
+            Opacity = 1;
             if (!Visible) Visible = true;   // 처음 Show(owner)로 붙인 주인 창은 그대로 — 활성화하지 않음(ShowWithoutActivation)
         }
 

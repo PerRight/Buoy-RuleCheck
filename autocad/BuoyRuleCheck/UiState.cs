@@ -72,7 +72,12 @@ namespace BuoyRuleCheck
         /// persist=false: 이번 실행 동안만(예: '근거 ›'로 숨긴 항목을 보이려고 잠깐 끔 — 사용자가 정한 값은 ui.json에 그대로)
         public static void SetFailOnly(bool on, bool persist = true)
         {
-            if (Current.FailOnly == on) return;
+            if (Current.FailOnly == on)
+            {
+                // 잠깐 바꾼 값과 같은 값을 사용자가 정함 → 이제 그 값이 저장할 값(검증 F-J)
+                if (persist && Current._persistedFailOnly != null) { Current._persistedFailOnly = null; Current.Save(); }
+                return;
+            }
             if (persist) Current._persistedFailOnly = null;
             else Current._persistedFailOnly ??= Current.FailOnly;
             Current.FailOnly = on;

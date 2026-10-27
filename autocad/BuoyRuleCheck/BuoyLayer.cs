@@ -212,6 +212,7 @@ namespace BuoyRuleCheck
             UiState.Current.Save();
             if (!on) CloseCard(force: true);
             Redraw();
+            Guard.Run("고정 카드 따라가기", FollowPinned);   // 고정 카드도 같이 숨기고/보임
         }
 
         // ── 명령·검사 흐름 ───────────────────────────────────────────────────────
@@ -369,7 +370,7 @@ namespace BuoyRuleCheck
             if ((DateTime.UtcNow - _followAt).TotalMilliseconds >= 100)   // 창 이동·크기·묶음 바뀜도 따라가게(0.1 s마다)
             {
                 _followAt = DateTime.UtcNow;
-                FollowPinned();
+                Guard.Run("고정 카드 따라가기", FollowPinned);
             }
             if (animating || gone.Count > 0) Redraw();
             if (Buoys.Count == 0)
@@ -686,6 +687,8 @@ namespace BuoyRuleCheck
             // 카드는 '최종' 판정(Target)으로 — 다시 검사 0.6 s 동안 부표 색은 옛 색이어도 카드 내용(El)은 이미 새 판정이다(검증 N1)
             var items = CardItems(b);
             CloseCard(force: false);
+            // 이 부표의 고정 카드가 이미 보이면 호버 카드를 겹쳐 띄우지 않는다(검증 F-B) — 근거 선·×1.25는 그대로
+            if (Pinned.Any(c => !c.IsDisposed && c.Pinned && c.Visible && c.Tag as string == b.Key)) return;
             var card = new BuoyCard(items) { Tag = b.Key };   // 어느 부표 자리의 카드인지(고정하면 그 자리를 따라감)
             card.EvidenceRequested += it => EvidenceRequested?.Invoke(it.RuleId, it.Element.ElementId);
             card.ZoomRequested += list => ZoomTo(list);
@@ -711,11 +714,16 @@ namespace BuoyRuleCheck
         private static void FollowPinned()
         {
             if (_doc == null) return;
-            var cards = Pinned.Where(c => !c.IsDisposed).ToList();
+            var cards = Pinned.Where(c => !c.IsDisposed && c.Pinned).ToList();   // 핀을 푼 카드는 따라가지 않음(유예 뒤 닫힘)
             if (_card is { IsDisposed: false, Pinned: true } pc && !cards.Contains(pc)) cards.Add(pc);
             if (cards.Count == 0) return;
+            if (!Visible)   // 부표 표시를 끄면 고정 카드도 숨김(켜면 다시 따라감)
+            {
+                foreach (var c in cards) Guard.Run("고정 카드 숨김", () => c.FollowTo(null, System.Drawing.Rectangle.Empty));
+                return;
+            }
             var map = ViewMap.Current(_doc);
-            if (map == null) return;
+            if (map == null) return;   // AutoCAD 최소화 등 — 시스템이 숨긴 카드를 다시 띄우지 않는다
             Layout(map.Upp);   // 지금 배율로 부표 중심·묶음
             foreach (var c in cards)
             {
@@ -762,7 +770,9 @@ namespace BuoyRuleCheck
                                  * Matrix3d.Displacement(v.Target - Point3d.Origin)
                                  * Matrix3d.PlaneToWorld(v.ViewDirection);
                     var h = doc.Window.Handle;
-                    if (!GetClientRect(h, out var rc)) return null;
+                    var main = AcApp.MainWindow.Handle;
+                    if (IsIconic(main) || !IsWindowVisible(h) || IsIconic(h)) return null;   // 최소화·숨김: 따라가지 않음(검증 F-A)
+                    if (!GetClientRect(h, out var rc) || rc.Right - rc.Left < 2 || rc.Bottom - rc.Top < 2) return null;
                     var tl = new POINT { X = rc.Left, Y = rc.Top };
                     if (!ClientToScreen(h, ref tl)) return null;
                     return new ViewMap
@@ -851,6 +861,12 @@ namespace BuoyRuleCheck
 
         [DllImport("user32.dll")]
         private static extern bool ClientToScreen(IntPtr hWnd, ref POINT pt);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsIconic(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsWindowVisible(IntPtr hWnd);
 
         private sealed class Owner : System.Windows.Forms.IWin32Window
         {
