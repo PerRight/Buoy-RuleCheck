@@ -20,7 +20,13 @@
     <NoWarn>$(NoWarn);WFO1000</NoWarn>
     <AcadDir Condition="'$(AcadDir)' == ''">C:\Program Files\Autodesk\AutoCAD 2027</AcadDir>
   </PropertyGroup>
-  <ItemGroup>
+  <!-- AutoCAD 참조: 기본은 설치 폴더(AcadDir)의 DLL. 2025·2026 DLL이 없는 PC에서 .NET 8용을 만들 때는
+       Autodesk 공식 NuGet 참조 어셈블리를 쓸 수 있다: -p:TargetFramework=net8.0-windows -p:AcadNuGet=25.0.*
+       (인터넷 필요, 패키지 구성은 버전마다 다를 수 있음 — tools/package/make_package.py가 이 경로를 마지막 수단으로 시도) -->
+  <ItemGroup Condition="'$(AcadNuGet)' != ''">
+    <PackageReference Include="AutoCAD.NET" Version="$(AcadNuGet)" ExcludeAssets="runtime" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(AcadNuGet)' == ''">
     <Reference Include="AcCoreMgd">
       <HintPath>$(AcadDir)\accoremgd.dll</HintPath>
       <Private>false</Private>
