@@ -186,12 +186,14 @@ namespace BuoyRuleCheck
             _repaints++;
         }
 
-        /// 리본이 밝은 테마인가. COLORTHEME(0 어두움, 1 밝음)을 먼저, 못 읽으면 AutoCAD 테마 값으로.
+        /// 리본이 밝은 테마인가. AutoCAD 리본 자신이 쓰는 값(ActiveThemeColor.CurrentTheme: Dark·Light·User)을 먼저,
+        /// 못 읽으면 COLORTHEME으로. AutoCAD와 같게 '어두움(Dark·0)이 아니면 밝음'으로 본다 — User·2 같은 값도 밝은 리본.
         private static bool ThemeIsLight()
         {
+            var name = ActiveThemeName();
+            if (!string.IsNullOrEmpty(name)) return !string.Equals(name, "Dark", StringComparison.OrdinalIgnoreCase);
             var v = ColorThemeVar();
-            if (v != null) return v == 1;
-            return string.Equals(ActiveThemeName(), "Light", StringComparison.OrdinalIgnoreCase);
+            return v != null && v != 0;
         }
 
         private static int? ColorThemeVar()
