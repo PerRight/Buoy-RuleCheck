@@ -74,6 +74,7 @@ docs/
   input-contract.md            단위·좌표·레이어·도면 특성 명세
   rule-definitions.md          L·관측점·수선·흘수 정의, 원문, 판본, 미검토 범위
   test-cases.md                24건 기대 결과표 (자동 생성 — 직접 고치지 말 것)
+  metrics/                     정량지표 측정 계획(봉인 입력·판단 시간·ROI)과 자동 측정 결과
 engine/
   brc/                         엔진 패키지
   garc/                        옛 이름 별칭(같은 모듈을 가리킴)
@@ -81,6 +82,7 @@ engine/
   tests/cases/expected_24.json 24건 원본 (hand_calc, verified_by)
   scripts/make_samples.py      합성 GA revision DXF 생성
   scripts/render_cases.py      expected_24.json → docs/test-cases.md
+  scripts/metrics.py           정량지표 자동 측정(24건 일치·어림 검사 대비·처리 시간) → docs/metrics/
 samples/                       S140_rev0~4 *.dxf (mm, AP·기선 원점), S140_v1_review → S140_v2_fixed (+ S140_v2_fixed.brc 버전 기록)
 tools/package/                 다른 PC용 통합 설치 패키지: make_package.py(개발 PC) · buoy_setup.py(받는 PC 설치·제거) · payload/(INSTALL.cmd 등) · tests/
 dist/                          패키지 결과물(저장소에 올리지 않음)
@@ -163,6 +165,7 @@ python scripts/make_samples.py --compare-demo   # 버전 비교 데모 샘플 �
 - [ ] 3주차 생성형 AI 설명: `server/explain.py`는 외부 API로 데이터를 보냄 → '도면 내용 외부 전송 금지'와 충돌. 보낼 범위(판정 문구만/수치 포함)·옵트인·오프라인 폴백을 먼저 결정 (전원)
 - [ ] 오타 감지의 한계 인지: 범위 안 오타(조종위치 x 18→118, 선미 흘수 등)는 못 잡음 — 발표에서 "모든 입력 실수를 막는다"고 말하지 않기. `GA_OBSTRUCTION`처럼 GA_ 이름으로 시작하는 보조 레이어는 '검토 불가'로 멈추므로 보조선은 `GA_REF` 같은 다른 이름을 쓸 것 (전원)
 - [ ] 24건 수기 검산, `verified_by` 기입 (복준용)
+- [ ] 정량지표(10-29 계획 `docs/metrics/2026-10-29_정량지표_측정계획.md`): 자동 측정 완료(24/24, 어림 검사 대비). 남은 것: A 봉인 확인용 입력 6~8건(복준용·표인범), B 판단 완료 시간 Before/After(참가자 2~3명), D ROI 가정값 (전원)
 - [ ] SOLAS 판본 확정, MSC/Circ.982 조종위치 정의 원문 확인 (표인범)
 - [ ] 멘토 질문 3개 확정 (전원) — 초안은 멘토링 문서 4장
 - [ ] 실제 GA에 가까운 샘플(DWG) 1건 — 저장소가 공개이므로 공개해도 되는 도면만. `*.dwg`는 기본 차단이라 `.gitignore`에 그 파일 예외 줄 추가 (CONTRIBUTING §5)
