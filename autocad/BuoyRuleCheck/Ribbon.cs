@@ -1,6 +1,6 @@
 // 리본 'Buoy-RuleCheck' 탭(명세 6-3, 디자인 보드 03): 검토 · 입력 · 표시·기록 · 버전. 버튼은 명령 문자열을 실행만 한다(로직은 Commands에).
-// 아이콘은 잉크 한 색의 선 그림(판정 색 없음) — 이미지 파일 없이 아래 경로 문자열로 그린다. 리본이 밝은 테마(COLORTHEME=1)면
-// 어두운 잉크, 어두운 테마면 흰 잉크로 다시 칠한다(테마를 바꾸면 따라감 — 아래 '테마 따라가기'). '검사 시작'만 멈춘 자세의 오브(점으로 된 구).
+// 아이콘은 잉크 한 색의 선 그림(판정 색 없음) — 이미지 파일 없이 아래 경로 문자열로 그린다. 리본이 밝은 테마(어두움이 아닌
+// 테마 — AutoCAD와 같은 기준)면 어두운 잉크, 어두운 테마면 흰 잉크로 칠한다(테마를 바꾸면 따라감 — 아래 '테마 따라가기'). '검사 시작'만 멈춘 자세의 오브(점으로 된 구).
 // 자주 쓰지 않는 명령(역할 지정·역할 보기·초기 설정·로고·동작 줄이기·엔진 확인)은 패널 아래 펼침(slideout)에.
 using System;
 using System.Collections.Generic;
@@ -221,7 +221,9 @@ namespace BuoyRuleCheck
         {
             string ink = Buttons.Count == 0 ? "리본 탭 없음" : _inkLight ? "어두운 잉크(밝은 리본용)" : "흰 잉크(어두운 리본용)";
             var v = ColorThemeVar();
-            return $"리본 아이콘: {ink} · COLORTHEME={(v?.ToString() ?? "?")} · AutoCAD 테마={ActiveThemeName() ?? "?"} · " +
+            var name = ActiveThemeName();
+            string by = !string.IsNullOrEmpty(name) ? "테마값" : v != null ? "COLORTHEME" : "못 읽음";
+            return $"리본 아이콘: {ink} · 판단={by} · AutoCAD 테마={(string.IsNullOrEmpty(name) ? "?" : name)} · COLORTHEME={(v?.ToString() ?? "?")} · " +
                    $"감시 {_themeHook} · 다시 칠함 {_repaints}회(변수 {_sysvarHits} · 테마 {_themeHits} · 확인 {_pollHits})";
         }
 
