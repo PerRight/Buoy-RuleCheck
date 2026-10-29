@@ -173,7 +173,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 
 | # | 조작 | 기대 결과 |
 |---|---|---|
-| 36 | AutoCAD를 닫고 `install.ps1` → AutoCAD 시작 | `%APPDATA%\Autodesk\ApplicationPlugins`에 `BuoyRuleCheck.bundle`만 남음(옛 `GaRuleCheck.bundle` 제거). 리본 'Buoy-RuleCheck' 탭에 검토 · 입력 · 표시·기록 · 버전 4패널, 아이콘은 한 색 선 그림. `COLORTHEME`을 0↔1로 바꾸면 아이콘 잉크가 따라 바뀜 |
+| 36 | AutoCAD를 닫고 `install.ps1` → AutoCAD 시작 | `%APPDATA%\Autodesk\ApplicationPlugins`에 `BuoyRuleCheck.bundle`만 남음(옛 `GaRuleCheck.bundle` 제거). 리본 'Buoy-RuleCheck' 탭에 검토 · 입력 · 표시·기록 · 버전 4패널, 아이콘은 한 색 선 그림. `COLORTHEME`을 0↔1로 바꾸면 1.5초 안에 아이콘 잉크가 따라 바뀜(밝은 리본 → 어두운 잉크). 안 바뀌면 `BRCHEALTH` 마지막 줄 `리본 아이콘: … · 다시 칠함 n회(…)`를 알릴 것 |
 | 37 | `S140_rev0_base` 열고 `BRC` | 팔레트 머리 **Buoy** RuleCheck, 두 항목 '문제없음'(파랑), 고지 문구. 명령줄 `[BRC] rev 1 · 문제없음 — … 기준 충족`. 도면 위에 부표 없음. 로고는 파란 등으로 멈춤 |
 | 38 | 새 도면 탭에서 옛 명령 `GARC` | 37과 같은 동작 + 처음 한 번 "[BRC] GARC → BRC(으)로 이름이 바뀌었어요. 옛 이름도 한동안 됩니다." 두 번째부터는 안내 없음 |
 | 39 | 확인표 2의 컨테이너를 그림 | 로고 오브가 빠르게 돈 뒤(최소 0.6 s) 빨간 등 + 칩 '1'. 컨테이너 상단 고칠 자리에 부표가 모여들며 나타남(물결 2번) → 천천히 자전. 명령줄 `rev 2 · 다시 계산 … — 가시거리`, `rev 2 · 수정 소요 1 — 가시거리` |

@@ -1,6 +1,6 @@
 // 리본 'Buoy-RuleCheck' 탭(명세 6-3, 디자인 보드 03): 검토 · 입력 · 표시·기록 · 버전. 버튼은 명령 문자열을 실행만 한다(로직은 Commands에).
 // 아이콘은 잉크 한 색의 선 그림(판정 색 없음) — 이미지 파일 없이 아래 경로 문자열로 그린다. 리본이 밝은 테마(COLORTHEME=1)면
-// 어두운 잉크, 어두운 테마면 흰 잉크로 다시 칠한다. '검사 시작'만 멈춘 자세의 오브(점으로 된 구).
+// 어두운 잉크, 어두운 테마면 흰 잉크로 다시 칠한다(테마를 바꾸면 따라감 — 아래 '테마 따라가기'). '검사 시작'만 멈춘 자세의 오브(점으로 된 구).
 // 자주 쓰지 않는 명령(역할 지정·역할 보기·초기 설정·로고·동작 줄이기·엔진 확인)은 패널 아래 펼침(slideout)에.
 using System;
 using System.Collections.Generic;
@@ -45,6 +45,7 @@ namespace BuoyRuleCheck
             foreach (var t in ribbon.Tabs)
                 if (t.Id == TabId) return;
             Buttons.Clear();
+            _inkLight = ThemeIsLight();   // 처음 칠할 잉크(이후 바뀌면 Repaint)
 
             var tab = new RibbonTab { Title = Product.Name, Id = TabId };
             ribbon.Tabs.Add(tab);
@@ -95,32 +96,131 @@ namespace BuoyRuleCheck
                 },
                 Array.Empty<RibbonButton>()));
 
-            if (!_themeHooked)
-            {
-                try { AcApp.SystemVariableChanged += OnSysVar; _themeHooked = true; } catch { }
-            }
+            HookTheme();
         }
 
-        /// 리본 테마가 바뀌면 아이콘 잉크를 다시 칠한다.
+        // ── 테마 따라가기 ──────────────────────────────────────────────────────
+        // 10-29 사용자 PC(AutoCAD 2027): COLORTHEME을 바꿔도 아이콘 잉크가 그대로였다. 변수 변경 이벤트만 믿지 않고
+        // ① COLORTHEME 변경 이벤트 ② AutoCAD 테마 변경 이벤트(ActiveThemeColor, 내부 API라 리플렉션으로) ③ Idle에서 1.5초마다 확인
+        // 셋 중 무엇이든 오면 다음 Idle에 지금 테마를 다시 읽어 칠한다. 이벤트가 값이 바뀌기 전에 와도 Idle에서 다시 읽으므로 맞는다.
+        private static bool _inkLight;                 // 지금 아이콘이 밝은 리본용(어두운 잉크)으로 칠해져 있나
+        private static bool _repaintQueued;
+        private static long _nextPoll;
+        private static int _repaints, _sysvarHits, _themeHits, _pollHits;
+        private static string _themeHook = "연결 전";
+
+        private static void HookTheme()
+        {
+            if (_themeHooked) return;
+            _themeHooked = true;
+            var hooks = new List<string>();
+            try { AcApp.SystemVariableChanged += OnSysVar; hooks.Add("변수"); } catch { }
+            try { if (HookActiveTheme()) hooks.Add("테마"); } catch { }
+            try { AcApp.Idle += OnIdlePoll; hooks.Add("확인"); } catch { }
+            _themeHook = hooks.Count > 0 ? string.Join("·", hooks) : "없음";
+        }
+
+        /// Autodesk.AutoCAD.Internal.ActiveThemeColor.Instance().ColorThemeChanged — 공개 문서에 없는 API라
+        /// 버전마다 없을 수 있어 리플렉션으로만 건다(없으면 변수 이벤트·Idle 확인으로 충분).
+        private static bool HookActiveTheme()
+        {
+            var t = typeof(AcApp).Assembly.GetType("Autodesk.AutoCAD.Internal.ActiveThemeColor");
+            var inst = t?.GetMethod("Instance", Type.EmptyTypes)?.Invoke(null, null);
+            var ev = t?.GetEvent("ColorThemeChanged");
+            if (inst == null || ev?.EventHandlerType == null) return false;
+            var mi = typeof(RibbonUi).GetMethod(nameof(OnActiveTheme), System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            if (mi == null) return false;
+            ev.AddEventHandler(inst, Delegate.CreateDelegate(ev.EventHandlerType, mi));
+            return true;
+        }
+
+        private static void OnActiveTheme(object? sender, EventArgs e)
+        {
+            _themeHits++;
+            QueueRepaint();
+        }
+
         private static void OnSysVar(object? sender, Autodesk.AutoCAD.ApplicationServices.SystemVariableChangedEventArgs e)
         {
             if (!string.Equals(e.Name, "COLORTHEME", StringComparison.OrdinalIgnoreCase)) return;
-            foreach (var (b, ico) in Buttons)
-            {
-                b.LargeImage = Render(ico, 32);
-                b.Image = Render(ico, 16);
-            }
+            _sysvarHits++;
+            QueueRepaint();
         }
 
-        private static Color Ink()
+        private static void QueueRepaint()
+        {
+            if (_repaintQueued) return;
+            _repaintQueued = true;
+            try { AcApp.Idle += RepaintOnIdle; } catch { _repaintQueued = false; }
+        }
+
+        private static void RepaintOnIdle(object? sender, EventArgs e)
+        {
+            AcApp.Idle -= RepaintOnIdle;
+            _repaintQueued = false;
+            Guard.Run("리본 아이콘", () => Repaint(force: true));
+        }
+
+        /// 이벤트가 오지 않는 경로(옵션 창·프로필 바꿈 등)도 1.5초 안에 따라가게.
+        private static void OnIdlePoll(object? sender, EventArgs e)
+        {
+            long now = Environment.TickCount64;
+            if (now < _nextPoll) return;
+            _nextPoll = now + 1500;
+            if (Buttons.Count == 0 || ThemeIsLight() == _inkLight) return;
+            _pollHits++;
+            Guard.Run("리본 아이콘", () => Repaint(force: false));
+        }
+
+        private static void Repaint(bool force)
+        {
+            bool light = ThemeIsLight();
+            if (!force && light == _inkLight) return;
+            var ink = InkFor(light);
+            foreach (var (b, ico) in Buttons)
+            {
+                b.LargeImage = Render(ico, 32, ink);
+                b.Image = Render(ico, 16, ink);
+            }
+            _inkLight = light;
+            _repaints++;
+        }
+
+        /// 리본이 밝은 테마인가. COLORTHEME(0 어두움, 1 밝음)을 먼저, 못 읽으면 AutoCAD 테마 값으로.
+        private static bool ThemeIsLight()
+        {
+            var v = ColorThemeVar();
+            if (v != null) return v == 1;
+            return string.Equals(ActiveThemeName(), "Light", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static int? ColorThemeVar()
+        {
+            try { return Convert.ToInt32(AcApp.GetSystemVariable("COLORTHEME"), CultureInfo.InvariantCulture); }
+            catch { return null; }
+        }
+
+        private static string? ActiveThemeName()
         {
             try
             {
-                var v = AcApp.GetSystemVariable("COLORTHEME");
-                if (Convert.ToInt32(v, CultureInfo.InvariantCulture) == 1) return Color.FromRgb(0x23, 0x23, 0x27);   // 밝은 리본: 어두운 잉크
+                var t = typeof(AcApp).Assembly.GetType("Autodesk.AutoCAD.Internal.ActiveThemeColor");
+                return t?.GetProperty("CurrentTheme")?.GetValue(null)?.ToString();
             }
-            catch { }
-            return Color.FromRgb(0xED, 0xEF, 0xF3);   // 어두운 리본: 흰 잉크
+            catch { return null; }
+        }
+
+        private static Color InkFor(bool lightRibbon) => lightRibbon
+            ? Color.FromRgb(0x23, 0x23, 0x27)    // 밝은 리본: 어두운 잉크
+            : Color.FromRgb(0xED, 0xEF, 0xF3);   // 어두운 리본: 흰 잉크
+
+        /// BRCHEALTH 한 줄: 아이콘이 테마를 따라가지 않을 때 어디서 막혔는지.
+        public static string Diagnose()
+        {
+            string ink = Buttons.Count == 0 ? "리본 탭 없음" : _inkLight ? "어두운 잉크(밝은 리본용)" : "흰 잉크(어두운 리본용)";
+            var v = ColorThemeVar();
+            return $"리본 아이콘: {ink} · COLORTHEME={(v?.ToString() ?? "?")} · AutoCAD 테마={ActiveThemeName() ?? "?"} · " +
+                   $"감시 {_themeHook} · 다시 칠함 {_repaints}회(변수 {_sysvarHits} · 테마 {_themeHits} · 확인 {_pollHits})";
         }
 
         private static RibbonPanel Panel(string title, RibbonButton[] main, RibbonButton[] more)
@@ -144,8 +244,8 @@ namespace BuoyRuleCheck
                 ShowImage = true,
                 Size = RibbonItemSize.Large,
                 Orientation = System.Windows.Controls.Orientation.Vertical,
-                LargeImage = Render(icon, 32),
-                Image = Render(icon, 16),
+                LargeImage = Render(icon, 32, InkFor(_inkLight)),
+                Image = Render(icon, 16, InkFor(_inkLight)),
                 ToolTip = tip,
                 CommandParameter = "_" + command + " ",
                 CommandHandler = new Handler(),
@@ -155,9 +255,8 @@ namespace BuoyRuleCheck
         }
 
         /// 선 경로 + 원을 잉크 한 색으로. 32 px는 선 2, 16 px는 선 1.25(같은 그림을 줄임).
-        private static BitmapSource Render(Ico ico, int size)
+        private static BitmapSource Render(Ico ico, int size, Color ink)
         {
-            var ink = Ink();
             var brush = new SolidColorBrush(ink);
             brush.Freeze();
             double k = size / 32.0;

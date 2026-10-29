@@ -144,6 +144,7 @@ namespace BuoyRuleCheck
             ed?.WriteMessage($"{Product.Tag} {BuoyLayer.Diagnose()}\n");
             ed?.WriteMessage($"{Product.Tag} {Overlay.LastEvidenceNote}\n");
             ed?.WriteMessage($"{Product.Tag} {BuoyLayer.DiagnoseFollow()}\n");
+            ed?.WriteMessage($"{Product.Tag} {RibbonUi.Diagnose()}\n");
         }
 
         // ── 입력 ────────────────────────────────────────────────────────────
