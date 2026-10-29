@@ -312,6 +312,65 @@ class WindowsCommands(unittest.TestCase):
         self.assertTrue(kw["cwd"].endswith("BuoyRuleCheck"))
 
 
+class NuGetFallback(unittest.TestCase):
+    """10-29 사용자 PC: AutoCAD.NET 25.0.2가 net10.0 전용이라 25.0.* 빌드가 NU1202로 실패 → 버전을 하나씩 확인."""
+
+    def setUp(self):
+        self._open, self._build, self._say = mp._open, mp.dotnet_build, mp.say
+        self.calls: list[str] = []
+        self.nuspec = {
+            "25.0.2": '<package><metadata><dependencies><group targetFramework="net10.0" /></dependencies></metadata></package>',
+            "25.0.1": '<package><metadata><dependencies><group targetFramework="net8.0-windows7.0" /></dependencies></metadata></package>',
+            "25.0.0": '<package><metadata><dependencies><group targetFramework="net8.0" /></dependencies></metadata></package>',
+        }
+        index = {"versions": ["24.3.0", "25.0.0", "25.0.1", "25.0.2", "25.0.3-beta", "25.1.0", "26.0.0"]}
+
+        def fake_open(url, method="GET"):
+            if url.endswith("index.json"):
+                body = json.dumps(index)
+            else:
+                v = url.rsplit("/", 2)[-2]
+                if v not in self.nuspec:
+                    raise OSError("404")
+                body = self.nuspec[v]
+            return contextlib.closing(io.BytesIO(body.encode("utf-8")))
+
+        mp._open = fake_open
+        mp.say = lambda *_a, **_k: None
+        self.ok_versions: set[str] = {"25.0.1"}
+
+        def fake_build(target, out, acad_dir, nuget, extra):
+            self.calls.append(nuget)
+            return nuget in self.ok_versions
+
+        mp.dotnet_build = fake_build
+
+    def tearDown(self):
+        mp._open, mp.dotnet_build, mp.say = self._open, self._build, self._say
+
+    def test_versions_newest_first_in_series_without_prerelease(self):
+        self.assertEqual(mp.nuget_versions("25.0.*"), ["25.0.2", "25.0.1", "25.0.0"])
+        self.assertEqual(mp.nuget_versions("25.0.1"), ["25.0.1"])
+
+    def test_skips_net10_only_and_builds_first_net8(self):
+        self.assertTrue(mp.build_r25_nuget("25.0.*", Path("unused"), []))
+        self.assertEqual(self.calls, ["25.0.1"])          # 25.0.2(net10 전용)는 빌드하지 않음
+
+    def test_unknown_nuspec_is_tried_and_build_count_is_capped(self):
+        self.nuspec.clear()                                # nuspec을 못 읽으면 빌드해 보고 판단
+        self.ok_versions = set()
+        self.assertFalse(mp.build_r25_nuget("25.0.*", Path("unused"), []))
+        self.assertEqual(self.calls, ["25.0.2", "25.0.1", "25.0.0"][: mp.NUGET_MAX_BUILDS])
+
+    def test_index_unreachable_falls_back_to_spec(self):
+        def down(url, method="GET"):
+            raise OSError("offline")
+        mp._open = down
+        self.ok_versions = {"25.0.*"}
+        self.assertTrue(mp.build_r25_nuget("25.0.*", Path("unused"), []))
+        self.assertEqual(self.calls, ["25.0.*"])
+
+
 class Payload(unittest.TestCase):
     def test_cmd_files_ascii_commands_cp949_crlf(self):
         for name in ("INSTALL.cmd", "UNINSTALL.cmd", "app_UNINSTALL.cmd"):

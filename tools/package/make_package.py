@@ -127,11 +127,11 @@ def dotnet_build(target: str, out: Path, acad_dir: Path | None, nuget: str | Non
     except subprocess.TimeoutExpired:
         say("    빌드가 15분 안에 끝나지 않음")
         return False
-    lines = [x for x in (r.stdout + r.stderr).splitlines() if " error " in x or "error CS" in x or "error NU" in x
-             or "error MSB" in x]
+    lines = list(dict.fromkeys(x.strip() for x in (r.stdout + r.stderr).splitlines()
+                               if " error " in x or "error CS" in x or "error NU" in x or "error MSB" in x))
     if r.returncode != 0 or not (out / "BuoyRuleCheck.dll").exists():
         for x in lines[:15]:
-            say("      " + x.strip())
+            say("      " + x)
         if not lines:
             say("      " + "\n      ".join((r.stdout + r.stderr).strip().splitlines()[-10:]))
         return False
@@ -162,6 +162,62 @@ def build_plugins(a: argparse.Namespace, work: Path) -> dict[str, Path]:
     return built
 
 
+NUGET_BASE = "https://api.nuget.org/v3-flatcontainer/autocad.net/"
+NUGET_MAX_BUILDS = 3   # NuGet 버전을 바꿔 가며 빌드해 볼 최대 횟수
+
+
+def _ver_key(v: str) -> tuple[int, ...]:
+    return tuple(int(x) if x.isdigit() else -1 for x in v.split("."))
+
+
+def nuget_versions(spec: str) -> list[str]:
+    """--acad-nuget 값이 와일드카드(25.0.*)면 NuGet에서 그 계열의 정식 버전을 새것부터, 아니면 그 값 하나.
+    10-29 사용자 PC: 25.0.*가 고른 AutoCAD.NET 25.0.2가 net10.0 전용이라 .NET 8 빌드가 NU1202로 실패했다.
+    그래서 와일드카드 하나에 맡기지 않고 버전을 하나씩 확인한다."""
+    if "*" not in spec:
+        return [spec]
+    prefix = spec.split("*", 1)[0]
+    try:
+        with _open(NUGET_BASE + "index.json") as r:
+            vers = json.loads(r.read().decode("utf-8"))["versions"]
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        say(f"    NuGet 버전 목록을 읽지 못함({e}) — {spec} 그대로 시도")
+        return [spec]
+    cands = sorted({v for v in vers if isinstance(v, str) and v.startswith(prefix) and "-" not in v},
+                   key=_ver_key, reverse=True)
+    return cands or [spec]
+
+
+def nuget_supports_net8(version: str) -> bool | None:
+    """그 버전의 nuspec 의존성 묶음에 .NET 8이 있나. 묶음이 없거나 못 읽으면 None(빌드해 보고 판단)."""
+    try:
+        with _open(f"{NUGET_BASE}{version.lower()}/autocad.net.nuspec") as r:
+            text = r.read().decode("utf-8", "replace")
+    except OSError:
+        return None
+    groups = [g.lower() for g in re.findall(r'<group\b[^>]*\btargetFramework="([^"]+)"', text)]
+    if not groups:
+        return None
+    return any(g.startswith(("net8", ".netcoreapp8")) for g in groups)
+
+
+def build_r25_nuget(spec: str, out: Path, extra: list[str]) -> bool:
+    builds = 0
+    for v in nuget_versions(spec):
+        if "*" not in v and nuget_supports_net8(v) is False:
+            say(f"    NuGet AutoCAD.NET {v}: .NET 8용이 없음 — 건너뜀")
+            continue
+        if builds >= NUGET_MAX_BUILDS:
+            say(f"    NuGet 빌드를 {NUGET_MAX_BUILDS}번 시도해 멈춤")
+            break
+        builds += 1
+        if dotnet_build("R25", out, None, v, extra):
+            return True
+    if builds == 0:
+        say(f"    NuGet에서 .NET 8용 AutoCAD.NET({spec})을 찾지 못함")
+    return False
+
+
 def build_r25(a: argparse.Namespace, work: Path, extra: list[str]) -> dict[str, Path]:
     cands: list[tuple[str, Path | None, str | None]] = []
     if a.acad25:
@@ -177,7 +233,8 @@ def build_r25(a: argparse.Namespace, work: Path, extra: list[str]) -> dict[str, 
             continue
         tried = True
         say(f"    2025·2026용 참조: {label}")
-        if dotnet_build("R25", work / "R25", d, nuget, extra):
+        ok = build_r25_nuget(nuget, work / "R25", extra) if nuget else dotnet_build("R25", work / "R25", d, None, extra)
+        if ok:
             say("    [OK] AutoCAD 2025·2026용")
             return {"R25": work / "R25"}
         say(f"    [주의] {label}로 빌드하지 못함")
@@ -409,7 +466,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", default=str(ROOT / "dist"), help="결과 폴더(기본 dist)")
     ap.add_argument("--acad2027", help="AutoCAD 2027 폴더(참조 DLL 4개가 있는 곳)")
     ap.add_argument("--acad25", help="AutoCAD 2025·2026 참조 DLL 4개가 있는 폴더")
-    ap.add_argument("--acad-nuget", default="25.0.*", help="마지막 수단 NuGet 참조 버전(기본 25.0.* = 2025 기준, 2026에서도 로드)")
+    ap.add_argument("--acad-nuget", default="25.0.*", help="마지막 수단 NuGet 참조 버전(기본 25.0.* = 2025 기준, 2026에서도 로드). "
+                         "와일드카드면 NuGet에서 .NET 8용이 있는 버전을 새것부터 골라 시도")
     ap.add_argument("--no-nuget", action="store_true", help="NuGet 참조를 시도하지 않음")
     ap.add_argument("--skip-r25", action="store_true", help="2027용만 만듦(zip 이름에 _2027only)")
     ap.add_argument("--allow-2027-only", action="store_true",

@@ -20,7 +20,7 @@ python tools\package\make_package.py
      1. `--acad25 <폴더>`
      2. `C:\Program Files\Autodesk\AutoCAD 2025`, `…\AutoCAD 2026`
      3. `tools\package\refs\R25\`
-     4. Autodesk 공식 NuGet 참조(`AutoCAD.NET` 25.0.*, 인터넷 필요 — 패키지 구성에 따라 실패할 수 있음)
+     4. Autodesk 공식 NuGet 참조(`AutoCAD.NET` 25.0.x, 인터넷 필요). NuGet에서 버전 목록을 받아 .NET 8용이 있는 버전만 새것부터 최대 3번 빌드해 본다(10-29: 25.0.2는 net10.0 전용이라 건너뜀). 특정 버전을 쓰려면 `--acad-nuget 25.0.1`
 
      모두 안 되면 실패로 끝낸다. 2027용만 만들려면 `--allow-2027-only`를 붙이고, 그러면 zip 이름에 `_2027only`가 붙는다.
    - 대상 프레임워크는 `-p:BrcTfm=net8.0-windows`로 바꾼다. `-p:TargetFramework=`는 NuGet 복원이 무시해 NETSDK1005로 실패한다.
