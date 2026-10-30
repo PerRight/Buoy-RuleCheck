@@ -11,7 +11,8 @@
        mode: template(기본 설명) · preview(AI에 보낼 본문을 보여 주기만) · ai(보냄, 키는 헤더 X-BRC-AI-Key 또는 환경변수)
 
 127.0.0.1에만 바인딩한다(도면 데이터가 PC 밖으로 나가지 않음).
-예외는 mode="ai" 설명 하나 — ai.py가 숫자·이름을 뺀 빈칸 본문만 Claude API로 보낸다(2026-10-30 결정, docs/ai-explain.md).
+예외는 mode="ai" 설명 하나 — ai.py가 숫자·이름 없는 본문(규칙 조항·판정 상태·고칠 방향)만 Claude API로 보내고,
+돌아온 문단은 엔진 문장 뒤에 붙인다(2026-10-30 결정, docs/ai-explain.md).
 추가로 Host 헤더가 루프백 이름이 아니거나 브라우저 Origin 헤더가 붙은 요청은 거부한다
 (웹 페이지가 DNS rebinding·교차 사이트 요청으로 로컬 엔진에 접근하는 경로 차단. 플러그인·urllib은 Origin을 보내지 않는다).
 """

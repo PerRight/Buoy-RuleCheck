@@ -1,5 +1,5 @@
-"""생성형 AI 설명(빈칸 방식) — 보낼 본문에 도면 내용이 없는지, 기본 설명이 엔진 값을 그대로 쓰는지,
-AI 답 검사·기본 설명으로 돌아가기, 외부 호출(가짜 응답), 서버 경로."""
+"""생성형 AI 설명 — 보낼 본문에 도면 내용이 없는지, 엔진 문장이 엔진 값을 그대로 쓰는지,
+AI 문단 검사·엔진 문장만으로 돌아가기, 외부 호출(가짜 응답), 서버 경로."""
 from __future__ import annotations
 
 import copy
@@ -279,6 +279,52 @@ class Guard(unittest.TestCase):
         for name, text in bad.items():
             with self.subTest(name=name):
                 self.assertIsNotNone(ex.check_ai_text(text, b))
+
+
+class Round3(unittest.TestCase):
+    """10-30 Sonnet 3차 지적(X1~X5) 회귀."""
+
+    def test_x1_more_verdict_phrasings_and_scripts(self):
+        b = fail_brief()
+        base = "이 규정은 선교에서 선수 앞 바다를 내려다볼 수 있게 하려는 것입니다. "
+        for t in ["고칠 필요가 없습니다.", "문제될 것이 없습니다.", "지장이 없습니다.", "이상은 없습니다.", "규정에 맞습니다.",
+                  "허용 범위에 듭니다.", "기준 이하입니다.", "수정이 필요합니다.", "한계를 웃돕니다.", "여유가 없습니다.",
+                  "엔진 판정은 틀렸을 수 있습니다.", "그대로 진행하세요.", "문제.없음입니다.", "문-제-없-음입니다.",
+                  "기준-안입니다.", "한계 안에 있습니다.", "범위 안입니다.", "ㅁㅜㄴㅈㅔ ㅇㅓㅂㅅㅡㅂㄴㅣㄷㅏ.", "Всё хорошо.",
+                  "だいじょうぶです.", "ǒǩ입니다.", "열두 칸 정도입니다.", "영 점 오 정도입니다.", "절반 정도입니다."]:
+            with self.subTest(t=t):
+                self.assertIsNotNone(ex.check_ai_text(base + t, b))
+
+    def test_x2_natural_words_not_blocked(self):
+        b = brief_of(BHD, "fail")
+        for t in ["이 내용은 충돌격벽 위치 규정의 취지를 설명합니다.", "격벽은 선수 구획 이 내부를 나누는 수밀 벽입니다.",
+                  "시야 범위 안쪽의 구조물도 함께 살펴보세요.", "격벽을 허용 범위 안에 두도록 옮기는 방향으로 검토하세요.",
+                  "주관청이 인정하는 예외인지는 사람이 확인합니다.", "주관청의 허가를 받은 예외인지 따로 살펴보세요.",
+                  "생산 단계로 넘어가기 전에 격벽 위치를 다시 살펴보세요.", "이 규정은 충돌 위험을 줄이기 위해 격벽 위치를 정합니다.",
+                  "근거는 SOLAS Ch.II-1 Reg.12.1·12.3·12.4입니다."]:
+            with self.subTest(t=t):
+                self.assertIsNone(ex.check_ai_text(t, b))
+
+    def test_x3_surrogate_answer_does_not_break_response(self):
+        from brc.server import encode_payload
+        out = ex.explain(fail_brief(), "ai", key="k" * 30, call=lambda b, k: "\ud800 이 규정은 선수 앞 바다를 보게 합니다.")
+        self.assertEqual(out["source"], "template")
+        self.assertIsNotNone(encode_payload(out))
+
+    def test_x4_control_chars(self):
+        b = fail_brief()
+        for ch in ("\x00", "\x07", "\x1b", "\x7f", "\u0085", "\u2028", "\u2029"):
+            with self.subTest(ch=repr(ch)):
+                self.assertIsNotNone(ex.check_ai_text("이 규정은 선수 앞" + ch + " 바다를 보게 하려는 것입니다.", b))
+
+    def test_x5_truncated_answers(self):
+        b = fail_brief()
+        self.assertIsNotNone(ex.check_ai_text("이 규정은 선수 앞 바다를 보게 하려는 것이고 좌우 시야는 따로 살펴", b))
+        op = _FakeOpener({"content": [{"type": "text", "text": "이 규정은 선수 앞 바다를"}], "stop_reason": "max_tokens"})
+        with mock.patch.object(ai, "_opener", return_value=op):
+            with self.assertRaises(ai.AiUnavailable) as cm:
+                ai.call({}, "k" * 30)
+        self.assertIn("잘려", cm.exception.reason_ko)
 
 
 class AiPath(unittest.TestCase):

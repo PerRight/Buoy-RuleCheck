@@ -1,7 +1,7 @@
 """외부 생성형 AI 호출 — 엔진에서 PC 밖으로 나가는 요청은 이 파일 하나뿐이다.
 
-2026-10-30 팀 결정(docs/ai-explain.md): 설명 문장만 외부 LLM(Claude API)에 맡긴다.
-  · 보내는 본문은 explain.request_body()가 만든다 — 규칙 조항·판정 상태·고칠 방향과 빈칸 이름만.
+2026-10-30 팀 결정(docs/ai-explain.md): 엔진 문장 뒤에 붙일 설명 문단만 외부 LLM(Claude API)에 맡긴다.
+  · 보내는 본문은 explain.request_body()가 만든다 — 규칙 조항·판정 상태·고칠 방향 같은 정해진 어휘만.
     도면 좌표·치수·흘수 조건 이름·handle·레이어·블록 이름·선명은 들어가지 않는다(테스트로 확인).
   · 주소는 아래 ENDPOINT 하나로 고정한다. 리다이렉트는 따라가지 않는다(다른 곳으로 본문이 가지 않게).
   · 키는 요청마다 플러그인이 넘기거나(BRCAI에서 저장, 헤더 X-BRC-AI-Key) 환경변수 BRC_AI_KEY / ANTHROPIC_API_KEY.
@@ -70,10 +70,11 @@ def _opener() -> urllib.request.OpenerDirector:
     return urllib.request.build_opener(_NoRedirect())
 
 
-def call(body: dict[str, Any], key: str, timeout: float = TIMEOUT_S) -> str:
+def call(body: dict[str, Any], key: str, timeout: float | None = None) -> str:
     """Messages API를 한 번 부르고 답의 글자만 돌려준다. 실패는 모두 AiUnavailable(이유)로.
     timeout은 전체 마감 — 요청을 별도 스레드에서 돌리고 마감(+1초)이 지나면 기다리지 않는다(연결·응답 머리·본문 모두).
     남은 스레드는 소켓 시간 제한으로 곧 끝난다."""
+    timeout = TIMEOUT_S if timeout is None else timeout
     box: dict[str, Any] = {}
 
     def run() -> None:
@@ -127,8 +128,11 @@ def _call_once(body: dict[str, Any], key: str, timeout: float) -> str:
         doc = json.loads(raw.decode("utf-8"))
         texts = [b["text"] for b in doc.get("content", []) if isinstance(b, dict) and b.get("type") == "text"
                  and isinstance(b.get("text"), str)]
+        truncated = doc.get("stop_reason") == "max_tokens"
     except (ValueError, AttributeError, TypeError, KeyError, RecursionError):
         raise AiUnavailable("AI 답 형식을 읽지 못했습니다.") from None
+    if truncated:
+        raise AiUnavailable("AI 답이 길이 제한에서 잘려 쓰지 않았습니다.")
     text = "".join(texts).strip()
     if not text:
         raise AiUnavailable("AI 답이 비어 있습니다.")

@@ -72,29 +72,51 @@ SYSTEM_KO = (
     "반드시 지킬 것:\n"
     "- 판정과 수치는 앞 문장에 이미 있다. 판정을 다시 말하거나 바꾸지 않는다. 기준을 넘는지·안에 드는지·해결됐는지·늘었는지 줄었는지, "
     "값끼리의 비교를 쓰지 않는다. 다음 말을 쓰지 않는다: 문제없음, 문제가 있다, 이상 없음, 수정 소요, 확인 필요, 위반, 충족, 만족, 미달, 초과, "
-    "넘다, 이내, 기준 안, 벗어나다, 정상, 양호, 준수, 부합, 해결, 늘다, 줄다(줄이다는 써도 됨), 증가, 감소, 보다, 적합, 승인, 합격, 인증, 보증, 통과, 확정, 안전.\n"
+    "넘다, 이내, 기준 안, 범위 안이다, 벗어나다, 정상, 양호, 준수, 부합, 규정에 맞다, 필요 없다, 지장, 무방, 웃돌다, 밑돌다, 모자라다, 부족, "
+    "위험, 여유, 해결, 늘다, 줄다(줄이다는 써도 됨), 증가, 감소, 비교하는 '보다', 적합, 승인, 합격, 인증, 보증, 통과, 확정, 안전, 적용 제외, "
+    "인정되다, 허가되다, 틀리다.\n"
     "- 숫자를 쓰지 않는다(아라비아 숫자, 동그라미 숫자, 로마 숫자, 한자, 숫자를 글로 쓴 말, 단위 기호 모두).\n"
     "- 영어 낱말을 쓰지 않는다. 조항을 말할 때만 facts.rule.ref 문자열을 그대로 쓴다.\n"
     "- 고칠 방법은 facts.actions에 있는 것만 말한다. 확실하지 않은 내용은 쓰지 않는다.\n"
-    "- 머리말·목록·마크다운·링크·중괄호 없이 한국어 평문 한 단락."
+    "- 한글과 기본 문장 부호만 쓴다. 머리말·목록·마크다운·링크·중괄호·이모지 없이 한국어 평문 한 단락, 마지막 문장까지 끝맺는다."
 )
 
 MAX_AI_CHARS = 450
 # 보이지 않는 글자(서식·결합·사용자 정의 문자, 한글 채움 문자, 변이 선택자)는 아예 받지 않는다
 _INVISIBLE_EXTRA = set("\u3164\u115f\u1160\uffa0\u034f") | {chr(c) for c in range(0xFE00, 0xFE10)}
 # 판정·비교 표현(공백을 지운 NFKC 소문자에서 찾는다) — 엔진 문장이 맡는 말이라 AI 문단에는 없어야 한다
-_VERDICT = ("문제없", "문제가없", "문제는없", "문제있", "문제가있", "이상없", "이상이없", "수정소요", "확인필요", "적용제외",
-            "위반", "충족", "만족", "미달", "초과", "넘습", "넘었", "넘어", "넘는", "넘지", "넘을", "넘으", "넘친",
-            "기준안", "이내", "범위안", "한계안", "벗어", "정상", "양호", "준수", "부합",
-            "해결", "줄었", "줄어", "늘었", "늘어", "증가", "감소", "괜찮",
-            "보다길", "보다깁", "보다짧", "보다멀", "보다가깝", "보다높", "보다낮", "보다크", "보다작", "보다많", "보다적",
-            "적합", "승인", "합격", "인증", "보증", "통과", "확정", "안전", "인정", "허가",
-            "合格", "承認", "認證", "許可", "適合")
-# 낱말 사이에 띄어쓰기를 끼운 우회('적 합', '문제 없 습니다')도 잡는다 — 단, 띄어쓰기가 낀 일치는 낱말 첫머리에서
-# 시작할 때만('다시 검사해 결과'의 '해 결'처럼 앞 낱말 끝에서 시작하는 것은 우연)
-_VERDICT_RE = [(w, re.compile(r"\s*".join(map(re.escape, w)))) for w in _VERDICT]
-# 숫자를 글로 쓴 값: 한글 수사 + 십·백·천, 십 + 수, 고유어 수사(다섯 이상), 단위
-_HANGUL_NUM = re.compile(r"[일이삼사오육륙칠팔구][십백천]|십[일이삼사오육칠팔구]|[백천]만|다섯|여섯|일곱|여덟|아홉|스물|스무|서른|마흔|쉰|예순|일흔|여든|아흔")
+# 판정·비교 표현 — 엔진 문장이 맡는 말이라 AI 문단에는 없어야 한다. (이름, 정규식) — 글자 사이에 띄어쓰기·문장 부호를
+# 끼운 우회('적 합', '문-제-없-음')도 잡는다. 이름이 '~'로 시작하면 띄어쓰기를 끼운 일치는 보지 않는다(2음절 일반 낱말의 우연 일치 방지:
+# '이 내용'→'이내', '넘어가기'는 제외 등). 검사는 NFKC·소문자·문장 부호를 지운 글에서 한다.
+_VERDICT_SRC = [
+    "문제없", "문제가없", "문제는없", "문제될것이없", "문제되지않", "문제있", "문제가있", "이상없", "이상이없", "이상은없",
+    "수정소요", "수정이필요", "수정해야", "고쳐야", "고칠필요", "필요가없", "필요없", "확인필요", "적용제외",
+    "위반", "충족", "만족", "미달", "초과", "~넘습", "~넘었", "~넘는", "~넘지", "~넘을", "~넘으", "~넘친", "~넘어(?!가|간|갈|서)",
+    "기준안", "기준이하", "기준이상", "기준에맞", "규정에맞", "범위안(?:입|이다|이며|에\\s*있|에\\s*듭|에\\s*들)", "한계안(?:입|이다|이며|에\\s*있|에\\s*듭|에\\s*들)",
+    "범위에\\s*듭", "범위에\\s*들", "~이내(?![용부려리])", "~벗어", "~정상", "~양호", "~준수", "~부합", "~지장", "~무방", "~웃돌", "~웃돕", "~웃돈", "~밑돌", "~밑돕", "~밑돈",
+    "~상회", "~하회", "~모자(?:랍|라요|라다|랐|라서)", "~부족(?:합|하다|해|했)", "~위험(?:합|하다|해요)", "~여유", "~틀렸", "~틀릴", "~틀린",
+    "~해결", "~줄었", "~줄어(?!들게)", "~늘었", "~늘어", "~증가", "~감소", "~괜찮",
+    "보다길", "보다깁", "보다짧", "보다멀", "보다가깝", "보다높", "보다낮", "보다크", "보다큽", "보다작", "보다많", "보다적",
+    "적합", "승인", "합격", "인증", "보증", "통과", "확정", "~안전", "~인정되", "~인정됩", "~인정받", "~허가되", "~허가됩", "~허가받",
+    "그대로진행", "合格", "承認", "認證", "許可", "適合",
+]
+
+
+def _verdict_rx(src: str) -> tuple[str, re.Pattern[str], bool]:
+    tight = src.startswith("~")
+    body = src.lstrip("~")
+    m = re.match(r"^([가-힣a-z]+)(.*)$", body)
+    head, tail = (m.group(1), m.group(2)) if m else (body, "")
+    gap = "" if tight else r"\s*"
+    return head, re.compile(gap.join(map(re.escape, head)) + tail), tight
+
+
+_VERDICT_RE = [_verdict_rx(x) for x in _VERDICT_SRC]
+_HANGUL_NUM = re.compile(r"[일이삼사오육륙칠팔구][십백천]|십[일이삼사오육칠팔구]|[백천]만|다섯|여섯|일곱|여덟|아홉|스물|스무|서른|마흔|쉰|예순|일흔|여든|아흔"
+                         r"|열(?:한|두|세|네|다섯|여섯|일곱|여덟|아홉)|(?:영|공|일|이|삼|사|오|육|칠|팔|구|하나|둘|셋|넷)점(?:영|공|일|이|삼|사|오|육|칠|팔|구)"
+                         r"|절반|반절")
+# 쓸 수 있는 글자: 한글 음절, ASCII 인쇄 문자, 기본 문장 부호·공백 — 그 밖(자모·키릴·가나·라틴 확장 등)은 숫자·판정을 다른 글자로 쓰는 길이라 받지 않는다
+_ALLOWED_EXTRA = set(" ·…—–‘’“”「」『』")
 _UNIT = re.compile(r"%|°|㎜|㎝|㎞|㎡|미터|센티|센치|밀리|킬로|퍼센트|피트|인치|도씨")
 _MARKUP = re.compile(r"://|www\.|[<>\[\]`#*|]")
 # 허용하는 영문 낱말(조항 문자열을 지운 뒤) — 그 밖의 영문은 숫자·승인 표현을 영어로 쓰는 길이라 받지 않는다
@@ -402,7 +424,7 @@ def request_body(b: Brief, model: str) -> dict[str, Any]:
     user = {"task": b.kind, "facts": b.public}
     return {
         "model": model,
-        "max_tokens": 500,
+        "max_tokens": 800,
         "system": SYSTEM_KO,
         "messages": [{"role": "user", "content": "다음 JSON의 엔진 판정 뒤에 붙일 설명 문단을 쓰세요.\n"
                                                  + json.dumps(user, ensure_ascii=False, indent=1)}],
@@ -427,8 +449,13 @@ def check_ai_text(text: str, b: Brief) -> str | None:
     t = text.strip()
     if not 10 <= len(t) <= MAX_AI_CHARS:
         return "길이가 맞지 않음"
-    if any(unicodedata.category(ch) in ("Cf", "Mn", "Me", "Co", "Cs") or ch in _INVISIBLE_EXTRA for ch in t):
-        return "보이지 않는 글자가 있음"
+    if any(unicodedata.category(ch) in ("Cc", "Cf", "Mn", "Me", "Co", "Cs", "Zl", "Zp") or ch in _INVISIBLE_EXTRA for ch in t):
+        return "보이지 않는 글자·제어 문자가 있음"
+    if any(not ("가" <= ch <= "힣" or " " <= ch <= "~" or ch in _ALLOWED_EXTRA) for ch in t):
+        odd = next(ch for ch in t if not ("가" <= ch <= "힣" or " " <= ch <= "~" or ch in _ALLOWED_EXTRA))
+        return f"쓸 수 없는 글자가 있음(U+{ord(odd):04X})"
+    if not re.search(r"[.!?。]\s*$|[다요]\s*$", t):
+        return "문장이 끝나지 않음(답이 중간에 잘렸을 수 있음)"
     n = unicodedata.normalize("NFKC", t)
     if any(ch in "{}" for ch in n):
         return "중괄호가 있음(빈칸은 엔진 문장만 씀)"
@@ -448,12 +475,13 @@ def check_ai_text(text: str, b: Brief) -> str | None:
     latin = [w for w in re.findall(r"[A-Za-z]+", rest) if w.lower() not in _LATIN_OK]
     if latin:
         return f"영문 낱말이 있음('{latin[0]}')"
-    spaced = re.sub(r"\s+", " ", rest).lower()
-    for w, rx in _VERDICT_RE:
+    # 한글 사이에 끼운 문장 부호를 지운다('문-제-없-음', '문제.없음' → '문제없음'). 띄어쓰기는 남긴다
+    spaced = re.sub(r"\s+", " ", re.sub(r"(?<=[가-힣])[^\w\s]+(?=[가-힣])", "", rest)).lower()
+    for w, rx, tight in _VERDICT_RE:
         for m in rx.finditer(spaced):
-            # '보다…'는 앞 낱말에 붙는 조사라 낱말 첫머리 조건 없이
+            # 띄어쓰기가 낀 일치는 낱말 첫머리에서 시작할 때만('다시 검사해 결과'의 '해 결'은 우연). '보다…'는 조사라 예외
             if " " not in m.group() or w.startswith("보다") or m.start() == 0 or not spaced[m.start() - 1].isalnum():
-                return f"판정·비교 표현이 있음('{w}' — 판정과 수치는 엔진 문장만 씀)"
+                return f"판정처럼 읽힐 수 있는 말이 있음('{w}' — 판정과 수치는 엔진 문장만 씀)"
     return None
 
 
@@ -503,7 +531,9 @@ def explain(b: Brief, mode: str = "template", key: str | None = None, model: str
     why = check_ai_text(text, b)
     if why:
         out["fallback_ko"] = f"AI 문단을 쓰지 않았습니다 — {why}."
-        out["rejected_text"] = text[:MAX_AI_CHARS]
+        # 화면에 쓰지 않는 디버그용 — JSON으로 못 보내는 글자(짝 없는 서로게이트 등)는 지운다(서버 500 방지)
+        out["rejected_text"] = "".join(ch for ch in text[:MAX_AI_CHARS]
+                                       if unicodedata.category(ch) not in ("Cs", "Cc", "Co"))
         return out
     out.update(source="ai", ai_text=text, text=base + " " + text)
     return out
