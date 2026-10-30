@@ -128,11 +128,13 @@ def _call_once(body: dict[str, Any], key: str, timeout: float) -> str:
         doc = json.loads(raw.decode("utf-8"))
         texts = [b["text"] for b in doc.get("content", []) if isinstance(b, dict) and b.get("type") == "text"
                  and isinstance(b.get("text"), str)]
-        truncated = doc.get("stop_reason") == "max_tokens"
+        stop = doc.get("stop_reason")
     except (ValueError, AttributeError, TypeError, KeyError, RecursionError):
         raise AiUnavailable("AI 답 형식을 읽지 못했습니다.") from None
-    if truncated:
+    if stop == "max_tokens":
         raise AiUnavailable("AI 답이 길이 제한에서 잘려 쓰지 않았습니다.")
+    if stop not in (None, "end_turn", "stop_sequence"):   # 거절(refusal) 등 — 설명 문단이 아니다
+        raise AiUnavailable("AI가 설명을 마치지 않아 쓰지 않았습니다.")
     text = "".join(texts).strip()
     if not text:
         raise AiUnavailable("AI 답이 비어 있습니다.")

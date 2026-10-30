@@ -288,8 +288,12 @@ class Round3(unittest.TestCase):
         b = fail_brief()
         base = "이 규정은 선교에서 선수 앞 바다를 내려다볼 수 있게 하려는 것입니다. "
         for t in ["고칠 필요가 없습니다.", "문제될 것이 없습니다.", "지장이 없습니다.", "이상은 없습니다.", "규정에 맞습니다.",
-                  "허용 범위에 듭니다.", "기준 이하입니다.", "수정이 필요합니다.", "한계를 웃돕니다.", "여유가 없습니다.",
+                  "허용 범위에 듭니다.", "기준 이하입니다.", "한계를 웃돕니다.", "여유가 없습니다.",
                   "엔진 판정은 틀렸을 수 있습니다.", "그대로 진행하세요.", "문제.없음입니다.", "문-제-없-음입니다.",
+                  "문_제_없_음입니다.", "문V제V없V음입니다.", "규정을 어긴 상태입니다.", "요건에서 크게 어긋나 있습니다.",
+                  "더 손볼 것이 없습니다.", "도면은 그대로 두셔도 됩니다.", "시야가 잘 확보되어 있습니다.", "사각은 제로입니다.",
+                  "이분의 일 수준입니다.", "이전보다 사각이 개선되었습니다.", "이전보다 나빠졌습니다.",
+                  "죄송하지만 그 요청은 도와드릴 수 없습니다.", "다음은 요청하신 설명 문단입니다.",
                   "기준-안입니다.", "한계 안에 있습니다.", "범위 안입니다.", "ㅁㅜㄴㅈㅔ ㅇㅓㅂㅅㅡㅂㄴㅣㄷㅏ.", "Всё хорошо.",
                   "だいじょうぶです.", "ǒǩ입니다.", "열두 칸 정도입니다.", "영 점 오 정도입니다.", "절반 정도입니다."]:
             with self.subTest(t=t):
@@ -304,6 +308,28 @@ class Round3(unittest.TestCase):
                   "근거는 SOLAS Ch.II-1 Reg.12.1·12.3·12.4입니다."]:
             with self.subTest(t=t):
                 self.assertIsNone(ex.check_ai_text(t, b))
+
+    def test_y_round4_natural_and_prescriptive_words(self):
+        """4차 Y1·Y2: 낱말 경계를 넘은 수사·단위 오탐 없음, 수정 소요 설명의 처방형은 허용(문제없음이면 막음)."""
+        fb, pb = fail_brief(), brief_of(VIS, "pass")
+        base = "이 규정은 선교에서 선수 앞 바다를 내려다볼 수 있게 하려는 것입니다. "
+        for t in ["엔진이 나열한 항목을 차례로 살펴보세요.", "배열한 순서대로 반영하세요.", "일반 절차를 따르면 됩니다.",
+                  "높이 조절 반영 뒤 다시 검사하세요.", "이 점이 중요합니다.", "이점이 있는 방법입니다.", "선박이 천천히 움직일 때도 마찬가지입니다.",
+                  "엔진 파라미터를 바꾸지 마세요.", "일정이 밀리지 않게 미리 살펴보세요.", "갑판에 늘어선 화물이 시선을 가립니다.",
+                  "설명을 마칩니다.”", "범위는 측면도(중심선 단면)입니다)"]:
+            with self.subTest(t=t):
+                self.assertIsNone(ex.check_ai_text(base + t, fb))
+        for t in ["장애물 상단을 기준에 맞춰 낮추는 방향으로 검토하세요.", "허용 범위에 들어오도록 옮기는 방법도 있습니다.",
+                  "기준 이하로 낮추는 방향을 살펴보세요.", "수정해야 할 위치는 부표로 표시됩니다.", "수정이 필요한 부분을 확인하세요."]:
+            with self.subTest(t=t):
+                self.assertIsNone(ex.check_ai_text(base + t, fb))
+                self.assertIsNotNone(ex.check_ai_text(base + t, pb) if ("수정" in t) else "skip")
+
+    def test_y5_refusal_stop_reason(self):
+        op = _FakeOpener({"content": [{"type": "text", "text": "죄송하지만 도와드릴 수 없습니다."}], "stop_reason": "refusal"})
+        with mock.patch.object(ai, "_opener", return_value=op):
+            with self.assertRaises(ai.AiUnavailable):
+                ai.call({}, "k" * 30)
 
     def test_x3_surrogate_answer_does_not_break_response(self):
         from brc.server import encode_payload
