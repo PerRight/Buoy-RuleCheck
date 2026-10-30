@@ -330,6 +330,10 @@ def check_visibility(model: dict[str, Any], r: Rule) -> RuleResult:
     judged = hull + objects_by_role(model, "obstruction")
     # 설명용 분류(explain.py가 문장 틀을 고른다 — 판정에는 쓰지 않음)
     evidence["finding"] = "within_limit" if ok else "sight_blocked" if math.isinf(d) else "blind_distance_exceeds"
+    # 설명용 표시 문자열 — 판정 문장(message_ko·suggestion_ko)과 같은 값·같은 자릿수(반올림을 두 번 하지 않게)
+    evidence["display"] = {"d": "무한대(시선이 수면에 닿지 않음)" if math.isinf(d) else f"{d:.2f} m", "limit": f"{limit:g} m"}
+    if ok:
+        evidence["display"]["room"] = f"{max(limit - d, 0.0):.2f} m"
     if ok:
         msg = f"사각 거리 {d:.2f} m ≤ 허용 {limit:g} m (최악: {worst['condition']})"
         if all(abs(c["t_aft"] - c["t_fwd"]) < 1e-9 for c in model["conditions"]):
@@ -400,6 +404,7 @@ def check_visibility(model: dict[str, Any], r: Rule) -> RuleResult:
     evidence["max_obstacle_z_by_condition"] = [{"condition": n, "z_max": round(z, 3)} for n, z in z_by_cond]
     evidence["suggestion_governing_condition"] = gov_cond
     evidence["suggestion_z"] = zmax_disp   # 제안 문구에 쓴 값 그대로(내림한 표시값) — 설명 문장이 다른 값을 말하지 않게
+    evidence["display"].update({"x": f"{ox:.2f} m", "z": f"{zmax_disp:.2f} m"})
     if others:
         evidence["other_violating_handles"] = others
     overlays.append(_label([ox, zmax], f"허용 상단 z ≤ {zmax_disp:.2f} m", loa, "fail"))

@@ -187,7 +187,10 @@ def main(argv: list[str] | None = None) -> int:
         elif len(a.paths) == 1:
             rep = evaluate(load_any(a.paths[0])).to_dict()
             ids = [a.rule] if a.rule else [r["rule_id"] for r in rep["results"]]
-            outs = [explain_rule(rep, rid, a.mode, key) for rid in ids]
+            try:
+                outs = [explain_rule(rep, rid, a.mode, key) for rid in ids]
+            except ValueError as e:
+                ap.error(f"explain: {e} (규칙 ID는 python -m brc rules)")
         else:
             ap.error("explain: 도면 하나(규칙 설명) 또는 둘(변경 설명)")
         if a.json:

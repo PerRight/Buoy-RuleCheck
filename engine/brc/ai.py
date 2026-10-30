@@ -11,10 +11,12 @@
 """
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import re
 import socket
+import time
 import urllib.error
 import urllib.request
 from typing import Any
@@ -46,8 +48,12 @@ def model_name() -> str:
 
 
 def resolve_key(header_key: str | None) -> str | None:
-    """요청 헤더(플러그인이 저장한 키) → BRC_AI_KEY → ANTHROPIC_API_KEY. 형식이 이상하면 없는 것으로 본다."""
-    for k in (header_key, os.environ.get("BRC_AI_KEY"), os.environ.get("ANTHROPIC_API_KEY")):
+    """요청 헤더(플러그인이 저장한 키) → BRC_AI_KEY → ANTHROPIC_API_KEY. 형식이 이상하면 없는 것으로 본다.
+    플러그인이 키를 넘겼는데 모양이 틀리면 환경변수로 넘어가지 않는다(사용자가 고른 키가 아닌 키로 보내지 않게)."""
+    if (header_key or "").strip():
+        k = header_key.strip()
+        return k if _KEY_RE.fullmatch(k) else None
+    for k in (os.environ.get("BRC_AI_KEY"), os.environ.get("ANTHROPIC_API_KEY")):
         k = (k or "").strip()
         if k and _KEY_RE.fullmatch(k):
             return k
@@ -64,7 +70,8 @@ def _opener() -> urllib.request.OpenerDirector:
 
 
 def call(body: dict[str, Any], key: str, timeout: float = TIMEOUT_S) -> str:
-    """Messages API를 한 번 부르고 답의 글자만 돌려준다. 실패는 모두 AiUnavailable(이유)로."""
+    """Messages API를 한 번 부르고 답의 글자만 돌려준다. 실패는 모두 AiUnavailable(이유)로.
+    timeout은 전체 마감(연결부터 답을 다 읽을 때까지) — 조금씩 흘려 보내는 응답도 마감을 넘기면 끊는다."""
     if urlsplit(ENDPOINT).hostname != HOST or not ENDPOINT.startswith("https://"):   # 고정 주소 — 바뀌면 보내지 않는다
         raise AiUnavailable("AI 서비스 주소가 허용 목록과 다릅니다.")
     data = json.dumps(body, ensure_ascii=False).encode("utf-8")
@@ -73,9 +80,10 @@ def call(body: dict[str, Any], key: str, timeout: float = TIMEOUT_S) -> str:
         "anthropic-version": API_VERSION,
         "x-api-key": key,
     })
+    deadline = time.monotonic() + timeout
     try:
         with _opener().open(req, timeout=timeout) as resp:
-            raw = resp.read(MAX_ANSWER_BYTES + 1)
+            raw = _read_until(resp, deadline)
     except AiUnavailable:
         raise
     except urllib.error.HTTPError as e:
@@ -88,18 +96,37 @@ def call(body: dict[str, Any], key: str, timeout: float = TIMEOUT_S) -> str:
         raise AiUnavailable("인터넷에 연결되지 않아 기본 설명을 보여 줍니다.") from None
     except OSError:
         raise AiUnavailable("인터넷에 연결되지 않아 기본 설명을 보여 줍니다.") from None
+    except (http.client.HTTPException, ValueError):
+        raise AiUnavailable("AI 서비스 응답이 HTTP 형식이 아닙니다.") from None
+    except Exception:   # 무엇이든 기본 설명으로(판정 화면이 500으로 깨지지 않게)
+        raise AiUnavailable("AI 서비스 응답을 처리하지 못했습니다.") from None
     if len(raw) > MAX_ANSWER_BYTES:
         raise AiUnavailable("AI 답이 너무 깁니다.")
     try:
         doc = json.loads(raw.decode("utf-8"))
         texts = [b["text"] for b in doc.get("content", []) if isinstance(b, dict) and b.get("type") == "text"
                  and isinstance(b.get("text"), str)]
-    except (ValueError, AttributeError, TypeError):
+    except (ValueError, AttributeError, TypeError, KeyError, RecursionError):
         raise AiUnavailable("AI 답 형식을 읽지 못했습니다.") from None
     text = "".join(texts).strip()
     if not text:
         raise AiUnavailable("AI 답이 비어 있습니다.")
     return text
+
+
+def _read_until(resp, deadline: float) -> bytes:
+    """답을 조각으로 읽으며 전체 마감과 크기 상한을 지킨다."""
+    chunks, size = [], 0
+    while True:
+        if time.monotonic() > deadline:
+            raise TimeoutError
+        part = resp.read1(16384) if hasattr(resp, "read1") else resp.read(16384)
+        if not part:
+            return b"".join(chunks)
+        chunks.append(part)
+        size += len(part)
+        if size > MAX_ANSWER_BYTES:
+            return b"".join(chunks)
 
 
 def _http_reason(code: int) -> str:

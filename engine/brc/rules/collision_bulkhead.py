@@ -78,6 +78,8 @@ def check_collision_bulkhead(model: dict[str, Any], r: Rule) -> RuleResult:
         "d_min": round(d_min, 3), "d_max": round(d_max, 3),
     }
     rng = f"{d_min:.2f} m" if abs(d_max - d_min) < 1e-3 else f"{d_min:.2f}~{d_max:.2f} m"
+    # 설명용 표시 문자열 — 판정 문장과 같은 값·같은 자릿수(explain.py가 그대로 쓴다)
+    evidence["display"] = {"distance": rng, "range": f"{lower:.2f}~{upper:.2f} m"}
     base = f"기준점({ref_name})에서 {rng}, 허용 {lower:.2f}~{upper:.2f} m"
     actual = round(d_min, 3) if abs(d_max - d_min) < 1e-3 else [round(d_min, 3), round(d_max, 3)]
     zs = [p[1] for p in bhds[0]["points"]] or [0.0]
@@ -117,6 +119,7 @@ def check_collision_bulkhead(model: dict[str, Any], r: Rule) -> RuleResult:
         common["targets"] = []
         evidence["finding"] = "within_range"   # 설명용 분류(explain.py) — 판정에는 쓰지 않음
         room = min(d_min - lower, upper - d_max)
+        evidence["display"]["room"] = f"{max(room, 0.0):.2f} m"   # 카드 fix.condition_ko의 '여유'와 같은 값
         return r.result("pass", base, elements=el("pass", margin=room,
                                                    fx=fix(-room, f"기준점에서 {rng} — 기준 안쪽",
                                                           f"여유 {max(room, 0.0):.2f} m · 기준 {lower:.2f}~{upper:.2f} m")), **common)
