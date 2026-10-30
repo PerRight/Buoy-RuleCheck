@@ -27,7 +27,7 @@ namespace BuoyRuleCheck
         public static string ExplainSource(ExplainResponse r, bool aiOn)
         {
             if (r.Source == "ai")
-                return $"위 문장은 엔진, 아래 문단은 AI({r.Model} · {(r.ElapsedMs / 1000.0).ToString("0.0", CultureInfo.InvariantCulture)}초) — AI 문단의 숫자·판정 표현은 엔진이 걸러 냄";
+                return $"위 문장은 엔진, 아래 문단은 AI({r.Model} · {(r.ElapsedMs / 1000.0).ToString("0.0", CultureInfo.InvariantCulture)}초) — AI 문단은 참고용(숫자·판정 표현을 걸러 내지만 완전하지 않음)";
             if (!string.IsNullOrEmpty(r.FallbackKo)) return "엔진 문장만 — " + r.FallbackKo;
             return aiOn ? "엔진 문장" : "엔진 문장 (AI 설명 꺼짐 — 켜려면 BRCAI)";
         }

@@ -202,6 +202,7 @@ namespace BuoyRuleCheck
         private readonly Func<string, string?, ExplainResponse> _fetchKey;   // (mode, 키) → 응답
         private readonly Label _status, _body, _aiHead, _aiBody;
         private bool _aiAuto;   // 열릴 때 AI를 한 번만 자동으로
+        private bool _aiTried;  // AI 응답(성공·실패)을 한 번이라도 받았나 — 그 뒤 늦게 온 기본 설명은 출처 줄을 덮지 않는다
         private readonly Font _bodyFont = new(Theme.FontName, 10f);
         private readonly Button _ai, _sent, _copy;
         private ExplainResponse? _cur;
@@ -283,7 +284,8 @@ namespace BuoyRuleCheck
             _body.Text = string.IsNullOrEmpty(r.TemplateText) ? r.Text : r.TemplateText;
             _body.ForeColor = Theme.Text;
             // AI 문단이 이미 보이는데 기본 설명이 늦게 왔으면 엔진 문장만 바꾸고 출처 줄·보낸 내용은 AI 응답 것을 둔다
-            if (!fromAi && _aiBody.Visible) return;
+            if (!fromAi && (_aiBody.Visible || _aiTried)) return;
+            if (fromAi) _aiTried = true;
             _cur = r;
             if (fromAi)
             {
@@ -337,7 +339,7 @@ namespace BuoyRuleCheck
         };
         private readonly Button _ai;
         private ExplainResponse? _cur;
-        private bool _settingText, _edited, _busy, _confirmed;
+        private bool _settingText, _edited, _busy, _confirmed, _aiTried;
         private readonly Label _count;
         private Button? _ok;
         /// A4 상자(약 300자)에 맞춘 상한 — 넘치면 A4에서 글자를 줄여 넣는다(ExportSheet)
@@ -416,8 +418,9 @@ namespace BuoyRuleCheck
                     _box.ReadOnly = false;
                     if (r == null) { SourceLine.Text = "기본 설명을 만들 수 없어요 — " + (err?.Message ?? "알 수 없는 오류"); SourceLine.ForeColor = Theme.Warn; return; }
                     if (FromAi) return;   // AI 초안이 먼저 와 있으면 늦게 온 기본 설명으로 덮지 않는다
-                    _cur = r;
                     if (!_edited) SetText(r.Text);
+                    if (_aiTried) return;   // AI가 먼저 실패했으면 그 이유 줄을 둔다
+                    _cur = r;
                     SourceLine.Text = UiText.ExplainSource(r, AiSettings.Enabled);
                 });
             };
@@ -458,10 +461,15 @@ namespace BuoyRuleCheck
                     SourceLine.ForeColor = Theme.Warn;
                     return;
                 }
+                _aiTried = true;
                 _cur = r;
                 SourceLine.Text = UiText.ExplainSource(r, true);
                 SourceLine.ForeColor = r.Source == "ai" ? Theme.Muted : Theme.Warn;
-                if (r.Source != "ai") return;
+                if (r.Source != "ai")
+                {
+                    if (!_edited && _box.TextLength == 0) SetText(r.Text);   // 기본 설명이 아직 안 왔으면 엔진 문장으로
+                    return;
+                }
                 if (_edited && _box.Text.Trim().Length > 0 &&
                     MessageBox.Show(this, "고쳐 쓴 설명을 AI 초안으로 바꿀까요?", "변경 설명", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
                     return;
