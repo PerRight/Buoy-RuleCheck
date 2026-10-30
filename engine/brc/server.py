@@ -6,8 +6,12 @@
   POST /v1/report {"doc_id", "title"?}     → {"html": 검토 리포트} (마지막 revision + 이력)
   POST /v1/compare {"a": raw, "b": raw, "labels"?: ["v1","v2"]} → 버전 비교(변경 항목·해결된 위반·형상)
   POST /v1/particulars {"texts": [{"text", "x", "y", "h"}]} → 주요 치수표·축척 후보(실도면 연결)
+  POST /v1/explain {"doc_id", "rule_id", "mode"} → 판정 설명(마지막 검사 결과 기준)
+  POST /v1/explain/change {"a", "b", "labels"?, "mode"} → 변경 설명 초안(생산팀 전달 A4)
+       mode: template(기본 설명) · preview(AI에 보낼 본문을 보여 주기만) · ai(보냄, 키는 헤더 X-BRC-AI-Key 또는 환경변수)
 
 127.0.0.1에만 바인딩한다(도면 데이터가 PC 밖으로 나가지 않음).
+예외는 mode="ai" 설명 하나 — ai.py가 숫자·이름을 뺀 빈칸 본문만 Claude API로 보낸다(2026-10-30 결정, docs/ai-explain.md).
 추가로 Host 헤더가 루프백 이름이 아니거나 브라우저 Origin 헤더가 붙은 요청은 거부한다
 (웹 페이지가 DNS rebinding·교차 사이트 요청으로 로컬 엔진에 접근하는 경로 차단. 플러그인·urllib은 Origin을 보내지 않는다).
 """
@@ -70,6 +74,30 @@ def handle_compare(body: dict[str, Any]) -> dict[str, Any]:
     return compare_raws(body["a"], body["b"], (str(labels[0]), str(labels[1])))
 
 
+def handle_explain(body: dict[str, Any], key_header: str | None) -> dict[str, Any]:
+    from .ai import resolve_key
+    from .explain import explain_rule
+    doc_id = str(body.get("doc_id") or "default")
+    mode = str(body.get("mode") or "template")
+    with _lock:
+        sess = _sessions.get(doc_id)
+    last = sess.last if sess is not None else None
+    if last is None:
+        raise ValueError("이 도면은 아직 검사하지 않았습니다. 먼저 검사하세요.")
+    key = resolve_key(key_header) if mode == "ai" else None
+    out = explain_rule(last.report.to_dict(), str(body.get("rule_id") or ""), mode, key)
+    out["revision"] = last.number
+    return out
+
+
+def handle_explain_change(body: dict[str, Any], key_header: str | None) -> dict[str, Any]:
+    from .ai import resolve_key
+    from .explain import explain_change
+    mode = str(body.get("mode") or "template")
+    cmp = handle_compare(body)
+    return explain_change(cmp, mode, resolve_key(key_header) if mode == "ai" else None)
+
+
 def handle_particulars(body: dict[str, Any]) -> dict[str, Any]:
     from .particulars import find_particulars
     texts = body.get("texts")
@@ -103,8 +131,11 @@ class Handler(BaseHTTPRequestHandler):
         if self._forbidden():
             return
         if self.path == "/v1/health":
+            from .ai import HOST, model_name, resolve_key
             self._send(200, {"ok": True, "version": __version__,
-                             "rules": [{"id": r.id, "ref": r.ref, "edition": r.edition} for r in all_rules()]})
+                             "rules": [{"id": r.id, "ref": r.ref, "edition": r.edition} for r in all_rules()],
+                             # AI 설명: 엔진 환경변수에 키가 있는지만(키 값은 돌려주지 않음)
+                             "ai": {"env_key": resolve_key(None) is not None, "model": model_name(), "host": HOST}})
         else:
             self._send(404, {"error": "not found"})
 
@@ -126,6 +157,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {"html": build_from_session(sess, body.get("title"))})
             elif self.path == "/v1/compare":
                 self._send(200, handle_compare(body))
+            elif self.path == "/v1/explain":
+                self._send(200, handle_explain(body, self.headers.get("X-BRC-AI-Key")))
+            elif self.path == "/v1/explain/change":
+                self._send(200, handle_explain_change(body, self.headers.get("X-BRC-AI-Key")))
             elif self.path == "/v1/particulars":
                 self._send(200, handle_particulars(body))
             elif self.path == "/v1/reset":

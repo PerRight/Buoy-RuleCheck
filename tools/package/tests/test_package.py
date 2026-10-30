@@ -125,7 +125,7 @@ class SetupFlow(unittest.TestCase):
         (b / "Contents" / "Win64" / "R26").mkdir(parents=True)
         (b / "Contents" / "Win64" / "R26" / "BuoyRuleCheck.dll").write_bytes(b"MZ")
         (b / "PackageContents.xml").write_text(mp.package_contents("0.6.0", ["R26"]), encoding="utf-8")
-        (self.pkg / "manifest.json").write_text(json.dumps({"plugin_version": "0.6.0", "engine_version": "0.5.0",
+        (self.pkg / "manifest.json").write_text(json.dumps({"plugin_version": "0.6.0", "engine_version": mp.engine_version(),
                                                             "python_version": "3.14.9"}), encoding="utf-8")
         self.env = dict(os.environ, APPDATA=str(self.tmp / "Roaming"), LOCALAPPDATA=str(self.tmp / "Local"),
                         BRC_SETUP_FAKE_ACAD="2025,2027")
@@ -142,7 +142,7 @@ class SetupFlow(unittest.TestCase):
     def test_install_reinstall_uninstall(self):
         r = self.run_setup(self.pkg / "buoy_setup.py", "install")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("엔진 0.5.0 응답 확인", r.stdout)
+        self.assertIn(f"엔진 {mp.engine_version()} 응답 확인", r.stdout)   # 저장소의 실제 엔진을 켜서 확인
         self.assertIn("AutoCAD 2025", r.stdout)                 # 2025는 있지만 이 패키지에 R25 없음 → 주의
         self.assertIn("그 버전용 플러그인이 없음", r.stdout)
         app = self.tmp / "Local" / "BuoyRuleCheck" / "app"

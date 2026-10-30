@@ -78,6 +78,12 @@ def main(argv: list[str] | None = None) -> int:
     rp = sub.add_parser("report"); rp.add_argument("paths", nargs="+"); rp.add_argument("-o", "--out", default="ga_report.html")
     cp = sub.add_parser("compare"); cp.add_argument("a"); cp.add_argument("b"); cp.add_argument("--json", action="store_true")
     sub.add_parser("rules")
+    ex = sub.add_parser("explain", help="판정 설명(기본 설명 · 보낼 본문 미리보기 · AI). 경로 두 개면 변경 설명")
+    ex.add_argument("paths", nargs="+")
+    ex.add_argument("--rule", help="규칙 ID(없으면 전부)")
+    ex.add_argument("--mode", choices=("template", "preview", "ai"), default="template",
+                    help="ai는 환경변수 BRC_AI_KEY(또는 ANTHROPIC_API_KEY)가 있을 때만 보냄")
+    ex.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
 
     if a.cmd == "serve":
@@ -170,6 +176,33 @@ def main(argv: list[str] | None = None) -> int:
             print("    변경 없음")
         elif not out["changes"]:
             print("    GA_ 객체·선박 정보 변경은 없지만 판정이 바뀜 (위 ⚠ 참고 — 유사 이름 레이어 등)")
+    elif a.cmd == "explain":
+        from .ai import resolve_key
+        from .explain import explain_change, explain_rule
+        key = resolve_key(None) if a.mode == "ai" else None
+        if len(a.paths) == 2:
+            from .compare import compare_models
+            cmp = compare_models(load_any(a.paths[0]), load_any(a.paths[1]), (Path(a.paths[0]).stem, Path(a.paths[1]).stem))
+            outs = [explain_change(cmp, a.mode, key)]
+        elif len(a.paths) == 1:
+            rep = evaluate(load_any(a.paths[0])).to_dict()
+            ids = [a.rule] if a.rule else [r["rule_id"] for r in rep["results"]]
+            outs = [explain_rule(rep, rid, a.mode, key) for rid in ids]
+        else:
+            ap.error("explain: 도면 하나(규칙 설명) 또는 둘(변경 설명)")
+        if a.json:
+            _print_json(outs)
+            return 0
+        for o in outs:
+            src = "AI" if o["source"] == "ai" else "기본 설명"
+            print(f"== {o.get('rule_id') or '변경 설명'} [{src}]")
+            print("   " + o["text"])
+            if o["fallback_ko"]:
+                print(f"   ※ {o['fallback_ko']}")
+            if a.mode == "preview" and o["request"]:
+                print("   -- 보낼 본문(보내지 않음):")
+                print(json.dumps(o["request"], ensure_ascii=False, indent=1))
+        print(f"   {outs[0]['disclaimer_ko']}")
     elif a.cmd == "rules":
         for r in all_rules():
             print(f"{r.id:16} {r.title_ko}  ({r.ref}; {r.edition})")
