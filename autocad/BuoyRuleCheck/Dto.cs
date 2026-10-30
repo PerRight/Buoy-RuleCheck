@@ -256,7 +256,8 @@ namespace BuoyRuleCheck
         public string Mode { get; set; } = "template";
     }
 
-    /// 설명 응답. 문장 안의 숫자는 엔진 값(AI 설명이어도 빈칸을 엔진이 채운 것). Request = AI에 보낸(또는 보낼) 본문 전체.
+    /// 설명 응답. TemplateText = 엔진 문장(판정·숫자), AiText = AI 문단(숫자·판정 표현을 걸러 낸 것, 없으면 null),
+    /// Text = 둘을 이은 것. Request = AI에 보낸(또는 보낼) 본문 전체.
     public sealed class ExplainResponse
     {
         public string Kind { get; set; } = "";

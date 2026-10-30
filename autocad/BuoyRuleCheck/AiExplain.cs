@@ -1,7 +1,8 @@
 // AI 설명 (2026-10-30 팀 결정, docs/ai-explain.md): 항목 카드 [설명] 창 · 생산팀 전달 '변경 설명' 창 · BRCAI 설정 창.
 // 판정·수치는 엔진만 정한다. 이 파일은 엔진(/v1/explain)이 만든 문장을 보여 주고, AI 설명을 켜고 끄고, 키를 보관만 한다.
-//   · AI 설명은 기본 꺼짐. 켜면 엔진이 숫자·이름을 뺀 본문(규칙 조항·판정 상태·고칠 방향·빈칸 이름)만 Claude API로 보내고,
-//     돌아온 문장의 빈칸을 PC 안에서 엔진 값으로 채운다. [보낸 내용]으로 그 본문을 그대로 볼 수 있다.
+//   · AI 설명은 기본 꺼짐. 판정·숫자 문장은 언제나 엔진이 쓰고, 켜면 엔진이 숫자·이름 없는 본문(규칙 조항·판정 상태·
+//     원인 객체 종류·고칠 방향)만 Claude API로 보내 '이유·검토할 것' 문단을 받아 그 아래 붙인다(엔진이 숫자·판정 표현을 걸러 냄).
+//     [보낸 내용]으로 그 본문을 그대로 볼 수 있다.
 //   · 키는 %APPDATA%\BuoyRuleCheck\ai.key 에 이 Windows 사용자 계정으로 암호화(DPAPI)해 둔다. 도면·ui.json에는 넣지 않는다.
 //   · 엔진 호출은 다른 스레드에서(AI는 몇 초 걸림) — 창이 멈추지 않게, 결과는 창 스레드로 돌려 그린다.
 using System;
@@ -216,7 +217,7 @@ namespace BuoyRuleCheck
             _body = Wrap("설명을 만드는 중…", _bodyFont, Theme.Text);
             _body.Margin = new Padding(0, 2, 0, 10);
             Flow.Controls.Add(_body);
-            _aiHead = Wrap("AI 설명 — 이유와 검토할 것(숫자·판정 없음)", Theme.Small, Theme.Muted);
+            _aiHead = Wrap("AI 설명 — 이유와 검토할 것(판정·숫자는 위 엔진 문장)", Theme.Small, Theme.Muted);
             _aiHead.Margin = new Padding(0, 0, 0, 2);
             _aiBody = Wrap("", Theme.Body, Theme.Text);
             _aiHead.Visible = _aiBody.Visible = false;
@@ -279,9 +280,11 @@ namespace BuoyRuleCheck
         /// 엔진 문장은 늘 위에, AI 문단은 AI 요청의 결과일 때만 바꾼다(늦게 온 기본 설명이 AI 문단을 지우지 않게)
         private void Show(ExplainResponse r, bool fromAi)
         {
-            _cur = r;
             _body.Text = string.IsNullOrEmpty(r.TemplateText) ? r.Text : r.TemplateText;
             _body.ForeColor = Theme.Text;
+            // AI 문단이 이미 보이는데 기본 설명이 늦게 왔으면 엔진 문장만 바꾸고 출처 줄·보낸 내용은 AI 응답 것을 둔다
+            if (!fromAi && _aiBody.Visible) return;
+            _cur = r;
             if (fromAi)
             {
                 _aiBody.Text = r.AiText ?? "";
@@ -302,7 +305,7 @@ namespace BuoyRuleCheck
             if (_busy) return;
             _busy = true;
             _ai.Enabled = false;
-            SourceLine.Text = "AI 설명 쓰는 중… (보내는 것: 규칙 조항·판정 상태·고칠 방향 — 숫자·이름 없음)";
+            SourceLine.Text = "AI 설명 쓰는 중… (보내는 것: 규칙 조항·판정 상태·원인 객체 종류·고칠 방향·다루지 않는 범위 — 숫자·이름 없음)";
             SourceLine.ForeColor = Theme.Muted;
             RunAsync(() => Fetch("ai"), (r, err) =>
             {
@@ -443,7 +446,7 @@ namespace BuoyRuleCheck
             if (_busy) return;
             _busy = true;
             _ai.Enabled = false;
-            SourceLine.Text = "AI 초안 쓰는 중… (보내는 것: 바뀐 항목 종류·해결/새 수정 소요 규칙 이름·빈칸 이름)";
+            SourceLine.Text = "AI 초안 쓰는 중… (보내는 것: 바뀐 항목 종류·설계팀 확인이 필요한 규칙 이름 — 숫자·이름 없음)";
             SourceLine.ForeColor = Theme.Muted;
             RunAsync(() => Fetch("ai"), (r, err) =>
             {

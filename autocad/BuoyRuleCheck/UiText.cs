@@ -12,7 +12,7 @@ namespace BuoyRuleCheck
         public const string Disclaimer = "규칙 엔진의 후보 판정입니다. 선급 승인이 아니며 최종 판단은 설계자 검토로 합니다.";
 
         // ── AI 설명 (2026-10-30 팀 결정, docs/ai-explain.md) ─────────────────────
-        // 판정·수치는 엔진만. AI에는 규칙 조항·판정 상태·고칠 방향과 빈칸 이름만 보내고, 빈칸 숫자는 이 PC에서 엔진 값으로 채운다.
+        // 판정·수치는 엔진만. 판정·숫자 문장은 엔진이 쓰고, AI는 숫자·이름 없는 본문을 받아 '이유·검토할 것' 문단만 덧붙인다.
         public const string AiAbout = "켜면 판정 설명과 생산팀 전달 '변경 설명'에 Claude API(api.anthropic.com)가 쓴 문단을 덧붙입니다 — " +
                                       "규칙이 왜 있는지·이 판정이 다루지 않는 범위·검토할 방향. 판정과 숫자 문장은 그대로 규칙 엔진이 씁니다. " +
                                       "인터넷이나 키가 없으면 엔진 문장만 보입니다.";
@@ -27,7 +27,7 @@ namespace BuoyRuleCheck
         public static string ExplainSource(ExplainResponse r, bool aiOn)
         {
             if (r.Source == "ai")
-                return $"위 문장은 엔진, 아래 문단은 AI({r.Model} · {(r.ElapsedMs / 1000.0).ToString("0.0", CultureInfo.InvariantCulture)}초) — AI 문단에는 숫자·판정이 없음";
+                return $"위 문장은 엔진, 아래 문단은 AI({r.Model} · {(r.ElapsedMs / 1000.0).ToString("0.0", CultureInfo.InvariantCulture)}초) — AI 문단의 숫자·판정 표현은 엔진이 걸러 냄";
             if (!string.IsNullOrEmpty(r.FallbackKo)) return "엔진 문장만 — " + r.FallbackKo;
             return aiOn ? "엔진 문장" : "엔진 문장 (AI 설명 꺼짐 — 켜려면 BRCAI)";
         }
