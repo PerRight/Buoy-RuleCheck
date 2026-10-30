@@ -92,23 +92,24 @@ namespace BuoyRuleCheck
         public static ExplainResponse Explain(string docId, string ruleId, string mode, string? key = null)
         {
             var body = JsonSerializer.Serialize(new ExplainRequest { DocId = docId, RuleId = ruleId, Mode = mode }, Contract.Json);
-            return ReadExplain(PostExplain("/v1/explain", body, mode, key));
+            return ReadExplain(PostExplain("/v1/explain", body, mode, key, mode == "ai" ? 45 : 10));
         }
 
         /// 변경 설명 초안(생산팀 전달 A4) — 두 스냅샷을 엔진이 다시 비교해 만든다.
         public static ExplainResponse ExplainChange(RawDrawing a, RawDrawing b, string labelA, string labelB, string mode, string? key = null)
         {
             var body = JsonSerializer.Serialize(new ExplainChangeRequest { A = a, B = b, Labels = new() { labelA, labelB }, Mode = mode }, Contract.Json);
-            return ReadExplain(PostExplain("/v1/explain/change", body, mode, key));
+            // 엔진이 두 스냅샷을 다시 비교한다(실도면 만여 객체면 1~2초) → 기본 설명도 넉넉히
+            return ReadExplain(PostExplain("/v1/explain/change", body, mode, key, mode == "ai" ? 60 : 30));
         }
 
-        private static string PostExplain(string path, string body, string mode, string? key)
+        private static string PostExplain(string path, string body, string mode, string? key, int seconds)
         {
             var headers = mode == "ai" && !string.IsNullOrEmpty(key) ? new Dictionary<string, string> { ["X-BRC-AI-Key"] = key } : null;
             try
             {
-                // AI는 엔진이 20초까지 기다린다 → 그보다 길게. 기본 설명·미리보기는 PC 안 계산이라 짧게
-                return Post(path, body, TimeSpan.FromSeconds(mode == "ai" ? 40 : 10), headers);
+                // AI는 엔진이 20초까지 기다린다 → 그보다 길게. 시간 초과는 '엔진 꺼짐'으로 보지 않는다(엔진을 다시 켜지 않음)
+                return Post(path, body, TimeSpan.FromSeconds(seconds), headers, timeoutMeansDown: false);
             }
             catch (EngineException ex) when (ex.Status == 404)
             {
@@ -219,7 +220,8 @@ namespace BuoyRuleCheck
             return Version.TryParse(s[..end].TrimEnd('.'), out var got) ? got : null;
         }
 
-        private static string Post(string path, string json, TimeSpan? timeout = null, IDictionary<string, string>? headers = null)
+        private static string Post(string path, string json, TimeSpan? timeout = null, IDictionary<string, string>? headers = null,
+                                   bool timeoutMeansDown = true)
         {
             EnsureCompatible();
             try
@@ -236,6 +238,10 @@ namespace BuoyRuleCheck
                 return text;
             }
             catch (EngineException) { throw; }
+            catch (OperationCanceledException ex) when (!timeoutMeansDown)
+            {
+                throw new EngineException("응답이 늦어 끊었습니다(시간 초과) — 보이던 기본 설명은 그대로 씁니다.", ex);
+            }
             catch (Exception ex)
             {
                 _compatible = false;   // 다시 켜진 엔진의 버전을 다음에 다시 본다

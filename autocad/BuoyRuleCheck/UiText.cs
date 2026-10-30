@@ -15,7 +15,8 @@ namespace BuoyRuleCheck
         // 판정·수치는 엔진만. AI에는 규칙 조항·판정 상태·고칠 방향과 빈칸 이름만 보내고, 빈칸 숫자는 이 PC에서 엔진 값으로 채운다.
         public const string AiAbout = "켜면 판정 설명과 생산팀 전달 '변경 설명' 초안을 Claude API(api.anthropic.com)로 씁니다. " +
                                       "판정과 수치는 그대로 규칙 엔진이 정합니다. 인터넷이나 키가 없으면 기본 설명을 씁니다.";
-        public const string AiSends = "보내는 것: 규칙 조항 · 판정 상태 · 고칠 방향 · 빈칸 이름({사각거리} 같은 자리표시)";
+        public const string AiSends = "보내는 것: 규칙 조항 · 판정 상태 · 원인 객체 종류(장애물 등) · 고칠 방향 · 빈칸 이름({사각거리} 같은 자리표시). " +
+                                      "변경 설명은 바뀐 항목 종류 · 해결/새 수정 소요 규칙 이름 · 수정 소요가 줄었는지 늘었는지";
         public const string AiKeeps = "보내지 않는 것: 도면 좌표·치수 · 흘수 조건 이름 · 객체 번호(handle) · 레이어·블록 이름 · 도면·버전 이름. " +
                                       "빈칸의 숫자는 이 PC에서 엔진 값으로 채웁니다.";
         public const string ExplainButton = "설명";

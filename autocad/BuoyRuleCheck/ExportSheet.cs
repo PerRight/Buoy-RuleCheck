@@ -87,10 +87,15 @@ namespace BuoyRuleCheck
             if (hasNote)
             {
                 using var noteLab = F(11);
-                using var noteFont = F(12);
                 Text(g, "변경 설명" + (noteFromAi ? " · AI 초안을 작성자가 확인" : ""), noteLab, muted, M, frameBottom + 36);
+                var noteBox = new RectangleF(P(M), P(frameBottom + 52), P(705 - M), P(733 - (frameBottom + 52)));
+                string text = changeNote!.Trim();
+                // 상자에 들어갈 때까지 글자를 줄인다(12 → 9 px). 그래도 넘치면 말줄임
+                float size = 12;
+                while (size > 9 && g.MeasureString(text, FontPx(size), (int)noteBox.Width).Height > noteBox.Height) size -= 0.5f;
+                using var noteFont = F(size);
                 using var fmt = new StringFormat { Trimming = StringTrimming.EllipsisWord };
-                g.DrawString(changeNote!.Trim(), noteFont, hi, new RectangleF(P(M), P(frameBottom + 52), P(705 - M), P(733 - (frameBottom + 52))), fmt);
+                g.DrawString(text, noteFont, hi, noteBox, fmt);
             }
 
             // ── 변경 목록 ──
@@ -182,6 +187,15 @@ namespace BuoyRuleCheck
             new(mono ? Theme.MonoName : Theme.FontName, designPx * S, style, GraphicsUnit.Pixel);
 
         private static void Text(Graphics g, string s, Font f, Brush b, float x, float y) => g.DrawString(s, f, b, P(x), P(y));
+
+        private static Font? _probe;
+        private static float _probeSize;
+        /// 크기 재기용 글꼴(하나만 두고 바꿔 쓴다)
+        private static Font FontPx(float designPx)
+        {
+            if (_probe == null || _probeSize != designPx) { _probe?.Dispose(); _probe = F(designPx); _probeSize = designPx; }
+            return _probe;
+        }
 
         private static float Measure(Graphics g, string s, Font f) => g.MeasureString(s, f).Width / S;
 
