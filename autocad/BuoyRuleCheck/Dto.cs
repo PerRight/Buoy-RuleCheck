@@ -239,6 +239,42 @@ namespace BuoyRuleCheck
         public double H { get; set; }
     }
 
+    /// 판정 설명 요청(/v1/explain) — mode: template(기본 설명) · preview(AI에 보낼 본문만, 안 보냄) · ai
+    public sealed class ExplainRequest
+    {
+        public string DocId { get; set; } = "";
+        public string RuleId { get; set; } = "";
+        public string Mode { get; set; } = "template";
+    }
+
+    /// 변경 설명 요청(/v1/explain/change) — 생산팀 전달 A4의 '변경 설명' 초안
+    public sealed class ExplainChangeRequest
+    {
+        public RawDrawing A { get; set; } = new();
+        public RawDrawing B { get; set; } = new();
+        public List<string> Labels { get; set; } = new();
+        public string Mode { get; set; } = "template";
+    }
+
+    /// 설명 응답. 문장 안의 숫자는 엔진 값(AI 설명이어도 빈칸을 엔진이 채운 것). Request = AI에 보낸(또는 보낼) 본문 전체.
+    public sealed class ExplainResponse
+    {
+        public string Kind { get; set; } = "";
+        public string Status { get; set; } = "";
+        public string Source { get; set; } = "template";
+        public string Text { get; set; } = "";
+        public string TemplateText { get; set; } = "";
+        public JsonElement? Request { get; set; }
+        public bool Sent { get; set; }
+        public string? Model { get; set; }
+        public string? FallbackKo { get; set; }
+        public string? RejectedText { get; set; }
+        public int ElapsedMs { get; set; }
+        public string DisclaimerKo { get; set; } = "";
+        public string? RuleId { get; set; }
+        public int? Revision { get; set; }
+    }
+
     public sealed class ParticularsRequest
     {
         public List<TextDto> Texts { get; set; } = new();

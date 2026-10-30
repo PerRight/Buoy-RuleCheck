@@ -2,6 +2,7 @@
 //   머리: 'GA 변경 전달 · 생산팀' · 도면 번호 v1 → v2 · (오른쪽) 날짜 · 작성자 · 수정 사유
 //   왼쪽: 차이 그림(바뀌지 않은 형상 mid, 추가 ○ 빗금 · 삭제 □ 파선 · 변경 ◇ 이전 점선/이후 굵은 실선) + 범례
 //   오른쪽: 변경 목록 ①②③④(기호 + 제목 · 수치 변화 · 해결/기준 충족) + 확인란(생산 ____ 일자 ____)
+//   (선택) 왼쪽 아래: 변경 설명 — 작성자가 고른·고친 두세 문장(기본 설명 또는 AI 초안 바탕, 숫자는 엔진 비교 결과)
 //   아래: 고지 문구 · 워드마크 'Buoy RuleCheck · 1 / 1'
 // 흑백 인쇄에서도 구분되게 색과 함께 선 모양·빗금·표식 모양(○ □ ◇)과 기호(+ − ~)를 쓴다(CanvasPainter 공용). 판정은 엔진 결과 그대로.
 using System;
@@ -22,8 +23,10 @@ namespace BuoyRuleCheck
         private static float P(float designPx) => designPx * S;
 
         public static Bitmap Render(CompareResponse d, VersionEntry? va, VersionEntry? vb, string labelA, string labelB,
-                                    string dwgNo, string drawingName)
+                                    string dwgNo, string drawingName, string? changeNote = null, bool noteFromAi = false)
         {
+            bool hasNote = !string.IsNullOrWhiteSpace(changeNote);
+            float frameBottom = hasNote ? 600 : 695;   // 변경 설명이 있으면 그림을 줄여 아래에 자리를 낸다
             var bmp = new Bitmap(Width, Height);
             bmp.SetResolution(200, 200);
             using var g = Graphics.FromImage(bmp);
@@ -71,7 +74,7 @@ namespace BuoyRuleCheck
             g.DrawLine(rule, P(M), P(113), P(right), P(113));
 
             // ── 차이 그림 ──
-            var frame = new RectangleF(P(M), P(132), P(705 - M), P(695 - 132));
+            var frame = new RectangleF(P(M), P(132), P(705 - M), P(frameBottom - 132));
             var img = RectangleF.Inflate(frame, -P(1), -P(1));
             var view = new ViewState();
             if (d.Bounds is double[] b) view.Fit(b, Size.Round(img.Size), 0.08);
@@ -80,7 +83,15 @@ namespace BuoyRuleCheck
             CanvasPainter.Paint(g, img, d, CanvasMode.Diff, view, st, 1f, null);
             g.Clip = clip;
             using (var fpath = Theme.RoundRect(frame, P(6))) g.DrawPath(lo, fpath);
-            CanvasPainter.PaintLegend(g, new RectangleF(P(M), P(703), P(705 - M), P(20)), st);
+            CanvasPainter.PaintLegend(g, new RectangleF(P(M), P(frameBottom + 8), P(705 - M), P(20)), st);
+            if (hasNote)
+            {
+                using var noteLab = F(11);
+                using var noteFont = F(12);
+                Text(g, "변경 설명" + (noteFromAi ? " · AI 초안을 작성자가 확인" : ""), noteLab, muted, M, frameBottom + 36);
+                using var fmt = new StringFormat { Trimming = StringTrimming.EllipsisWord };
+                g.DrawString(changeNote!.Trim(), noteFont, hi, new RectangleF(P(M), P(frameBottom + 52), P(705 - M), P(733 - (frameBottom + 52))), fmt);
+            }
 
             // ── 변경 목록 ──
             float lx = 729, lw = right - lx;

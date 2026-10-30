@@ -1,5 +1,5 @@
 // 항목 카드(명세 6-2, 디자인 보드 05): 판정 오브(18) · 항목명 · 상태 글자 / 고칠 내용(제목) · 조건 / 게이지(기준·현재·최악 조건)
-// / 기여 객체 목록 / [부표로 이동] · 규정 번호 · 재계산|캐시. 카드 띠·칠한 배지 없이 점과 글자로만 상태를 보인다.
+// / 기여 객체 목록 / [부표로 이동] [설명] · 규정 번호 · 재계산|캐시. 카드 띠·칠한 배지 없이 점과 글자로만 상태를 보인다.
 // 카드에 커서를 올리면 도면에 근거(시선·허용선)를, 객체 줄에 올리면 그 객체를 강조하고, 줄을 누르면 그 객체로 이동한다.
 // 판정·수치는 엔진이 준 그대로(표시용 fix·anchor) — 여기서는 고르고 배치만 한다.
 using System;
@@ -20,6 +20,8 @@ namespace BuoyRuleCheck
         /// 기여 객체 줄 hover / 클릭
         public event Action<ElementCheckDto, bool>? ElementHover;
         public event Action<ElementCheckDto>? ElementClicked;
+        /// [설명]: 이 판정을 문장으로(엔진 /v1/explain — AI 설명이 켜져 있으면 AI가 다듬음)
+        public event Action<RuleResultDto>? ExplainRequested;
 
         private readonly RuleResultDto _r;
         private readonly ElementCheckDto? _decisive;
@@ -30,6 +32,7 @@ namespace BuoyRuleCheck
         private readonly string? _more;
         private readonly bool _moreWarn;
         private readonly PillButton? _buoyBtn;
+        private readonly PillButton _explainBtn;
         private readonly OrbGeometry _orb;
         private bool _hover, _flash;
         private int _hoverRow = -1;
@@ -39,6 +42,7 @@ namespace BuoyRuleCheck
         // 배치(FitTo에서 계산)
         private Rectangle _rTitle, _rSub, _rGaugeTop, _rBar, _rGaugeBottom, _rMore, _rFoot;
         private int _ySep = -1;
+        private bool _footBelow;   // 폭이 좁아 규정 번호 줄이 버튼과 겹치면 버튼 아래 줄로
         private readonly List<Rectangle> _rowRects = new();
 
         public RuleCard(RuleResultDto r, bool failOnly = false)
@@ -104,6 +108,14 @@ namespace BuoyRuleCheck
                 new ToolTip().SetToolTip(_buoyBtn, "고칠 자리로 화면을 옮기고 부표 카드를 고정해 엽니다(도면은 그대로).");
             }
 
+            _explainBtn = new PillButton(UiText.ExplainButton, PillKind.Ring) { Font = Theme.Small };
+            _explainBtn.Size = _explainBtn.GetPreferredSize(Size.Empty);
+            _explainBtn.Height = 24;
+            _explainBtn.AccessibleName = $"{_name} 판정 설명";
+            _explainBtn.Click += (_, _) => ExplainRequested?.Invoke(_r);
+            Controls.Add(_explainBtn);
+            new ToolTip().SetToolTip(_explainBtn, UiText.ExplainTip);
+
             AccessibleRole = AccessibleRole.Grouping;
             AccessibleName = $"{_name} {Theme.StatusName(r.Status)} — {_title}";
             AccessibleDescription = string.Join(" / ", new[] { _sub }.Concat(_rows.Take(8).Select(e => $"{UiText.RowLabel(e)} {UiText.RowValue(e)}")));
@@ -166,8 +178,17 @@ namespace BuoyRuleCheck
             }
             y += Gap;
             _rFoot = new Rectangle(x, y, w, 24);
-            if (_buoyBtn != null) _buoyBtn.Location = new Point(x, y);
-            y += 24 + Pad;
+            int bx = x;
+            if (_buoyBtn != null) { _buoyBtn.Location = new Point(bx, y); bx += _buoyBtn.Width + 6; }
+            _explainBtn.Location = new Point(bx, y);
+            _footBelow = _explainBtn.Right + 8 + Ink.Width(FootText, Ink.Tiny) > x + w;
+            if (_footBelow)
+            {
+                y += 24 + 4;
+                _rFoot = new Rectangle(x, y, w, 16);
+                y += 16 + Pad;
+            }
+            else y += 24 + Pad;
             Height = y;
             Invalidate();
         }
@@ -265,11 +286,13 @@ namespace BuoyRuleCheck
             }
 
             // 꼬리: 규정 번호 · 재계산|캐시
-            string foot = $"{UiText.RefOf(_r)} · {(_r.Cached ? "캐시" : "재계산")}";
+            string foot = FootText;
             int fw = Ink.Width(foot, Ink.Tiny);
             TextRenderer.DrawText(g, foot, Ink.Tiny, new Rectangle(_rFoot.Right - fw, _rFoot.Y, fw, _rFoot.Height), Theme.Faint,
                 TextFormatFlags.VerticalCenter | Ink.Line);
         }
+
+        private string FootText => $"{UiText.RefOf(_r)} · {(_r.Cached ? "캐시" : "재계산")}";
 
         private void DrawGauge(Graphics g)
         {

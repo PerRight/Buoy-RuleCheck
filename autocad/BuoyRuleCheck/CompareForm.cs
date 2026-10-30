@@ -27,6 +27,9 @@ namespace BuoyRuleCheck
         /// 저장 전 상태를 포함한 지금 도면
         public Func<RawDrawing> ExtractLive = () => new RawDrawing();
         public Func<RawDrawing, RawDrawing, string, string, CompareResponse> Compare = (a, b, la, lb) => EngineClient.Compare(a, b, la, lb);
+        /// 변경 설명(A4) — (이전, 이후, 이름, 이름, mode, AI 키). mode: template · preview · ai
+        public Func<RawDrawing, RawDrawing, string, string, string, string?, ExplainResponse> ExplainChange =
+            (a, b, la, lb, mode, key) => EngineClient.ExplainChange(a, b, la, lb, mode, key);
         /// 도면 번호(특성 BRC_DWG_NO, 없으면 파일 이름)
         public Func<string> DwgNumber = () => "";
     }
@@ -235,6 +238,10 @@ namespace BuoyRuleCheck
 
         private VersionEntry? _ea, _eb;
         private string _la = "", _lb = "";
+        private RawDrawing? _ra, _rb;
+        /// 생산팀 전달 A4의 '변경 설명'(이 두 버전에서 고른·고친 것, 버전을 바꾸면 비움)
+        private string? _changeNote;
+        private bool _noteFromAi;
         private int? _selected;
 
         private void Reload()
@@ -251,6 +258,9 @@ namespace BuoyRuleCheck
                 var (ra, ea, la) = Pick(_a);
                 var (rb, eb, lb) = Pick(_b);
                 _ea = ea; _eb = eb; _la = la; _lb = lb;
+                _ra = ra; _rb = rb;
+                _changeNote = null;   // 버전을 다시 고르면 변경 설명도 다시
+                _noteFromAi = false;
                 _data = _src.Compare(ra, rb, la, lb);
                 _selected = null;
                 foreach (var cv in new[] { _left, _right, _main }) cv.Bind(_data, _view);
@@ -370,6 +380,16 @@ namespace BuoyRuleCheck
         private void Export()
         {
             if (_data == null) return;
+            // A4 '변경 설명'(선택): 기본 설명으로 채워 두고 고쳐 쓰거나 AI 초안으로 — 숫자는 엔진 비교 결과
+            if (_ra != null && _rb != null && !_data.Same)
+            {
+                var (ra, rb, la, lb) = (_ra, _rb, _la, _lb);
+                using var nd = new ChangeNoteDialog($"{la} → {lb}", _changeNote, _noteFromAi,
+                                                    (mode, key) => _src.ExplainChange(ra, rb, la, lb, mode, key));
+                if (nd.ShowDialog(this) != DialogResult.OK) return;
+                _changeNote = nd.Note;
+                _noteFromAi = nd.FromAi && nd.Note.Length > 0;
+            }
             string dwgNo = _src.DwgNumber();
             string baseName = $"{Safe(dwgNo)}_{Safe(_la)}-{Safe(_lb)}_변경";   // 점(.)도 바꿔서 확장자로 오인되지 않게
             using var dlg = new SaveFileDialog
@@ -387,7 +407,7 @@ namespace BuoyRuleCheck
             if (ext != ".pdf" && ext != ".png") path += dlg.FilterIndex == 2 ? ".png" : ".pdf";
             try
             {
-                using var bmp = ExportSheet.Render(_data, _ea, _eb, _la, _lb, dwgNo, _src.DrawingName);
+                using var bmp = ExportSheet.Render(_data, _ea, _eb, _la, _lb, dwgNo, _src.DrawingName, _changeNote, _noteFromAi);
                 if (path.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) bmp.Save(path, ImageFormat.Png);
                 else RasterPdf.WriteImagePage(path, bmp, $"{dwgNo} {_la}→{_lb} 변경");
                 Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });

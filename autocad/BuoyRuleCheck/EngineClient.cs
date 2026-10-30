@@ -11,7 +11,9 @@ namespace BuoyRuleCheck
 {
     public sealed class EngineException : Exception
     {
-        public EngineException(string message, Exception? inner = null) : base(message, inner) { }
+        /// 엔진이 HTTP 오류로 답했을 때 그 코드(연결 실패는 null)
+        public int? Status { get; }
+        public EngineException(string message, Exception? inner = null, int? status = null) : base(message, inner) { Status = status; }
     }
 
     public static class EngineClient
@@ -84,6 +86,42 @@ namespace BuoyRuleCheck
             return JsonSerializer.Deserialize<ParticularsResponse>(text, Contract.Json)
                    ?? throw new EngineException("치수표 응답을 읽을 수 없습니다.");
         }
+
+        /// 판정 설명(엔진의 마지막 검사 결과 기준). key = BRCAI에서 저장한 키 — 루프백 엔진에만 헤더로 넘기고,
+        /// 엔진(ai.py)이 숫자·이름을 뺀 본문만 api.anthropic.com으로 보낸다. 다른 스레드에서 불러도 된다(HTTP만).
+        public static ExplainResponse Explain(string docId, string ruleId, string mode, string? key = null)
+        {
+            var body = JsonSerializer.Serialize(new ExplainRequest { DocId = docId, RuleId = ruleId, Mode = mode }, Contract.Json);
+            return ReadExplain(PostExplain("/v1/explain", body, mode, key));
+        }
+
+        /// 변경 설명 초안(생산팀 전달 A4) — 두 스냅샷을 엔진이 다시 비교해 만든다.
+        public static ExplainResponse ExplainChange(RawDrawing a, RawDrawing b, string labelA, string labelB, string mode, string? key = null)
+        {
+            var body = JsonSerializer.Serialize(new ExplainChangeRequest { A = a, B = b, Labels = new() { labelA, labelB }, Mode = mode }, Contract.Json);
+            return ReadExplain(PostExplain("/v1/explain/change", body, mode, key));
+        }
+
+        private static string PostExplain(string path, string body, string mode, string? key)
+        {
+            var headers = mode == "ai" && !string.IsNullOrEmpty(key) ? new Dictionary<string, string> { ["X-BRC-AI-Key"] = key } : null;
+            try
+            {
+                // AI는 엔진이 20초까지 기다린다 → 그보다 길게. 기본 설명·미리보기는 PC 안 계산이라 짧게
+                return Post(path, body, TimeSpan.FromSeconds(mode == "ai" ? 40 : 10), headers);
+            }
+            catch (EngineException ex) when (ex.Status == 404)
+            {
+                throw new EngineException("켜져 있는 엔진이 옛 버전(0.6.0 미만)이라 설명 기능이 없습니다 — 엔진 창을 닫고 [다시 검사]를 누르세요.", ex, 404);
+            }
+            catch (EngineException ex) when (ex.Status == 400)
+            {
+                throw new EngineException(UiText.EngineError(ex.Message), ex, 400);
+            }
+        }
+
+        private static ExplainResponse ReadExplain(string text) =>
+            JsonSerializer.Deserialize<ExplainResponse>(text, Contract.Json) ?? throw new EngineException("설명 응답을 읽을 수 없습니다.");
 
         /// 마지막 검사 결과와 이력으로 만든 HTML 리포트.
         public static string Report(string docId, string title)
@@ -181,18 +219,20 @@ namespace BuoyRuleCheck
             return Version.TryParse(s[..end].TrimEnd('.'), out var got) ? got : null;
         }
 
-        private static string Post(string path, string json, TimeSpan? timeout = null)
+        private static string Post(string path, string json, TimeSpan? timeout = null, IDictionary<string, string>? headers = null)
         {
             EnsureCompatible();
             try
             {
-                using var content = new StringContent(json, Encoding.UTF8, "application/json");
+                using var req = new HttpRequestMessage(HttpMethod.Post, path) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
+                if (headers != null)
+                    foreach (var kv in headers) req.Headers.TryAddWithoutValidation(kv.Key, kv.Value);
                 using var cts = new System.Threading.CancellationTokenSource(timeout ?? Http.Timeout);
-                var resp = Task.Run(() => Http.PostAsync(path, content, cts.Token)).GetAwaiter().GetResult();
+                var resp = Task.Run(() => Http.SendAsync(req, cts.Token)).GetAwaiter().GetResult();
                 CheckServer(resp);
                 var text = Task.Run(() => resp.Content.ReadAsStringAsync()).GetAwaiter().GetResult();
                 if (!resp.IsSuccessStatusCode)
-                    throw new EngineException($"엔진 오류 {(int)resp.StatusCode}: {text}");
+                    throw new EngineException($"엔진 오류 {(int)resp.StatusCode}: {text}", status: (int)resp.StatusCode);
                 return text;
             }
             catch (EngineException) { throw; }

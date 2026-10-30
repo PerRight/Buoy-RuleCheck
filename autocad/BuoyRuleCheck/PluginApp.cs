@@ -145,6 +145,42 @@ namespace BuoyRuleCheck
             ed?.WriteMessage($"{Product.Tag} {Overlay.LastEvidenceNote}\n");
             ed?.WriteMessage($"{Product.Tag} {BuoyLayer.DiagnoseFollow()}\n");
             ed?.WriteMessage($"{Product.Tag} {RibbonUi.Diagnose()}\n");
+            var key = AiSettings.LoadKey();
+            ed?.WriteMessage($"{Product.Tag} AI 설명: {(AiSettings.Enabled ? "켜짐" : "꺼짐")} · 저장된 키 {(key != null ? AiSettings.Masked(key) : "없음")} (BRCAI)\n");
+        }
+
+        // ── AI 설명 (2026-10-30, docs/ai-explain.md) ────────────────────────────
+
+        private static ExplainDialog? _explain;
+
+        /// 항목 카드 [설명] — 엔진의 마지막 검사 결과로 설명(기본 설명, AI가 켜져 있으면 AI 설명으로 바꿈).
+        internal static void OpenExplain(RuleResultDto rr)
+        {
+            var d = Active;
+            if (d == null) return;
+            string docId = Extractor.DocId(d);
+            string ruleId = rr.RuleId;
+            if (_explain != null && !_explain.IsDisposed) _explain.Close();
+            _explain = new ExplainDialog(UiText.Short(ruleId), rr.Status,
+                (mode, key) => EngineClient.Explain(docId, ruleId, mode, key));
+            _explain.FormClosed += (_, _) => _explain = null;
+            AcApp.ShowModelessDialog(_explain);
+        }
+
+        [CommandMethod("BRCAI")]
+        public void AiSettingsCommand()
+        {
+            var doc = Active;
+            Func<string, string?, ExplainResponse>? fetch = null;
+            if (doc != null && Watchers.TryGetValue(doc, out var w) && w.Last is { } last && last.Results.Count > 0)
+            {
+                string docId = Extractor.DocId(doc);
+                string ruleId = (last.Results.FirstOrDefault(x => x.Status == "fail") ?? last.Results[0]).RuleId;
+                fetch = (mode, key) => EngineClient.Explain(docId, ruleId, mode, key);
+            }
+            using var dlg = new AiSettingsDialog(fetch);
+            if (AcApp.ShowModalDialog(dlg) == System.Windows.Forms.DialogResult.OK)
+                doc?.Editor.WriteMessage($"\n{Product.Tag} AI 설명 {(AiSettings.Enabled ? "켜짐 — 항목 카드 [설명]과 생산팀 전달 '변경 설명'에서 씁니다" : "꺼짐 — 기본 설명만 씁니다")}.\n");
         }
 
         // ── 입력 ────────────────────────────────────────────────────────────
@@ -617,6 +653,7 @@ namespace BuoyRuleCheck
                 Overlay.ElementHover(d, on ? shape?.pts : null, shape?.closed ?? false, el.Status, shape?.bulges);
             };
             panel.ElementFocusRequested += el => FocusTargets(new List<string> { el.ElementId });
+            panel.ExplainRequested += rr => { try { OpenExplain(rr); } catch (System.Exception ex) { Guard.Report("판정 설명", ex); } };
             panel.Ship.PickRequested += what => Send($"_BRCPICK {what} ");
             panel.Ship.EyeRequested += () => Send("_BRCEYE ");
             panel.Ship.SetupRequested += () => Send("_BRCSETUP ");

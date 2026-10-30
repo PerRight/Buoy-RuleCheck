@@ -59,6 +59,7 @@ namespace BuoyRuleCheck
                 },
                 new[]
                 {
+                    Big("AI 설명", "BRCAI", Icons.Explain, "판정·변경 설명을 Claude API로 다듬기(기본 꺼짐). 숫자·도면 이름은 보내지 않고, 보낼 본문을 미리 볼 수 있습니다."),
                     Big("엔진 확인", "BRCHEALTH", Icons.Pulse, "로컬 검사 엔진(127.0.0.1)이 응답하는지 확인합니다."),
                 }));
             tab.Panels.Add(Panel("입력",
@@ -343,6 +344,8 @@ namespace BuoyRuleCheck
             public static readonly Ico LogoShow = new("", Fills: "16 9.5 1.6", Rings: "16 16 11");
             public static readonly Ico Motion = new("M 5 16 H 9 M 23 16 H 27 M 12.5 11 V 21 M 19.5 11 V 21", Rings: "16 16 12");
             public static readonly Ico Bookmark = new("M 9 4 H 23 V 28 L 16 22 L 9 28 Z");
+            /// AI 설명: 말풍선 + 글줄
+            public static readonly Ico Explain = new("M 5 6 H 27 V 21 H 15 L 9 26 V 21 H 5 Z M 10 11.5 H 22 M 10 16 H 18");
             public static readonly Ico Compare = new("M 6 11 H 25 M 20 6 L 25 11 L 20 16 M 26 21 H 7 M 12 16 L 7 21 L 12 26");
         }
     }

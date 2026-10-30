@@ -18,6 +18,8 @@ namespace BuoyRuleCheck
         public bool ReduceMotion { get; set; }
         /// 도면 위 부표 표시
         public bool BuoysVisible { get; set; } = true;
+        /// AI 설명(외부 Claude API) 켜기 — 기본 꺼짐. 키는 여기 두지 않고 ai.key(DPAPI)에. BRCAI
+        public bool AiEnabled { get; set; }
 
         private static UiState? _current;
         public static UiState Current => _current ??= Load();

@@ -41,6 +41,7 @@
     <Compile Include="..\BuoyRuleCheck\RasterPdf.cs" Link="Shared\RasterPdf.cs" />
     <Compile Include="..\BuoyRuleCheck\VersionStore.cs" Link="Shared\VersionStore.cs" />
     <Compile Include="..\BuoyRuleCheck\EngineClient.cs" Link="Shared\EngineClient.cs" />
+    <Compile Include="..\BuoyRuleCheck\AiExplain.cs" Link="Shared\AiExplain.cs" />
     <Compile Include="..\BuoyRuleCheck\HitIndex.cs" Link="Shared\HitIndex.cs" />
     <EmbeddedResource Include="samples.json" LogicalName="BuoyPreview.samples.json" />
     <EmbeddedResource Include="samples_compare.json" LogicalName="BuoyPreview.samples_compare.json" />

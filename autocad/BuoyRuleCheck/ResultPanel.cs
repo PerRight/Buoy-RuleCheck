@@ -28,6 +28,8 @@ namespace BuoyRuleCheck
         public event Action<RuleResultDto, ElementCheckDto?>? BuoyRequested;
         public event Action<ElementCheckDto, bool>? ElementHoverRequested;
         public event Action<ElementCheckDto>? ElementFocusRequested;
+        /// 항목 카드 [설명]
+        public event Action<RuleResultDto>? ExplainRequested;
 
         public ShipInfoView Ship { get; } = new() { Dock = DockStyle.Fill };
 
@@ -257,6 +259,7 @@ namespace BuoyRuleCheck
                 card.BuoyRequested += (rr, el) => BuoyRequested?.Invoke(rr, el);
                 card.ElementHover += (e, on) => ElementHoverRequested?.Invoke(e, on);
                 card.ElementClicked += e => ElementFocusRequested?.Invoke(e);
+                card.ExplainRequested += rr => ExplainRequested?.Invoke(rr);
                 _cards.Controls.Add(card);
             }
             if (failOnly)
