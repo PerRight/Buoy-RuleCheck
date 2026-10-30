@@ -328,6 +328,8 @@ def check_visibility(model: dict[str, Any], r: Rule) -> RuleResult:
     overlays = _overlays(eye, x_bow, limit, d, ok, worst, ship, loa)
 
     judged = hull + objects_by_role(model, "obstruction")
+    # 설명용 분류(explain.py가 문장 틀을 고른다 — 판정에는 쓰지 않음)
+    evidence["finding"] = "within_limit" if ok else "sight_blocked" if math.isinf(d) else "blind_distance_exceeds"
     if ok:
         msg = f"사각 거리 {d:.2f} m ≤ 허용 {limit:g} m (최악: {worst['condition']})"
         if all(abs(c["t_aft"] - c["t_fwd"]) < 1e-9 for c in model["conditions"]):
@@ -397,6 +399,7 @@ def check_visibility(model: dict[str, Any], r: Rule) -> RuleResult:
     evidence["suggestion_x"] = round(ox, 3)
     evidence["max_obstacle_z_by_condition"] = [{"condition": n, "z_max": round(z, 3)} for n, z in z_by_cond]
     evidence["suggestion_governing_condition"] = gov_cond
+    evidence["suggestion_z"] = zmax_disp   # 제안 문구에 쓴 값 그대로(내림한 표시값) — 설명 문장이 다른 값을 말하지 않게
     if others:
         evidence["other_violating_handles"] = others
     overlays.append(_label([ox, zmax], f"허용 상단 z ≤ {zmax_disp:.2f} m", loa, "fail"))
