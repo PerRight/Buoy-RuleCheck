@@ -13,22 +13,23 @@ namespace BuoyRuleCheck
 
         // ── AI 설명 (2026-10-30 팀 결정, docs/ai-explain.md) ─────────────────────
         // 판정·수치는 엔진만. AI에는 규칙 조항·판정 상태·고칠 방향과 빈칸 이름만 보내고, 빈칸 숫자는 이 PC에서 엔진 값으로 채운다.
-        public const string AiAbout = "켜면 판정 설명과 생산팀 전달 '변경 설명' 초안을 Claude API(api.anthropic.com)로 씁니다. " +
-                                      "판정과 수치는 그대로 규칙 엔진이 정합니다. 인터넷이나 키가 없으면 기본 설명을 씁니다.";
-        public const string AiSends = "보내는 것: 규칙 조항 · 판정 상태 · 원인 객체 종류(장애물 등) · 고칠 방향 · 빈칸 이름({사각거리} 같은 자리표시). " +
-                                      "변경 설명은 바뀐 항목 종류 · 해결/새 수정 소요 규칙 이름 · 수정 소요가 줄었는지 늘었는지";
-        public const string AiKeeps = "보내지 않는 것: 도면 좌표·치수 · 흘수 조건 이름 · 객체 번호(handle) · 레이어·블록 이름 · 도면·버전 이름. " +
-                                      "빈칸의 숫자는 이 PC에서 엔진 값으로 채웁니다.";
+        public const string AiAbout = "켜면 판정 설명과 생산팀 전달 '변경 설명'에 Claude API(api.anthropic.com)가 쓴 문단을 덧붙입니다 — " +
+                                      "규칙이 왜 있는지·이 판정이 다루지 않는 범위·검토할 방향. 판정과 숫자 문장은 그대로 규칙 엔진이 씁니다. " +
+                                      "인터넷이나 키가 없으면 엔진 문장만 보입니다.";
+        public const string AiSends = "보내는 것: 규칙 조항 · 판정 상태 · 원인 객체 종류(장애물 등) · 고칠 방향 · 이 판정이 다루지 않는 범위. " +
+                                      "변경 설명은 바뀐 항목 종류(장애물 추가 등) · 설계팀 확인이 필요한 규칙 이름";
+        public const string AiKeeps = "보내지 않는 것: 숫자 전부(좌표·치수·거리·건수) · 흘수 조건 이름 · 객체 번호(handle) · 레이어·블록 이름 · 도면·버전 이름. " +
+                                      "숫자가 든 판정 문장은 이 PC의 엔진이 씁니다.";
         public const string ExplainButton = "설명";
-        public const string ExplainTip = "이 판정을 문장으로 풀어 봅니다(숫자는 엔진 값). AI 설명이 켜져 있으면 AI가 문장을 다듬습니다 — BRCAI.";
+        public const string ExplainTip = "이 판정을 문장으로 풀어 봅니다(숫자는 엔진 값). AI 설명이 켜져 있으면 이유·검토할 것을 AI가 덧붙입니다 — BRCAI.";
 
         /// 설명 창 아래 출처 줄
         public static string ExplainSource(ExplainResponse r, bool aiOn)
         {
             if (r.Source == "ai")
-                return $"AI 설명 · {r.Model} · {(r.ElapsedMs / 1000.0).ToString("0.0", CultureInfo.InvariantCulture)}초 — 숫자는 엔진 값으로 채움";
-            if (!string.IsNullOrEmpty(r.FallbackKo)) return "기본 설명 — " + r.FallbackKo;
-            return aiOn ? "기본 설명" : "기본 설명 (AI 설명 꺼짐 — 켜려면 BRCAI)";
+                return $"위 문장은 엔진, 아래 문단은 AI({r.Model} · {(r.ElapsedMs / 1000.0).ToString("0.0", CultureInfo.InvariantCulture)}초) — AI 문단에는 숫자·판정이 없음";
+            if (!string.IsNullOrEmpty(r.FallbackKo)) return "엔진 문장만 — " + r.FallbackKo;
+            return aiOn ? "엔진 문장" : "엔진 문장 (AI 설명 꺼짐 — 켜려면 BRCAI)";
         }
 
         /// 엔진 오류 응답({"error": "..."})에서 문장만

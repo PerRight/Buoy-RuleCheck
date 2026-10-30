@@ -199,7 +199,8 @@ namespace BuoyRuleCheck
     public sealed class ExplainDialog : AiFormBase
     {
         private readonly Func<string, string?, ExplainResponse> _fetchKey;   // (mode, 키) → 응답
-        private readonly Label _status, _body;
+        private readonly Label _status, _body, _aiHead, _aiBody;
+        private bool _aiAuto;   // 열릴 때 AI를 한 번만 자동으로
         private readonly Font _bodyFont = new(Theme.FontName, 10f);
         private readonly Button _ai, _sent, _copy;
         private ExplainResponse? _cur;
@@ -215,6 +216,12 @@ namespace BuoyRuleCheck
             _body = Wrap("설명을 만드는 중…", _bodyFont, Theme.Text);
             _body.Margin = new Padding(0, 2, 0, 10);
             Flow.Controls.Add(_body);
+            _aiHead = Wrap("AI 설명 — 이유와 검토할 것(숫자·판정 없음)", Theme.Small, Theme.Muted);
+            _aiHead.Margin = new Padding(0, 0, 0, 2);
+            _aiBody = Wrap("", Theme.Body, Theme.Text);
+            _aiHead.Visible = _aiBody.Visible = false;
+            Flow.Controls.Add(_aiHead);
+            Flow.Controls.Add(_aiBody);
             Flow.Controls.Add(SourceLine);
             Flow.Controls.Add(JsonCaption);
             Flow.Controls.Add(Json);
@@ -223,7 +230,11 @@ namespace BuoyRuleCheck
             var close = Theme.FlatButton("닫기");
             close.Click += (_, _) => Close();
             _copy = Theme.FlatButton("복사");
-            _copy.Click += (_, _) => { try { Clipboard.SetText(_body.Text + "\r\n\r\n" + UiText.Disclaimer); } catch { /* 클립보드 잠김 */ } };
+            _copy.Click += (_, _) =>
+            {
+                var text = _body.Text + (_aiBody.Visible ? "\r\n" + _aiBody.Text : "") + "\r\n\r\n" + UiText.Disclaimer;
+                try { Clipboard.SetText(text); } catch { /* 클립보드 잠김 */ }
+            };
             _sent = Theme.FlatButton("보낸 내용");
             _sent.Click += (_, _) => ShowJson(_cur, () => Fetch("preview"));
             _ai = Theme.FlatButton(AiSettings.Enabled ? "AI로 다시 쓰기" : "AI 설명 켜기…");
@@ -246,9 +257,9 @@ namespace BuoyRuleCheck
                 // 기본 설명도 다른 스레드에서(엔진이 바쁘거나 막 켜지는 중이어도 AutoCAD가 멈추지 않게) → 끝나면 AI
                 RunAsync(() => Fetch("template"), (r, err) =>
                 {
-                    if (r != null) Show(r);
+                    if (r != null) Show(r, fromAi: false);
                     else { _body.Text = "설명을 만들 수 없어요 — " + (err?.Message ?? "알 수 없는 오류"); _body.ForeColor = Theme.Warn; }
-                    if (r != null && AiSettings.Enabled) StartAi();
+                    if (r != null && AiSettings.Enabled && !_aiAuto) { _aiAuto = true; StartAi(); }
                     FitHeight();
                 });
             };
@@ -265,11 +276,17 @@ namespace BuoyRuleCheck
         /// mode에 맞는 키(ai만 저장한 키)로 엔진 호출
         private ExplainResponse Fetch(string mode) => _fetchKey(mode, mode == "ai" ? AiSettings.LoadKey() : null);
 
-        private void Show(ExplainResponse r)
+        /// 엔진 문장은 늘 위에, AI 문단은 AI 요청의 결과일 때만 바꾼다(늦게 온 기본 설명이 AI 문단을 지우지 않게)
+        private void Show(ExplainResponse r, bool fromAi)
         {
             _cur = r;
-            _body.Text = r.Text;
+            _body.Text = string.IsNullOrEmpty(r.TemplateText) ? r.Text : r.TemplateText;
             _body.ForeColor = Theme.Text;
+            if (fromAi)
+            {
+                _aiBody.Text = r.AiText ?? "";
+                _aiHead.Visible = _aiBody.Visible = !string.IsNullOrEmpty(r.AiText);
+            }
             if (!string.IsNullOrEmpty(r.Status))   // 머리 상태도 엔진의 지금 결과로(카드를 연 뒤 도면이 바뀌었을 수 있음)
             {
                 _status.Text = "● " + Theme.StatusName(r.Status);
@@ -285,13 +302,13 @@ namespace BuoyRuleCheck
             if (_busy) return;
             _busy = true;
             _ai.Enabled = false;
-            SourceLine.Text = "AI 설명 쓰는 중… (보내는 것: 규칙 조항·판정 상태·고칠 방향·빈칸 이름)";
+            SourceLine.Text = "AI 설명 쓰는 중… (보내는 것: 규칙 조항·판정 상태·고칠 방향 — 숫자·이름 없음)";
             SourceLine.ForeColor = Theme.Muted;
             RunAsync(() => Fetch("ai"), (r, err) =>
             {
                 _busy = false;
                 _ai.Enabled = true;
-                if (r != null) Show(r);
+                if (r != null) Show(r, fromAi: true);
                 else { SourceLine.Text = "AI 설명을 받지 못했어요 — " + (err?.Message ?? "알 수 없는 오류"); SourceLine.ForeColor = Theme.Warn; }
                 FitHeight();
             });
@@ -319,6 +336,7 @@ namespace BuoyRuleCheck
         private ExplainResponse? _cur;
         private bool _settingText, _edited, _busy, _confirmed;
         private readonly Label _count;
+        private Button? _ok;
         /// A4 상자(약 300자)에 맞춘 상한 — 넘치면 A4에서 글자를 줄여 넣는다(ExportSheet)
         public const int MaxNote = 300;
 
@@ -343,6 +361,7 @@ namespace BuoyRuleCheck
             {
                 if (!_settingText) _edited = true;
                 _count.Text = $"{_box.TextLength} / {MaxNote}자";
+                if (_ok != null) _ok.Enabled = _box.TextLength > 0;   // 기본 설명이 오기 전 빈 칸을 'A4에 넣기'로 저장하지 않게
             };
             FormClosing += (_, e) =>
             {
@@ -357,6 +376,7 @@ namespace BuoyRuleCheck
             cancel.Click += (_, _) => { DialogResult = DialogResult.Cancel; };
             var ok = Theme.FlatButton("A4에 넣고 저장", Theme.Info);
             ok.Click += (_, _) => { Note = _box.Text.Trim(); DialogResult = DialogResult.OK; };
+            _ok = ok;
             var none = Theme.FlatButton("설명 없이 저장");
             none.Click += (_, _) => { Note = ""; FromAi = false; DialogResult = DialogResult.OK; };
             var sent = Theme.FlatButton("보낸 내용");
@@ -384,6 +404,7 @@ namespace BuoyRuleCheck
                     return;
                 }
                 FromAi = false;
+                if (_ok != null) _ok.Enabled = false;
                 // 엔진이 두 버전을 다시 비교해서 만든다(실도면은 몇 초) — 창이 멈추지 않게 다른 스레드에서
                 SourceLine.Text = "기본 설명을 만드는 중…";
                 _box.ReadOnly = true;
@@ -391,6 +412,7 @@ namespace BuoyRuleCheck
                 {
                     _box.ReadOnly = false;
                     if (r == null) { SourceLine.Text = "기본 설명을 만들 수 없어요 — " + (err?.Message ?? "알 수 없는 오류"); SourceLine.ForeColor = Theme.Warn; return; }
+                    if (FromAi) return;   // AI 초안이 먼저 와 있으면 늦게 온 기본 설명으로 덮지 않는다
                     _cur = r;
                     if (!_edited) SetText(r.Text);
                     SourceLine.Text = UiText.ExplainSource(r, AiSettings.Enabled);
@@ -400,10 +422,18 @@ namespace BuoyRuleCheck
 
         private ExplainResponse Fetch(string mode) => _fetchKey(mode, mode == "ai" ? AiSettings.LoadKey() : null);
 
+        /// 300자를 넘으면 마지막 문장 끝에서 자른다(문장 중간에서 끊지 않게). 문장 끝이 없으면 말줄임
+        private static string Fit(string t)
+        {
+            if (t.Length <= MaxNote) return t;
+            int cut = t.LastIndexOf(". ", MaxNote - 1, StringComparison.Ordinal);
+            return cut > MaxNote / 2 ? t[..(cut + 1)] : t[..(MaxNote - 1)] + "…";
+        }
+
         private void SetText(string t)
         {
             _settingText = true;
-            _box.Text = t.Length > MaxNote ? t[..(MaxNote - 1)] + "…" : t;
+            _box.Text = Fit(t);
             _settingText = false;
             _edited = false;
         }

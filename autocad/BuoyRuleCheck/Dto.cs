@@ -264,6 +264,8 @@ namespace BuoyRuleCheck
         public string Source { get; set; } = "template";
         public string Text { get; set; } = "";
         public string TemplateText { get; set; } = "";
+        /// AI 문단(숫자·판정 표현 없음, 엔진 문장 뒤에 붙임). AI를 쓰지 않았거나 버렸으면 null
+        public string? AiText { get; set; }
         public JsonElement? Request { get; set; }
         public bool Sent { get; set; }
         public string? Model { get; set; }
