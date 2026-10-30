@@ -16,6 +16,7 @@ import json
 import os
 import re
 import socket
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -71,7 +72,27 @@ def _opener() -> urllib.request.OpenerDirector:
 
 def call(body: dict[str, Any], key: str, timeout: float = TIMEOUT_S) -> str:
     """Messages API를 한 번 부르고 답의 글자만 돌려준다. 실패는 모두 AiUnavailable(이유)로.
-    timeout은 전체 마감(연결부터 답을 다 읽을 때까지) — 조금씩 흘려 보내는 응답도 마감을 넘기면 끊는다."""
+    timeout은 전체 마감 — 요청을 별도 스레드에서 돌리고 마감(+1초)이 지나면 기다리지 않는다(연결·응답 머리·본문 모두).
+    남은 스레드는 소켓 시간 제한으로 곧 끝난다."""
+    box: dict[str, Any] = {}
+
+    def run() -> None:
+        try:
+            box["text"] = _call_once(body, key, timeout)
+        except BaseException as e:   # noqa: BLE001 — 스레드 밖으로 그대로 넘긴다
+            box["error"] = e
+    worker = threading.Thread(target=run, name="brc-ai-call", daemon=True)
+    worker.start()
+    worker.join(timeout + 1.0)
+    if worker.is_alive():
+        raise AiUnavailable("AI 응답이 늦어 기본 설명을 보여 줍니다(시간 초과).")
+    if "error" in box:
+        e = box["error"]
+        raise e if isinstance(e, AiUnavailable) else AiUnavailable("AI 서비스 응답을 처리하지 못했습니다.")
+    return box["text"]
+
+
+def _call_once(body: dict[str, Any], key: str, timeout: float) -> str:
     if urlsplit(ENDPOINT).hostname != HOST or not ENDPOINT.startswith("https://"):   # 고정 주소 — 바뀌면 보내지 않는다
         raise AiUnavailable("AI 서비스 주소가 허용 목록과 다릅니다.")
     data = json.dumps(body, ensure_ascii=False).encode("utf-8")

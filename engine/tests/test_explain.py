@@ -196,96 +196,95 @@ def fail_brief():
     return ex.rule_brief(next(r for r in rep["results"] if r["rule_id"] == VIS))
 
 
-class Guard(unittest.TestCase):
-    def setUp(self):
-        self.b = fail_brief()
-        self.ok = ("{판정}: 선교에서 본 선수 앞 수면의 사각 거리가 {사각거리}로 허용 한계 {한도}를 넘습니다. "
-                   "SOLAS Ch.V Reg.22.1.1 기준이며, {제안위치} 지점 상단을 {제안높이}로 낮추면 기준 안에 듭니다.")
+def brief_of(rule, status):
+    rep = evaluate(next(c for c in CASES if c["expected"]["status"] == status and c["rule"] == rule)["model"]).to_dict()
+    return ex.rule_brief(next(r for r in rep["results"] if r["rule_id"] == rule))
 
-    def test_accepts_slots_and_ref(self):
-        self.assertIsNone(ex.check_ai_text(self.ok, self.b))
+
+def change_brief_demo():
+    a = raw(bhd_x=122.5, extra=[box("C1", 100, 112, 13.5, 24.0), box("K1", 117, 119, 14.5, 25.0)])
+    b = raw(bhd_x=124.5, extra=[box("C1", 100, 112, 13.5, 21.4), box("M1", 126, 127, 14.5, 19.0)])
+    return ex.change_brief(compare_raws(a, b, ("v1", "v2")))
+
+
+# 지시문(SYSTEM_KO)을 지킨 그럴듯한 AI 문단 — 판정·숫자 없이 이유·범위·검토 방향
+GOOD = {
+    ("VIS", "fail"): [
+        "이 규정은 선교에서 선수 바로 앞 바다를 내려다볼 수 있어야 가까이 있는 작은 배나 부유물을 놓치지 않는다는 취지입니다. "
+        "시선을 가장 크게 가리는 장애물의 상단을 낮추거나, 선수 트림을 줄이거나, 선교 높이를 올리는 방향을 검토할 수 있습니다. "
+        "이 검토는 측면도만 본 것이라 좌우 시야 범위와 장애물 폭은 따로 확인해야 합니다.",
+        "선교 전방 수면 가시거리는 조타 위치에서 뱃머리 앞 수면이 얼마나 가려지는지를 다루는 규정으로, 근거는 SOLAS Ch.V Reg.22.1.1입니다. "
+        "갑판 화물이나 구조물이 시선을 가리면 근접 위험을 늦게 알아차릴 수 있습니다. 사각 섹터 각도 요건과 빠진 적재 상태는 사람이 함께 살펴보세요.",
+    ],
+    ("VIS", "pass"): [
+        "이 규정은 선교에서 선수 앞 수면을 충분히 내려다보도록 해 가까운 물체를 놓치지 않게 하려는 것입니다. "
+        "이번 검토는 측면도와 입력된 흘수 조건만 다뤘으므로 좌우 시야 범위와 사각 섹터 각도, 빠진 적재 상태는 따로 확인하세요.",
+    ],
+    ("BHD", "fail"): [
+        "충돌격벽은 선수가 부딪혔을 때 물이 앞쪽 구획에만 차도록 막는 벽이라 기준점에서 너무 가깝거나 멀지 않게 둡니다. "
+        "격벽을 옮기는 방향으로 검토하고, 계단형이면 모든 부분을 함께 살펴보세요. 근거는 SOLAS Ch.II-1 Reg.12.1·12.3·12.4.",
+    ],
+    ("BHD", "pass"): [
+        "충돌격벽 위치 규정은 선수 손상 때 침수를 앞쪽 구획에 가두기 위한 것입니다. 격벽 수밀 높이와 주관청 예외는 이 검토에 들어 있지 않으니 따로 살펴보세요.",
+    ],
+    ("VIS", "na"): [
+        "엔진은 비어 있는 입력을 짐작해서 채우지 않기 때문에 이 규칙의 판정을 미뤘습니다. 엔진이 알려 준 빠진 입력을 도면 특성이나 실도면 연결 마법사로 넣고 다시 검사하세요.",
+    ],
+}
+
+
+class Guard(unittest.TestCase):
+    def test_realistic_paragraphs_pass(self):
+        for (rule, st), texts in GOOD.items():
+            b = brief_of(VIS if rule == "VIS" else BHD, st)
+            for t in texts:
+                with self.subTest(rule=rule, st=st, t=t[:24]):
+                    self.assertIsNone(ex.check_ai_text(t, b))
+        cb = change_brief_demo()
+        for t in ["표식 번호가 붙은 장애물 높이와 충돌격벽 위치의 변경을 도면에 반영해 주세요. 반영한 뒤에는 다시 검사해 결과를 함께 전달하면 됩니다.",
+                  "생산팀은 장애물 수정·삭제·추가와 충돌격벽 수정 항목을 표식 위치에서 확인해 반영하면 됩니다."]:
+            self.assertIsNone(ex.check_ai_text(t, cb), ex.check_ai_text(t, cb))
+
+    def test_ref_with_trailing_period(self):
+        """2차 W4: 조항 문자열 뒤 마침표는 허용."""
+        b = fail_brief()
+        self.assertIsNone(ex.check_ai_text("이 규정의 근거는 SOLAS Ch.V Reg.22.1.1. 선교에서 선수 앞 바다를 내려다보게 하려는 취지입니다.", b))
 
     def test_rejects(self):
+        b = fail_brief()
+        base = "이 규정은 선교에서 선수 앞 바다를 내려다볼 수 있게 하려는 것입니다."
         bad = {
-            "숫자": self.ok + " 약 3 m 낮추세요.",
-            "전각 숫자": self.ok + " ３ 미만.",
-            "동그라미 숫자": self.ok + " ① 위치.",
-            "모르는 빈칸": self.ok + " {선명} 선박.",
-            "깨진 빈칸": self.ok + " {한도",
-            "쓰면 안 되는 말": self.ok + " 선급 승인 대상입니다.",
-            "적합": self.ok.replace("넘습니다", "넘지만 적합합니다"),
-            "반대 판정": self.ok + " 따라서 문제없음입니다.",
-            "단위 글": self.ok + " 이 미터 정도 낮추세요.",
-            "링크": self.ok + " http://x.example",
-            "도메인": self.ok + " evil.example 참고.",
-            "마크업": self.ok + " <b>굵게</b>",
-            "너무 짧음": "{판정}",
-            "너무 긺": self.ok * 10,
-            # 10-30 Sonnet 검증 V2·V3 우회 사례
-            "판정 빈칸 없이 시작": self.ok.replace("{판정}: ", ""),
-            "반대 판정(기준 안)": self.ok + " 지금은 기준 안입니다.",
-            "반대 판정(공백)": self.ok + " 문제 없 습니다.",
-            "충족": self.ok + " 현재 기준을 충족합니다.",
-            "안전": self.ok + " 안전합니다.",
-            "통과": self.ok + " 통과했습니다.",
-            "금지어 공백": self.ok + " 적 합합니다.",
-            "금지어 제로폭": self.ok + " 적\u200b합.",
-            "합격 한자": self.ok + " 合格.",
-            "영문": self.ok + " approved.",
-            "PASS": self.ok + " PASS.",
-            "⑩": self.ok + " ⑩ 위치.",
-            "½": self.ok + " ½ 정도.",
-            "로마 숫자": self.ok + " Ⅲ 구역.",
-            "한자 숫자": self.ok + " 五百.",
-            "한글 수사": self.ok + " 오백 정도 넘습니다.",
-            "한글 수사 단위": self.ok + " 사백삼십삼 m.",
-            "단위 기호": self.ok + " 약 cm 단위.",
-            "조항 밀수 1": self.ok + " Reg.12 m 옮기세요.",
-            "조항 밀수 2": self.ok + " SOLAS Ch.V Reg.22.1.15 참조.",
-            "조항 밀수 3": self.ok + " 22.1.122.1.1",
-            "조항 밀수 4": self.ok + " Reg.22.1.1m",
-            "빈칸 맞바꿈": "{판정}: 사각 거리가 허용 한계 {사각거리}로 {한도}를 넘습니다. 상단을 {제안높이}로 낮추세요.",
+            # 숫자·수사·단위·밀수
+            "숫자": base + " 약 3 m 낮추세요.", "전각": base + " ３ 칸.", "동그라미": base + " ① 위치.", "⑩": base + " ⑩.",
+            "분수": base + " ½ 정도.", "로마": base + " Ⅲ 구역.", "한자": base + " 五百.", "한글 수사": base + " 오백 정도.",
+            "고유어 수사": base + " 다섯 칸 정도.", "스무": base + " 스무 개.", "단위 글": base + " 몇 센치 정도.",
+            "키캡 이모지": base + " 1️⃣.", "🔟": base + " 🔟.",
+            "조항 밀수 1": base + " SOLAS Ch.V Reg.22.1.15 참조.", "조항 밀수 2": base + " Reg.22.1.1m.",
+            "조항 밀수 3": base + " 22.1.122.1.1",
+            # 판정·비교 표현(1·2차 우회 사례)
+            "기준 안": base + " 지금은 기준 안입니다.", "수면…기준 안": "선수 앞 수면의 가려지는 거리가 기준 안입니다. " + base,
+            "문제 없": base + " 문제 없 습니다.", "문제가 없": base + " 문제가 없습니다.", "넘지 않": base + " 한계를 넘지 않습니다.",
+            "한계 안": base + " 한계 안에 있습니다.", "위반": base + " 위반이 없습니다.", "정상": base + " 정상입니다.",
+            "준수": base + " 규정을 준수합니다.", "부합": base + " 부합합니다.", "문제가 있": base + " 문제가 있습니다.",
+            "벗어남": base + " 한계를 벗어났습니다.", "보다 깁": base + " 한계보다 깁니다.", "충족": base + " 충족합니다.",
+            "수정 소요": base + " 수정 소요입니다.", "해결": base + " 해결됐습니다.", "줄었": base + " 줄었습니다.",
+            "적 합": base + " 적 합합니다.", "통과": base + " 통과했습니다.", "안전": base + " 안전합니다.", "合格": base + " 合格.",
+            # 영문·보이지 않는 글자·중괄호·마크업
+            "approved": base + " approved.", "verified": base + " verified.", "PASS": base + " PASS.", "five": base + " five meters.",
+            "제로폭": base + " 적​합.", "한글 채움": base + " 적ㅤ합.", "변이 선택자": base + " 적️합.", "결합 문자": base + " 적͏합.",
+            "빈칸": "{판정}: " + base, "전각 중괄호": "｛판정｝ " + base, "링크": base + " http://x.example", "www": base + " www.x.kr",
+            "마크업": base + " <b>굵게</b>", "목록": "* " + base,
+            "짧음": "짧다.", "긺": base * 12,
         }
         for name, text in bad.items():
             with self.subTest(name=name):
-                self.assertIsNotNone(ex.check_ai_text(text, self.b))
-
-    def test_realistic_answers_pass(self):
-        """그럴듯한 AI 답은 통과해야 한다(검사가 지나쳐서 늘 기본 설명만 나오지 않게)."""
-        fail_txts = [
-            "{판정}: 조종위치에서 바라본 선수 앞 수면의 사각 거리가 {사각거리}로, 허용 한계 {한도}를 넘어섭니다. "
-            "가장 불리한 흘수 조건은 {최악조건}입니다. 시선을 가장 크게 가리는 장애물의 상단을 {제안높이} 이하로 낮추면 "
-            "기준 안에 들어옵니다. 어렵다면 선수 트림을 줄이거나 선교 높이를 올리는 방법을 검토하세요.",
-            "{판정}: 사각 거리 {사각거리}가 허용 한계 {한도}보다 깁니다. {제안위치} 부근 장애물 상단을 {제안높이} 이하로 낮추면 "
-            "모든 흘수 조건에서 기준 안에 듭니다. 근거는 SOLAS Ch.V Reg.22.1.1입니다.",
-        ]
-        for t in fail_txts:
-            with self.subTest(t=t[:30]):
-                self.assertIsNone(ex.check_ai_text(t, self.b))
-        rep = evaluate(next(c for c in CASES if c["expected"]["status"] == "pass" and c["rule"] == VIS)["model"]).to_dict()
-        pb = ex.rule_brief(next(r for r in rep["results"] if r["rule_id"] == VIS))
-        for t in ["{판정}: 선교에서 본 선수 앞 수면의 사각 거리가 {사각거리}로 허용 한계 {한도}를 넘지 않습니다. "
-                  "가장 불리한 조건은 {최악조건}이며 한계까지 {남은거리}가 남아 있습니다. 측면도만 본 판정이므로 좌우 시야는 따로 확인하세요."]:
-            self.assertIsNone(ex.check_ai_text(t, pb), ex.check_ai_text(t, pb))
-        rep = evaluate(next(c for c in CASES if c["expected"]["status"] == "fail" and c["rule"] == BHD)["model"]).to_dict()
-        bb = ex.rule_brief(next(r for r in rep["results"] if r["rule_id"] == BHD))
-        t = ("{판정}: 충돌격벽이 기준점({기준점})에서 {거리} 떨어져 있어 허용 범위 {허용범위}를 벗어납니다. "
-             "격벽을 {고칠양} 이상 옮기면 기준 안에 듭니다. 근거는 SOLAS Ch.II-1 Reg.12.1·12.3·12.4입니다.")
-        self.assertIsNone(ex.check_ai_text(t, bb), ex.check_ai_text(t, bb))
-
-    def test_status_words_by_status(self):
-        rep = evaluate(next(c for c in CASES if c["expected"]["status"] == "na")["model"]).to_dict()
-        r = next(x for x in rep["results"] if x["status"] == "na")
-        b = ex.rule_brief(r)
-        self.assertIsNotNone(ex.check_ai_text("{판정}: 입력이 없어 판정하지 않았지만 수정 소요로 보입니다. {멈춤사유}", b))
-        self.assertIsNone(ex.check_ai_text("{판정}: 엔진은 입력이 없어 판정하지 않았습니다. {멈춤사유} 빠진 값을 넣고 다시 검사하세요.", b))
+                self.assertIsNotNone(ex.check_ai_text(text, b))
 
 
 class AiPath(unittest.TestCase):
     def setUp(self):
         self.b = fail_brief()
-        self.good = ("{판정}: 사각 거리 {사각거리}가 허용 한계 {한도}를 넘습니다. "
-                     "{제안위치} 지점 상단을 {제안높이}로 낮추세요. 근거는 SOLAS Ch.V Reg.22.1.1 입니다.")
+        self.good = GOOD[("VIS", "fail")][0]
 
     def test_preview_does_not_send(self):
         called = []
@@ -294,30 +293,33 @@ class AiPath(unittest.TestCase):
         self.assertFalse(out["sent"])
         self.assertEqual(out["source"], "template")
         self.assertIsNotNone(out["request"])
+        self.assertNotIn("slots", out["request"]["messages"][0]["content"])   # 빈칸 이름도 보내지 않는다
 
     def test_no_key_falls_back(self):
         out = ex.explain(self.b, "ai", key=None, call=lambda *a: self.fail("보내면 안 됨"))
         self.assertEqual((out["source"], out["sent"]), ("template", False))
         self.assertIn("키", out["fallback_ko"])
 
-    def test_good_answer_is_filled_locally(self):
+    def test_good_paragraph_follows_engine_sentence(self):
         seen = {}
 
         def fake(body, key):
-            seen["body"], seen["key"] = body, key
+            seen["body"] = body
             return self.good
         out = ex.explain(self.b, "ai", key="sk-test-" + "x" * 30, call=fake)
         self.assertEqual(out["source"], "ai")
         self.assertTrue(out["sent"])
-        self.assertNotIn("{", out["text"])
-        self.assertIn(self.b.slots["사각거리"], out["text"])
+        self.assertEqual(out["ai_text"], self.good)
+        self.assertTrue(out["text"].startswith(out["template_text"]))   # 판정·숫자 문장은 엔진 것 그대로 앞에
+        self.assertEqual(out["text"], out["template_text"] + " " + self.good)
         self.assertEqual(seen["body"], out["request"])
         self.assertEqual(digits_left(sent_text(seen["body"])), [])
 
-    def test_bad_answer_falls_back(self):
-        out = ex.explain(self.b, "ai", key="k" * 30, call=lambda b, k: self.good + " 약 2.5 m 낮추면 됩니다.")
+    def test_bad_paragraph_falls_back(self):
+        out = ex.explain(self.b, "ai", key="k" * 30, call=lambda b, k: self.good + " 지금은 문제가 없습니다.")
         self.assertEqual(out["source"], "template")
-        self.assertIn("숫자", out["fallback_ko"])
+        self.assertIsNone(out["ai_text"])
+        self.assertIn("판정", out["fallback_ko"])
         self.assertIsNotNone(out["rejected_text"])
         self.assertEqual(out["text"], out["template_text"])
 
@@ -437,13 +439,27 @@ class SonnetFindings(unittest.TestCase):
         b["entities"] = [e for e in b["entities"] if e["layer"] != "GA_EYE"]
         cmp = compare_raws(a, b, ("v1", "v2"))
         br = ex.change_brief(cmp)
-        self.assertFalse(br.public["counts_comparable"])
-        self.assertFalse(br.public["violation_free_after"])
-        self.assertEqual(br.public["violation_trend_ko"], "비교 불가")
+        for k in ("counts_comparable", "violation_free_after", "violation_trend_ko", "overall_after"):
+            self.assertNotIn(k, br.public)   # 판정·증감은 AI에 보내지 않는다(2차 이후)
         text = ex.explain(br)["text"]
         self.assertIn("비교하지 않았습니다", text)
         self.assertNotIn("줄었습니다", text)
-        self.assertIsNotNone(ex.check_ai_text("{버전} 변경으로 수정 소요가 {이전수정소요}에서 {이후수정소요}로 줄었습니다. 표식 위치를 반영하세요.", br))
+
+    def test_w7_partial_resolution_is_not_resolved(self):
+        """2차 W7: 규칙이 아직 수정 소요인데 객체 하나가 풀린 것을 '해결'로 쓰지 않는다."""
+        a = raw(extra=[box("C1", 100, 112, 13.5, 24.0), box("K1", 117, 119, 14.5, 25.0)])
+        b = raw(extra=[box("C1", 100, 112, 13.5, 21.4), box("K1", 117, 119, 14.5, 25.0)])
+        cmp = compare_raws(a, b, ("v1", "v2"))
+        self.assertEqual(cmp["b"]["rules"][0]["status"], "fail")
+        text = ex.explain(ex.change_brief(cmp))["text"]
+        self.assertNotIn("가시거리 수정 소요가 해결", text)
+        self.assertIn("일부 객체", text)
+
+    def test_w12_no_display_uses_engine_sentence(self):
+        r = copy.deepcopy(evaluate(next(c for c in CASES if c["expected"]["status"] == "fail" and c["rule"] == VIS)["model"]).to_dict()["results"][0])
+        r["evidence"].pop("display")
+        out = ex.explain(ex.rule_brief(r))
+        self.assertEqual(out["text"], f"수정 소요: {r['message_ko']}. {r['suggestion_ko']}".replace("..", "."))
 
     def test_v5_any_client_failure_falls_back(self):
         import http.client
@@ -482,6 +498,21 @@ class SonnetFindings(unittest.TestCase):
             with self.assertRaises(ai.AiUnavailable) as cm:
                 ai.call({}, "k" * 30, timeout=0.3)
         self.assertLess(_t.monotonic() - t0, 1.0)
+        self.assertIn("시간", cm.exception.reason_ko)
+
+    def test_w11_deadline_covers_connect_and_headers(self):
+        """2차 W11: 연결·응답 머리에서 시간을 끌어도 마감에서 끊는다."""
+        import time as _t
+
+        class Slow:
+            def open(self, req, timeout=None):
+                _t.sleep(3.0)
+                raise OSError("late")
+        t0 = _t.monotonic()
+        with mock.patch.object(ai, "_opener", return_value=Slow()):
+            with self.assertRaises(ai.AiUnavailable) as cm:
+                ai.call({}, "k" * 30, timeout=0.3)
+        self.assertLess(_t.monotonic() - t0, 2.0)
         self.assertIn("시간", cm.exception.reason_ko)
 
     def test_v8_kinds_order_does_not_follow_handles(self):

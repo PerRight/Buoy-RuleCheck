@@ -1,13 +1,14 @@
-"""생성형 AI 설명 — 빈칸 방식 (2026-10-30 팀 결정, docs/ai-explain.md).
+"""생성형 AI 설명 (2026-10-30 팀 결정 A안 — 외부 LLM에 숫자·이름을 보내지 않는다, docs/ai-explain.md).
 
-판정·수치는 엔진만 정한다. 이 모듈은 이미 나온 결과(규칙 판정·버전 비교)를 세 가지로 나눈다.
-  1) 빈칸 값(slots)   PC 안에서만 쓰는 실제 문자열 — 숫자·흘수 조건 이름·버전 이름이 들어갈 수 있다.
-                     숫자는 규칙이 판정 문장에 쓴 표시 문자열(evidence.display)을 그대로 쓴다(반올림을 두 번 하지 않음).
-  2) 보낼 사실(public) 규칙 조항·판정 상태·고칠 방향처럼 이 파일에 적힌 정해진 어휘만. 숫자·handle·레이어·
-                     블록·흘수 조건 이름·선명·버전 이름은 넣지 않는다.
-  3) 기본 설명(template) AI 없이 바로 보여 줄 문장(빈칸을 써서 적고 PC 안에서 채운다).
-AI는 (2)와 빈칸 이름만 받아 문장을 쓰고, 그 문장의 {빈칸}을 PC 안에서 (1)로 채운다.
-AI 답은 검사한다(check_ai_text) — 걸리면 버리고 기본 설명. 지나치게 버리는 쪽(기본 설명)이 안전한 쪽이다.
+판정·수치는 엔진만 정한다. 설명 한 건은 두 부분이다.
+  1) 엔진 문장(template) 판정과 숫자(사각 거리·한도·제안 높이·격벽 거리·이동량…)를 담은 문장. 빈칸으로 적고 PC 안에서
+                       엔진이 판정 문장에 쓴 표시 문자열(evidence.display)로 채운다 — AI를 켜도 이 문장은 그대로다.
+  2) AI 문단(ai_text)   AI 설명을 켰을 때만. 숫자·판정 표현 없이 '이 규칙이 왜 있는지 · 이 판정이 다루지 않는 범위 ·
+                       검토할 방향'(변경 설명은 생산팀이 확인·반영할 것)을 쓴다. 엔진 문장 뒤에 붙인다.
+AI에 보내는 것(public)은 이 파일에 적힌 정해진 어휘뿐이다 — 규칙 조항·판정 상태·원인 객체 종류·고칠 방향·다루지 않는 범위.
+숫자·handle·레이어·블록·흘수 조건 이름·선명·버전 이름은 보내지 않는다(빈칸 값도 보내지 않는다).
+AI 문단은 검사한다(check_ai_text) — 숫자·판정 표현·금지어·영문 낱말·링크가 있으면 버리고 엔진 문장만 보인다.
+1차 설계(AI가 판정 문장을 빈칸으로 다시 쓰기)는 10-30 2차 검증에서 반대 판정 우회와 과차단이 함께 나와 이 구조로 바꿨다.
 """
 from __future__ import annotations
 
@@ -41,17 +42,18 @@ SCOPE_KO = {
           "격벽 수밀 높이 요건은 검토하지 않음",
           "주관청이 허용하는 예외는 반영하지 않음"],
 }
+# 판정 분류의 뜻 — AI에 보내는 말이라 판정·비교 표현 없이 '무엇을 다루는 경우인지'만 적는다
 FINDING_KO = {
-    "within_limit": "사각 거리가 허용 한계 안",
-    "blind_distance_exceeds": "사각 거리가 허용 한계를 넘음",
-    "sight_blocked": "장애물이 눈높이 이상이라 시선이 수면에 닿지 않음",
-    "within_range": "격벽 거리가 허용 범위 안",
-    "below_lower": "격벽이 기준점에 너무 가까움(하한 미달)",
-    "above_upper": "격벽이 기준점에서 너무 멂(상한 초과) — 주관청 허용 시 예외 가능, 사람 확인",
-    "step_too_wide": "계단형 격벽의 계단 폭이 허용 구간 폭보다 넓음 — 옮기기만으로는 해결 안 됨",
-    "input_missing": "판정에 필요한 입력이 없어 판정하지 않음",
-    "judgement_stopped": "입력이 모호하거나 서로 맞지 않아 엔진이 판정을 멈춤",
-    "not_applicable": "적용 대상이 아니라고 판단함(적용 조건 입력 확인 필요)",
+    "within_limit": "선수 앞 수면이 가려지는 거리(사각 거리)를 확인한 경우",
+    "blind_distance_exceeds": "사각 거리를 줄여야 하는 경우",
+    "sight_blocked": "장애물이 눈높이까지 올라와 선교에서 선수 앞 수면이 보이지 않는 경우",
+    "within_range": "충돌격벽 위치를 확인한 경우",
+    "below_lower": "충돌격벽이 기준점에 가까워 선미 쪽으로 옮겨야 하는 경우",
+    "above_upper": "충돌격벽이 기준점에서 멀어 선수 쪽으로 옮겨야 하는 경우(주관청 예외 가능성은 사람이 확인)",
+    "step_too_wide": "계단형 충돌격벽의 계단 폭을 줄여야 하는 경우",
+    "input_missing": "판정에 필요한 입력이 없어 엔진이 판정을 미룬 경우",
+    "judgement_stopped": "입력이 모호하거나 서로 맞지 않아 엔진이 판정을 미룬 경우",
+    "not_applicable": "적용 대상이 아니라고 본 경우(적용 조건 입력은 사람이 확인)",
 }
 _STOP_FINDING = {"na": "input_missing", "review": "judgement_stopped", "skip": "not_applicable"}
 _KIND_KO = {"added": "추가", "removed": "삭제", "modified": "수정"}
@@ -62,48 +64,51 @@ _OVERALLS = {"pass", "fail", "incomplete", "na"}
 # AI에 주는 지시(고정 문장, 도면 내용 없음). 숫자를 쓰지 않도록 이 지시 자체에도 숫자를 넣지 않는다.
 SYSTEM_KO = (
     "너는 조선소 GA(일반배치도) 검토 플러그인 Buoy-RuleCheck의 설명 도우미다. "
-    "결정론적 규칙 엔진이 이미 낸 판정을 설계자·생산팀이 읽기 쉬운 한국어 문장으로 옮긴다.\n"
+    "결정론적 규칙 엔진이 판정과 수치를 담은 문장을 이미 썼고, 너는 그 문장 뒤에 붙일 짧은 설명 문단을 쓴다.\n"
+    "쓸 내용:\n"
+    "- task가 rule이면: 이 규칙이 왜 있는지(무엇을 막으려는 규정인지), facts.scope_ko에 있는 이 판정이 다루지 않는 범위, "
+    "facts.actions에 있는 검토 방향을 자연스럽게 두세 문장으로. status가 na·review면 엔진이 왜 판정을 미루는지와 무엇을 채워야 하는지.\n"
+    "- task가 change면: 생산팀이 도면에서 확인하고 반영할 것을 facts.change_kinds_ko와 facts.actions 중심으로 한두 문장으로.\n"
     "반드시 지킬 것:\n"
-    "- 판정을 바꾸거나 새로 판단하지 않는다. 주어진 status와 facts에 있는 내용만 쓴다.\n"
-    "- task가 rule이면 첫머리를 반드시 '{판정}: '으로 시작한다. 판정 이름은 프로그램이 채운다.\n"
-    "- 숫자를 한 글자도 쓰지 않는다(아라비아 숫자, 동그라미 숫자, 로마 숫자, 한자 숫자, 숫자를 글로 풀어 쓴 값, "
-    "단위 기호 모두). 값이 필요한 자리에는 slots에 있는 빈칸 이름을 중괄호 그대로({이름}) 쓴다. 빈칸은 프로그램이 나중에 채운다. "
-    "빈칸은 slots의 뜻에 맞는 자리에만 쓰고, 한계·허용 범위 빈칸 앞에는 '허용 한계'·'허용 범위' 같은 말을 붙인다.\n"
-    "- 조항을 말할 때는 facts.rule.ref 문자열을 그대로 쓴다.\n"
-    "- slots에 없는 빈칸을 만들지 않는다.\n"
-    "- '적합', '승인', '합격', '인증', '보증', '통과', '확정', '안전'이라는 말을 쓰지 않는다. 기준 안이면 '문제없음'이라고 한다.\n"
-    "- 고칠 방법은 facts.actions에 있는 것만 말한다. 없으면 고칠 방법을 지어내지 않는다.\n"
-    "- task가 rule이면 세 문장에서 네 문장, change면 두 문장에서 세 문장. 머리말·목록·마크다운·링크 없이 한국어 평문 한 단락.\n"
-    "- 확실하지 않은 내용은 쓰지 않는다."
+    "- 판정과 수치는 앞 문장에 이미 있다. 판정을 다시 말하거나 바꾸지 않는다. 기준을 넘는지·안에 드는지·해결됐는지·늘었는지 줄었는지, "
+    "값끼리의 비교를 쓰지 않는다. 다음 말을 쓰지 않는다: 문제없음, 문제가 있다, 이상 없음, 수정 소요, 확인 필요, 위반, 충족, 만족, 미달, 초과, "
+    "넘다, 이내, 기준 안, 벗어나다, 정상, 양호, 준수, 부합, 해결, 늘다, 줄다(줄이다는 써도 됨), 증가, 감소, 보다, 적합, 승인, 합격, 인증, 보증, 통과, 확정, 안전.\n"
+    "- 숫자를 쓰지 않는다(아라비아 숫자, 동그라미 숫자, 로마 숫자, 한자, 숫자를 글로 쓴 말, 단위 기호 모두).\n"
+    "- 영어 낱말을 쓰지 않는다. 조항을 말할 때만 facts.rule.ref 문자열을 그대로 쓴다.\n"
+    "- 고칠 방법은 facts.actions에 있는 것만 말한다. 확실하지 않은 내용은 쓰지 않는다.\n"
+    "- 머리말·목록·마크다운·링크·중괄호 없이 한국어 평문 한 단락."
 )
 
-_SLOT = re.compile(r"\{([^{}\s]{1,24})\}")
-MAX_AI_CHARS = 700
-_ZERO_WIDTH = re.compile("[­​-‏‪-‮⁠-⁤﻿]")
-# 금지어(공백·제로폭 문자를 지운 NFKC 소문자에서 찾는다)
-_FORBIDDEN = ("적합", "승인", "합격", "인증", "보증", "통과", "확정", "인정", "허가", "안전",
-              "approv", "certif", "complian", "comply", "accept", "pass", "合格", "承認", "認證", "許可", "適合")
-# 숫자를 글로 쓴 값: 한글 수사 + 십·백·천(이십·오백·삼십삼), 십 + 수(십오), 단위 기호·단어
-_HANGUL_NUM = re.compile(r"[일이삼사오육륙칠팔구][십백천]|십[일이삼사오육칠팔구]|[백천]만")
-_UNIT = re.compile(r"(?<![A-Za-z])(?:m|mm|cm|km|m2|m3|deg)(?![A-Za-z])|%|°|㎜|㎝|㎞|㎡|미터|센티|밀리|킬로|퍼센트|도씨")
-_MARKUP = re.compile(r"://|www\.|[<>\[\]`#*]|\b[a-z0-9-]+\.(?:com|net|org|io|kr|co|ai|dev|example)\b", re.I)
-# 판정과 반대되는 말(공백을 지운 글에서 찾는다)
-_POSITIVE = ("문제없", "이상없", "충족", "만족", "기준안", "이내", "허용범위안", "괜찮")
-_NEGATIVE = ("넘습니", "넘었", "넘어", "넘는", "초과", "위반", "미달", "고쳐야", "옮겨야", "낮춰야", "줄여야", "수정소요")
-_NEGATED_OK = ("넘지않", "넘지는않", "초과하지않", "초과하지는않", "위반하지않", "위반이없", "위반은없", "위반이아니", "위반은아니",
-               "미달하지않", "미달이없", "수정소요는없", "수정소요가없", "수정소요없", "수정소요가아니", "수정소요는아니")
-_VIS_CONTEXT = {"한도": ("허용", "한계", "한도", "기준"), "사각거리": ("사각", "가려", "거리"),
-                "허용범위": ("허용", "범위", "기준")}
+MAX_AI_CHARS = 450
+# 보이지 않는 글자(서식·결합·사용자 정의 문자, 한글 채움 문자, 변이 선택자)는 아예 받지 않는다
+_INVISIBLE_EXTRA = set("\u3164\u115f\u1160\uffa0\u034f") | {chr(c) for c in range(0xFE00, 0xFE10)}
+# 판정·비교 표현(공백을 지운 NFKC 소문자에서 찾는다) — 엔진 문장이 맡는 말이라 AI 문단에는 없어야 한다
+_VERDICT = ("문제없", "문제가없", "문제는없", "문제있", "문제가있", "이상없", "이상이없", "수정소요", "확인필요", "적용제외",
+            "위반", "충족", "만족", "미달", "초과", "넘습", "넘었", "넘어", "넘는", "넘지", "넘을", "넘으", "넘친",
+            "기준안", "이내", "범위안", "한계안", "벗어", "정상", "양호", "준수", "부합",
+            "해결", "줄었", "줄어", "늘었", "늘어", "증가", "감소", "괜찮",
+            "보다길", "보다깁", "보다짧", "보다멀", "보다가깝", "보다높", "보다낮", "보다크", "보다작", "보다많", "보다적",
+            "적합", "승인", "합격", "인증", "보증", "통과", "확정", "안전", "인정", "허가",
+            "合格", "承認", "認證", "許可", "適合")
+# 낱말 사이에 띄어쓰기를 끼운 우회('적 합', '문제 없 습니다')도 잡는다 — 단, 띄어쓰기가 낀 일치는 낱말 첫머리에서
+# 시작할 때만('다시 검사해 결과'의 '해 결'처럼 앞 낱말 끝에서 시작하는 것은 우연)
+_VERDICT_RE = [(w, re.compile(r"\s*".join(map(re.escape, w)))) for w in _VERDICT]
+# 숫자를 글로 쓴 값: 한글 수사 + 십·백·천, 십 + 수, 고유어 수사(다섯 이상), 단위
+_HANGUL_NUM = re.compile(r"[일이삼사오육륙칠팔구][십백천]|십[일이삼사오육칠팔구]|[백천]만|다섯|여섯|일곱|여덟|아홉|스물|스무|서른|마흔|쉰|예순|일흔|여든|아흔")
+_UNIT = re.compile(r"%|°|㎜|㎝|㎞|㎡|미터|센티|센치|밀리|킬로|퍼센트|피트|인치|도씨")
+_MARKUP = re.compile(r"://|www\.|[<>\[\]`#*|]")
+# 허용하는 영문 낱말(조항 문자열을 지운 뒤) — 그 밖의 영문은 숫자·승인 표현을 영어로 쓰는 길이라 받지 않는다
+_LATIN_OK = {"solas", "ch", "reg", "v", "ii", "loa", "l", "lbp", "fp", "ap", "ga", "icll", "imo", "buoy", "rulecheck"}
 
 
 @dataclass
 class Brief:
-    """설명 재료 한 벌. public·slot_help만 밖으로 나간다(request_body)."""
+    """설명 재료 한 벌. public만 밖으로 나간다(request_body). slots·slot_help·template은 PC 안에서만."""
     kind: str                                   # "rule" | "change"
     status: str                                 # 규칙 판정 상태 또는 비교의 이후 전체 상태
     public: dict[str, Any] = field(default_factory=dict)
     slots: dict[str, str] = field(default_factory=dict)       # 빈칸 → PC 안 값
-    slot_help: dict[str, str] = field(default_factory=dict)   # 빈칸 → 뜻(보냄, 숫자 없음)
+    slot_help: dict[str, str] = field(default_factory=dict)   # 빈칸 → 뜻(설명용, 보내지 않음)
     template: str = ""
     literals: list[str] = field(default_factory=list)        # AI 답에서 숫자를 허용하는 조항 문자열
 
@@ -155,7 +160,7 @@ def rule_brief(r: dict[str, Any]) -> Brief:
         # 엔진이 만든 값이라도 정해진 목록에 없으면 보내지 않는다(방어)
         "rule": {"id": rid if rid in RULE_TITLE else "unknown", "title_ko": RULE_TITLE.get(rid, "규칙"),
                  "ref": RULE_REF.get(rid, "")},
-        "status": st if st in STATUS_KO else "unknown", "status_ko": STATUS_KO.get(st, "확인 필요"),
+        "status": st if st in STATUS_KO else "unknown",
         "scope_ko": list(SCOPE_KO.get(rid, [])),
         "actions": [],
     }
@@ -167,8 +172,8 @@ def rule_brief(r: dict[str, Any]) -> Brief:
         b.public["finding"], b.public["finding_ko"] = f, FINDING_KO[f]
         b.slot("멈춤사유", _sentence(r.get("message_ko")), "엔진이 판정하지 않은 이유와 고칠 입력(엔진 문장)")
         b.public["actions"] = {
-            "na": ["{멈춤사유}에 적힌 빠진 입력을 넣고 다시 검사(팔레트 준비 상태 카드 또는 실도면 연결 마법사)"],
-            "review": ["{멈춤사유}에 적힌 입력을 확인하고 고친 뒤 다시 검사"],
+            "na": ["엔진이 알려 준 빠진 입력을 도면 특성이나 실도면 연결 마법사로 넣고 다시 검사"],
+            "review": ["엔진이 알려 준 입력을 확인하고 고친 뒤 다시 검사"],
             "skip": ["적용 조건(LOA·용골 거치일) 입력이 맞는지 확인"],
         }[st]
         b.template = {
@@ -186,7 +191,8 @@ def rule_brief(r: dict[str, Any]) -> Brief:
         _vis(r, ev, b)
     elif rid == BHD:
         _bhd(r, ev, b)
-    else:
+    if rid not in (VIS, BHD) or not ev.get("display"):
+        # 표시 문자열이 없는 결과(새 규칙 등)는 엔진 판정 문장 그대로 — 숫자를 다시 만들지 않는다(반올림 어긋남 방지)
         b.template = "{판정}: {엔진결과}" + (" {엔진제안}" if "엔진제안" in b.slots else "")
     return b
 
@@ -202,8 +208,8 @@ def _vis(r: dict[str, Any], ev: dict[str, Any], b: Brief) -> None:
            "선수 앞 수면이 가려지는 거리")
     if r.get("condition"):
         b.slot("최악조건", f"'{r['condition']}'", "가장 불리한 흘수 조건의 이름")
-    b.public["criterion_ko"] = ("선교(조종위치)에서 본 선수 앞 수면의 사각 거리가 {한도} 이하 — "
-                                "입력된 모든 흘수 조건 중 가장 불리한 값으로 판정")
+    b.public["criterion_ko"] = ("선교(조종위치)에서 본 선수 앞 수면이 가려지는 거리(사각 거리)를 전장의 두 배와 고정 상한 중 "
+                                "작은 값 이하로 둠 — 입력된 모든 흘수 조건 중 가장 불리한 경우로 판정")
     if st == "pass":
         b.slot("남은거리", disp.get("room"), "허용 한계까지 남은 사각 거리")
         trimless = any("등흘수" in str(n) for n in ev.get("notes") or [])
@@ -228,15 +234,9 @@ def _vis(r: dict[str, Any], ev: dict[str, Any], b: Brief) -> None:
     b.slot("제안높이", ("z = " + disp["z"]) if disp.get("z") else None,
            "그 장애물 상단의 허용 높이(입력된 모든 흘수 조건 기준, 이보다 높은 부분이 없게)")
     has_fix = "제안위치" in b.slots and "제안높이" in b.slots
-    acts = []
-    if has_fix:
-        acts.append(f"시선을 가장 크게 가리는 {cause}의 상단을 {{제안높이}} 이하로 낮추기(가장 엄격한 곳 {{제안위치}}) — "
-                    "그보다 높은 부분이 없게")
-    else:
-        acts.append(f"시선을 가리는 {cause} 상단을 낮추기({{엔진제안}})" if "엔진제안" in b.slots else f"시선을 가리는 {cause} 상단을 낮추기")
-    acts += ["선수 트림 줄이기", "선교(조종위치) 높이 올리기"]
+    acts = [f"시선을 가장 크게 가리는 {cause}의 상단 낮추기", "선수 트림 줄이기", "선교(조종위치) 높이 올리기"]
     if others:
-        acts.append("단독으로 한계를 넘는 다른 객체도 함께 조정")
+        acts.append("시선을 가리는 다른 객체도 함께 조정")
     b.public["actions"] = acts
     if act is None:
         head = f"{{판정}}: {cause}{_josa(cause, '이', '가')} 조종위치 눈높이 이상이라 선교에서 본 시선이 수면에 닿지 않습니다"
@@ -267,8 +267,8 @@ def _bhd(r: dict[str, Any], ev: dict[str, Any], b: Brief) -> None:
         (_m(dmin) if abs(dmax - dmin) < 1e-3 else f"{dmin:.2f}~{dmax:.2f} m")
         if isinstance(dmin, (int, float)) and isinstance(dmax, (int, float)) else None),
         "기준점에서 격벽까지의 거리")
-    b.public["criterion_ko"] = ("기준점에서 충돌격벽까지의 거리가 {허용범위} 안 — 길이는 만재흘수선협약 길이 L, "
-                                "계단형 격벽은 모든 부분이 범위 안이어야 함")
+    b.public["criterion_ko"] = ("기준점에서 충돌격벽까지의 거리를 정해진 하한과 상한 사이에 둠 — 길이는 만재흘수선협약 길이 L, "
+                                "계단형 격벽은 모든 부분이 그 사이에")
     where = "기준점({기준점})" if "기준점" in b.slots else "기준점"
     finding = ev.get("finding")
     dec = _decisive(r)
@@ -283,15 +283,15 @@ def _bhd(r: dict[str, Any], ev: dict[str, Any], b: Brief) -> None:
         b.slot("고칠양", _m(delta), "고쳐야 할 양(엔진 계산값, 올림)")   # 요소 판정 fix.delta·제안 문장과 같은 값
     move = "{고칠양} 이상" if "고칠양" in b.slots else "기준 안에 들 때까지"
     if finding == "below_lower":
-        b.public["actions"] = [f"격벽을 선미 쪽으로 {move} 옮기기"]
+        b.public["actions"] = ["격벽을 선미 쪽으로 옮기기"]
         b.template = (f"{{판정}}: 충돌격벽이 {where}에서 {{거리}} 떨어져 있어 허용 범위 {{허용범위}}의 하한에 못 미칩니다. "
                       f"격벽을 선미 쪽으로 {move} 옮기면 기준 안에 듭니다.")
     elif finding == "above_upper":
-        b.public["actions"] = [f"격벽을 선수 쪽으로 {move} 옮기기", "주관청 허용 예외에 해당하는지 사람이 확인"]
+        b.public["actions"] = ["격벽을 선수 쪽으로 옮기기", "주관청 허용 예외에 해당하는지 사람이 확인"]
         b.template = (f"{{판정}}: 충돌격벽이 {where}에서 {{거리}} 떨어져 있어 허용 범위 {{허용범위}}의 상한을 넘습니다. "
                       f"격벽을 선수 쪽으로 {move} 옮기면 기준 안에 들고, 주관청이 허용하는 예외인지는 사람이 확인합니다.")
     elif finding == "step_too_wide":
-        b.public["actions"] = [f"계단·리세스 폭을 {('{고칠양}' if '고칠양' in b.slots else '허용 구간 폭 이하로')} 줄이기"]
+        b.public["actions"] = ["계단·리세스 폭 줄이기"]
         b.template = (f"{{판정}}: 계단형 충돌격벽이 {where}에서 {{거리}}에 걸쳐 있어 계단 폭이 허용 구간 폭보다 넓습니다. "
                       "어느 쪽으로 옮겨도 한쪽이 벗어나므로 계단·리세스 폭을 "
                       + ("{고칠양} 줄이세요." if "고칠양" in b.slots else "줄이세요."))
@@ -348,25 +348,25 @@ def change_brief(cmp: dict[str, Any]) -> Brief:
     if len(changes) > 3:
         lines[-1] += f" 외 {len(changes) - 3}건"
     b.slot("주요변경", "; ".join(lines) if lines else None, "주요 변경 내용(최대 세 건, 위치·크기 포함)")
-    resolved = _rule_names((cmp.get("resolved_rules") or []) + [x for c in changes for x in c.get("resolved") or []])
+    # '해결'은 규칙 단위로만(규칙이 여전히 수정 소요인데 객체 하나가 풀린 것은 '일부 객체'로 따로)
+    resolved = _rule_names(cmp.get("resolved_rules") or [])
+    partial = [x for x in _rule_names([y for c in changes for y in c.get("resolved") or []]) if x not in resolved]
     introduced = _rule_names((cmp.get("introduced_rules") or []) + [x for c in changes for x in c.get("introduced") or []])
     check = _rule_names((cmp.get("needs_check_rules") or []) + [x for c in changes for x in c.get("needs_check") or []]
                         + [x for x in cmp.get("indirect") or [] if x.get("to") in ("unknown", None)])
     kinds = [name for _, name in sorted({_change_kind(c) for c in changes})]
     trend = ("비교 불가" if not comparable else "줄어듦" if va < vb else "늘어남" if va > vb else "같음")
+    # AI에는 판정·증감을 보내지 않는다(문단에 쓰지 않을 말) — 바뀐 항목 종류와 설계팀 확인이 필요한 규칙 이름만
+    design_check = list(dict.fromkeys(introduced + check))
     b.public = {
         "same": bool(cmp.get("same")),
-        "overall_after": b.status,
         "change_kinds_ko": kinds,
-        "violation_trend_ko": trend,
-        "violation_free_after": comparable and va == 0 and ob == "pass",
-        "counts_comparable": comparable,
-        "resolved_rules_ko": resolved,
-        "introduced_rules_ko": introduced,
-        "needs_check_rules_ko": check,
+        "design_check_rules_ko": design_check,
         "indirect_effects": bool(cmp.get("indirect")),
         "rules": [{"title_ko": RULE_TITLE[k], "ref": RULE_REF[k]} for k in (VIS, BHD)],
-        "actions": ["표식 번호 위치의 변경을 도면에 반영"] + (["새 수정 소요는 설계팀 확인 후 반영"] if introduced else []),
+        "actions": ["표식 번호 위치의 변경을 도면에 반영"]
+                   + (["설계팀 확인이 필요한 규칙은 확인을 받은 뒤 반영"] if design_check else [])
+                   + (["다른 변경의 영향을 받은 객체도 함께 확인"] if cmp.get("indirect") else []),
     }
     if cmp.get("same"):
         b.template = "{버전}: 형상·선박 정보·판정이 모두 같습니다."
@@ -380,6 +380,9 @@ def change_brief(cmp: dict[str, Any]) -> Brief:
         t += " 수정 소요는 {이전수정소요}에서 {이후수정소요}" + ("으로 줄었습니다." if trend == "줄어듦" else "으로 늘었습니다.")
     if resolved:
         t += f" {'·'.join(resolved)} 수정 소요가 해결됐습니다."
+    if partial:
+        names = "·".join(partial)
+        t += f" {names}{_josa(names, '은', '는')} 일부 객체의 수정 소요가 풀렸습니다(규칙은 아직 수정 소요)."
     if introduced:
         t += f" {'·'.join(introduced)}에 새 수정 소요가 생겨 설계팀 확인이 필요합니다."
     if check:
@@ -391,115 +394,66 @@ def change_brief(cmp: dict[str, Any]) -> Brief:
 
 # ── 보낼 본문 · 검사 · 채우기 ─────────────────────────────────────────────────
 
+_SLOT = re.compile(r"\{([^{}\s]{1,24})\}")
+
+
 def request_body(b: Brief, model: str) -> dict[str, Any]:
-    """AI에 보낼 본문 전체(키 제외). 미리보기 화면도 이것을 그대로 보여 준다."""
-    user = {"task": b.kind, "facts": b.public, "slots": b.slot_help}
+    """AI에 보낼 본문 전체(키 제외). 미리보기 화면도 이것을 그대로 보여 준다. 빈칸 값은 물론 빈칸 이름도 보내지 않는다."""
+    user = {"task": b.kind, "facts": b.public}
     return {
         "model": model,
-        "max_tokens": 600,
+        "max_tokens": 500,
         "system": SYSTEM_KO,
-        "messages": [{"role": "user", "content": "다음 JSON의 엔진 판정을 설명하세요.\n"
+        "messages": [{"role": "user", "content": "다음 JSON의 엔진 판정 뒤에 붙일 설명 문단을 쓰세요.\n"
                                                  + json.dumps(user, ensure_ascii=False, indent=1)}],
     }
 
 
 def fill(text: str, slots: dict[str, str]) -> str:
-    """{빈칸}을 값으로 한 번만 바꾼다(값 안의 중괄호는 다시 바꾸지 않음)."""
+    """엔진 문장의 {빈칸}을 값으로 한 번만 바꾼다(값 안의 중괄호는 다시 바꾸지 않음)."""
     return _SLOT.sub(lambda m: slots.get(m.group(1), m.group(0)), text)
 
 
-def _norm(t: str) -> str:
-    """검사용: NFKC · 제로폭 문자 제거 · 소문자."""
-    return _ZERO_WIDTH.sub("", unicodedata.normalize("NFKC", t)).lower()
-
-
 def _strip_literals(t: str, literals: list[str]) -> str:
-    """조항 문자열을 지운다 — 앞뒤가 숫자·영문·점이면 지우지 않는다(조항 문자열에 숫자를 이어 붙이는 밀수 차단)."""
+    """조항 문자열을 지운다 — 앞뒤에 숫자·영문이 붙어 있거나 점 뒤에 글자가 이어지면 지우지 않는다(숫자 밀수 차단).
+    문장 끝 마침표('…Reg.22.1.1.')는 허용."""
     for lit in sorted(set(literals), key=len, reverse=True):
-        t = re.sub(r"(?<![0-9A-Za-z.])" + re.escape(lit) + r"(?![0-9A-Za-z.])", " ", t, flags=re.I)
+        t = re.sub(r"(?<![0-9A-Za-z.])" + re.escape(lit) + r"(?![0-9A-Za-z]|\.[0-9A-Za-z])", " ", t, flags=re.I)
     return t
 
 
-def _sentences(t: str) -> list[str]:
-    return [s for s in re.split(r"(?<=[.!?。])\s*", t) if s]
-
-
-def _claims(sentence: str, words: tuple[str, ...], allow_conditional: bool) -> bool:
-    """문장에 words가 있는가 — allow_conditional이면 앞에 '…면'(조건)이 오는 것은 주장으로 보지 않는다."""
-    s = re.sub(r"\s+", "", sentence)
-    for ok in _NEGATED_OK:
-        s = s.replace(ok, "")
-    for w in words:
-        i = s.find(w)
-        while i >= 0:
-            if not (allow_conditional and "면" in s[:i]):
-                return True
-            i = s.find(w, i + 1)
-    return False
-
-
 def check_ai_text(text: str, b: Brief) -> str | None:
-    """AI 답을 쓸 수 있으면 None, 아니면 버린 이유(한국어). 의심되면 버린다(기본 설명이 안전한 쪽)."""
+    """AI 문단을 쓸 수 있으면 None, 아니면 버린 이유(한국어). 의심되면 버린다(엔진 문장만 보이는 쪽이 안전)."""
     t = text.strip()
-    if not 15 <= len(t) <= MAX_AI_CHARS:
+    if not 10 <= len(t) <= MAX_AI_CHARS:
         return "길이가 맞지 않음"
-    n = _norm(t)
-    names = _SLOT.findall(n)
-    unknown = sorted(set(names) - set(b.slots))
-    if unknown:
-        return "없는 빈칸을 씀: " + ", ".join("{" + x + "}" for x in unknown[:3])
-    if b.kind == "rule" and not re.match(r"\s*\{판정\}", n):
-        return "첫머리가 {판정}이 아님"
-    rest = _strip_literals(_SLOT.sub(" ", n), b.literals)
-    raw_rest = _strip_literals(_SLOT.sub(" ", t), b.literals)   # 정규화 전 글도 본다(로마 숫자 Ⅲ는 NFKC로 III가 됨)
-    if any(unicodedata.category(ch).startswith("N") or ch.isnumeric() for ch in rest + raw_rest):
-        return "빈칸 대신 숫자를 씀(엔진 값만 쓰게 하려고 버림)"
-    if any("㐀" <= ch <= "鿿" or "豈" <= ch <= "﫿" for ch in rest):
-        return "한자가 있음(숫자를 한자로 쓴 값 차단)"
-    if "{" in rest or "}" in rest:
-        return "빈칸 표기가 깨짐"
-    if _HANGUL_NUM.search(rest.replace(" ", "")) or _UNIT.search(rest):
-        return "숫자를 글로 풀어 쓴 값이나 단위가 있음"
+    if any(unicodedata.category(ch) in ("Cf", "Mn", "Me", "Co", "Cs") or ch in _INVISIBLE_EXTRA for ch in t):
+        return "보이지 않는 글자가 있음"
+    n = unicodedata.normalize("NFKC", t)
+    if any(ch in "{}" for ch in n):
+        return "중괄호가 있음(빈칸은 엔진 문장만 씀)"
+    rest_raw = _strip_literals(t, b.literals)
+    rest = _strip_literals(n, b.literals)
+    if any(unicodedata.category(ch).startswith("N") or ch.isnumeric() for ch in rest_raw + rest):
+        return "숫자가 있음(수치는 엔진 문장만 씀)"
+    if any(unicodedata.category(ch) == "So" for ch in rest_raw):   # 이모지·키캡 숫자(🔟)·둘러싼 글자 등
+        return "기호·이모지가 있음"
+    if any("\u3400" <= ch <= "\u9fff" or "\uf900" <= ch <= "\ufaff" for ch in rest):
+        return "한자가 있음"
+    flat = re.sub(r"\s+", "", rest).lower()
+    if _HANGUL_NUM.search(flat) or _UNIT.search(flat):
+        return "숫자를 글로 쓴 값이나 단위가 있음"
     if _MARKUP.search(rest):
         return "링크·마크업이 있음"
-    flat = re.sub(r"\s+", "", rest)
-    bad = [w for w in _FORBIDDEN if w in flat]
-    if bad:
-        return f"쓰면 안 되는 말('{bad[0]}')"
-    # 빈칸이 뜻에 맞는 자리에 있는지(한계·거리 맞바꾸기 등) — 앞 빈칸 이후 열다섯 글자 안에서 가장 가까운 단서 말이
-    # 이 빈칸의 뜻이어야 한다('허용 한계 {사각거리}'·'{사각거리}로 {한도}'는 버림)
-    prev_end = 0
-    for m in _SLOT.finditer(n):
-        need = _VIS_CONTEXT.get(m.group(1))
-        if need and m.group(1) in b.slots:
-            seg = n[max(prev_end, m.start() - 15):m.start()]
-            hits = [(seg.rfind(w), w) for ws in _VIS_CONTEXT.values() for w in ws if w in seg]
-            if not hits or max(hits)[1] not in need:
-                return f"빈칸 {{{m.group(1)}}}의 자리가 뜻과 맞지 않음"
-        prev_end = m.end()
-    st, sents = b.status, _sentences(rest)
-    if b.kind == "rule":   # 판정과 반대되는 말(지금 상태를 주장하는 문장만 — '…하면 기준 안에 듭니다'는 허용)
-        if st == "pass" and any(_claims(s, _NEGATIVE, allow_conditional=False) for s in sents):
-            return "문제없음을 수정 소요처럼 씀"
-        if st in ("fail", "na", "review", "skip") and any(_claims(s, _POSITIVE, allow_conditional=True) for s in sents):
-            return "수정 소요·판정 안 함을 문제없음처럼 씀"
-        if st in ("na", "review", "skip") and any(_claims(s, ("넘습니", "초과합", "위반입", "위반합", "미달입", "미달합", "수정소요"),
-                                                        allow_conditional=True) for s in sents):
-            return "판정하지 않은 규칙을 수정 소요처럼 씀"
-    else:   # 변경 설명: 보낸 사실과 반대되는 말
-        p = b.public
-        if not p.get("introduced_rules_ko") and any(w in flat for w in ("새수정소요", "새로운수정소요", "새위반", "새로생긴")):
-            return "새 수정 소요가 없는데 생겼다고 씀"
-        if not p.get("resolved_rules_ko") and "해결" in flat:
-            return "해결된 규칙이 없는데 해결됐다고 씀"
-        trend = p.get("violation_trend_ko")
-        wrong = {"줄어듦": ("늘었", "늘어", "증가"), "늘어남": ("줄었", "줄어", "감소"),
-                 "같음": ("늘었", "늘어", "증가", "줄었", "줄어", "감소"),
-                 "비교 불가": ("늘었", "늘어", "증가", "줄었", "줄어", "감소")}.get(trend, ())
-        if any(w in flat for w in wrong):
-            return "수정 소요 증감을 반대로 씀"
-        if not p.get("violation_free_after") and any(w in flat for w in ("문제없", "모두해결", "수정소요가없", "수정소요는없", "수정소요없")):
-            return "남은 수정 소요·확인 필요가 있는데 없다고 씀"
+    latin = [w for w in re.findall(r"[A-Za-z]+", rest) if w.lower() not in _LATIN_OK]
+    if latin:
+        return f"영문 낱말이 있음('{latin[0]}')"
+    spaced = re.sub(r"\s+", " ", rest).lower()
+    for w, rx in _VERDICT_RE:
+        for m in rx.finditer(spaced):
+            # '보다…'는 앞 낱말에 붙는 조사라 낱말 첫머리 조건 없이
+            if " " not in m.group() or w.startswith("보다") or m.start() == 0 or not spaced[m.start() - 1].isalnum():
+                return f"판정·비교 표현이 있음('{w}' — 판정과 수치는 엔진 문장만 씀)"
     return None
 
 
@@ -510,7 +464,9 @@ def _clean(text: str) -> str:
 
 def explain(b: Brief, mode: str = "template", key: str | None = None, model: str | None = None,
             call: Callable[[dict[str, Any], str], str] | None = None) -> dict[str, Any]:
-    """mode: template(기본 설명만) · preview(보낼 본문을 보여 주기만, 안 보냄) · ai(보내고, 안 되면 기본 설명)."""
+    """mode: template(엔진 문장만) · preview(보낼 본문을 보여 주기만, 안 보냄) · ai(보내고, 쓸 수 있는 문단이면 엔진 문장 뒤에 붙임).
+
+    text = 엔진 문장(+ AI 문단). template_text = 엔진 문장, ai_text = AI 문단(없으면 null)."""
     if mode not in MODES:
         raise ValueError(f"mode는 {', '.join(MODES)} 중 하나여야 합니다.")
     from . import ai
@@ -518,7 +474,7 @@ def explain(b: Brief, mode: str = "template", key: str | None = None, model: str
     base = fill(b.template, b.slots)
     out: dict[str, Any] = {
         "schema": SCHEMA, "kind": b.kind, "status": b.status, "source": "template", "text": base,
-        "template_text": base, "request": None, "sent": False, "model": None, "fallback_ko": None,
+        "template_text": base, "ai_text": None, "request": None, "sent": False, "model": None, "fallback_ko": None,
         "rejected_text": None, "elapsed_ms": 0, "disclaimer_ko": DISCLAIMER_KO,
     }
     if mode == "template":
@@ -530,7 +486,7 @@ def explain(b: Brief, mode: str = "template", key: str | None = None, model: str
     if mode == "preview":
         return out
     if not key:
-        out["fallback_ko"] = "AI 키가 없거나 모양이 맞지 않아 기본 설명을 보여 줍니다(BRCAI에서 키를 확인하세요)."
+        out["fallback_ko"] = "AI 키가 없거나 모양이 맞지 않아 엔진 문장만 보여 줍니다(BRCAI에서 키를 확인하세요)."
         return out
     out["sent"] = True
     try:
@@ -538,18 +494,18 @@ def explain(b: Brief, mode: str = "template", key: str | None = None, model: str
     except ai.AiUnavailable as e:
         out["fallback_ko"] = e.reason_ko
         return out
-    except Exception:   # 어떤 실패도 판정 화면을 깨지 않게 — 기본 설명으로
-        out["fallback_ko"] = "AI 응답을 처리하지 못해 기본 설명을 보여 줍니다."
+    except Exception:   # 어떤 실패도 판정 화면을 깨지 않게 — 엔진 문장만
+        out["fallback_ko"] = "AI 응답을 처리하지 못해 엔진 문장만 보여 줍니다."
         return out
     finally:
         out["elapsed_ms"] = round((time.perf_counter() - t0) * 1000)
     text = _clean(raw) if isinstance(raw, str) else ""
     why = check_ai_text(text, b)
     if why:
-        out["fallback_ko"] = f"AI 답을 쓰지 않았습니다 — {why}. 기본 설명을 보여 줍니다."
+        out["fallback_ko"] = f"AI 문단을 쓰지 않았습니다 — {why}."
         out["rejected_text"] = text[:MAX_AI_CHARS]
         return out
-    out.update(source="ai", text=fill(text, b.slots))
+    out.update(source="ai", ai_text=text, text=base + " " + text)
     return out
 
 
